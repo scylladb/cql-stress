@@ -4,6 +4,8 @@ extern crate async_trait;
 #[cfg(test)]
 pub(crate) mod test_util;
 
+pub mod configuration;
+
 #[cfg(test)]
 mod tests {
     use crate::test_util::new_test_session;
