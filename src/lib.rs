@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate async_trait;
+
 #[cfg(test)]
 pub(crate) mod test_util;
 
