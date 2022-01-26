@@ -5,6 +5,7 @@ extern crate async_trait;
 pub(crate) mod test_util;
 
 pub mod configuration;
+pub mod run;
 
 #[cfg(test)]
 mod tests {
