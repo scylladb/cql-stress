@@ -51,7 +51,7 @@ pub struct Description<'a> {
 // cassandra-stress and scylla-bench accept different distributions and parse
 // their arguments in a slightly different way, so it's the responsiblity
 // of the frontends to further interpret the decomposed description.
-pub fn parse_description<'a>(s: &'a str, flavor: SyntaxFlavor) -> Result<Description<'a>> {
+pub fn parse_description(s: &str, flavor: SyntaxFlavor) -> Result<Description> {
     let mut s = s.trim();
 
     let inverted = match s.strip_prefix('~') {
