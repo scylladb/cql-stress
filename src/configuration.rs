@@ -27,8 +27,9 @@ pub struct Configuration {
     /// If `None`, then there is no rate limit imposed.
     pub rate_limit_per_second: Option<f64>,
 
-    /// Represents an operation to be repeatedly performed during the stress.
-    pub operation: Arc<dyn Operation>,
+    /// A factory which creates operations that will be executed'
+    /// during the stress.
+    pub operation_factory: Arc<dyn OperationFactory>,
 }
 
 /// Contains all necessary context needed to execute an Operation.
@@ -40,6 +41,15 @@ pub struct OperationContext {
     /// if an operation with ID `X` > 0 was issued, then the tool has attempted
     /// or will attempt to execute operations of IDs less than `X`.
     pub operation_id: u64,
+}
+
+/// Creates operations which can later be used by workers during the stress.
+pub trait OperationFactory: Send + Sync {
+    /// Creates an Operation.
+    ///
+    /// The single operation will be used from within a single worker.
+    /// It can have its own state.
+    fn create(&self) -> Box<dyn Operation>;
 }
 
 /// Represents an operation which is repeatedly performed during the stress.
@@ -55,5 +65,5 @@ pub trait Operation: Send + Sync {
     /// Returns ControlFlow::Break if it should finish work, for example
     /// if the operation ID has exceeded the configured operation count.
     /// In other cases, it returns ControlFlow::Continue.
-    async fn execute(&self, ctx: &OperationContext) -> Result<ControlFlow<()>>;
+    async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>>;
 }
