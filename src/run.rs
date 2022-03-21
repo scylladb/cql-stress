@@ -112,7 +112,9 @@ pub async fn run(config: Configuration) -> Result<()> {
     let mut worker_handles = (0..config.concurrency)
         .map(|_| {
             let ctx_clone = Arc::clone(&ctx);
-            tokio::spawn(async move { ctx_clone.run_worker().await })
+            let (fut, handle) = async move { ctx_clone.run_worker().await }.remote_handle();
+            tokio::task::spawn(fut);
+            handle
         })
         .collect::<FuturesUnordered<_>>();
 
@@ -120,24 +122,23 @@ pub async fn run(config: Configuration) -> Result<()> {
     // after the bench period has elapsed
     let ctx_clone = Arc::clone(&ctx);
     let _stopper_handle = config.max_duration.map(move |duration| {
-        tokio::task::spawn(async move {
+        let (fut, handle) = async move {
             tokio::time::sleep_until(start_time + duration).await;
             ctx_clone.ask_to_stop();
-        })
-        .remote_handle()
+        }
+        .remote_handle();
+        tokio::task::spawn(fut);
+        handle
     });
 
     let mut result: Result<()> = Ok(());
 
     // TODO: Collect all errors and report them
     while let Some(worker_result) = worker_handles.next().await {
-        match worker_result {
-            Ok(Ok(_)) => continue,
-            Ok(Err(err)) => result = Err(err),
-            Err(err) => result = Err(err.into()),
+        if let Err(err) = worker_result {
+            result = Err(err);
+            ctx.ask_to_stop();
         }
-
-        ctx.ask_to_stop();
     }
 
     result
