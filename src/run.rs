@@ -1,11 +1,13 @@
+use std::future::Future;
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
-use futures::future::FutureExt;
+use futures::future::{AbortHandle, Abortable, Fuse, FutureExt};
 use futures::stream::{FuturesUnordered, StreamExt};
+use tokio::sync::oneshot;
 use tokio::time::Instant;
 
 use crate::configuration::{Configuration, Operation, OperationContext};
@@ -104,7 +106,72 @@ impl WorkerContext {
     }
 }
 
-pub async fn run(config: Configuration) -> Result<()> {
+/// Allows controlling the state of the run.
+///
+/// Currently, the `RunController` is only able to either gracefully stop
+/// or abort the run.
+pub struct RunController {
+    stop_sender: Mutex<Option<oneshot::Sender<()>>>,
+    abort_handle: AbortHandle,
+}
+
+impl RunController {
+    /// Asks the run to stop gracefully.
+    ///
+    /// Each worker task will stop after completing their current operation.
+    ///
+    /// This method can be called multiple times on the same `RunController`.
+    pub fn ask_to_stop(&self) {
+        // Just drop the sender handle. This will notify the receiver.
+        self.stop_sender.lock().unwrap().take();
+    }
+
+    /// Aborts the run.
+    ///
+    /// Each worker task will stop immediately and some operations may be
+    /// only be executed partially.
+    ///
+    /// This method can be called multiple times on the same `RunController`.
+    pub fn abort(&self) {
+        self.abort_handle.abort();
+    }
+}
+
+/// Runs an operation multiple times in parallel, according to config.
+///
+/// Returns a pair (controller, future), where:
+/// - `controller` is an object that can be used to control the state of the run,
+/// - `future` is a future which can be waited on in order to obtain the result
+///   of the run. It does not need to be polled in order for the run to progress.
+pub fn run(config: Configuration) -> (RunController, impl Future<Output = Result<()>>) {
+    let (stop_sender, stop_receiver) = oneshot::channel();
+    let (result_sender, result_receiver) = oneshot::channel();
+
+    let fut = async move {
+        let res = do_run(config, stop_receiver).await;
+        let _ = result_sender.send(res);
+    };
+
+    let (abort_handle, abort_registration) = AbortHandle::new_pair();
+    let fut = Abortable::new(fut, abort_registration);
+    tokio::task::spawn(fut);
+
+    let controller = RunController {
+        stop_sender: Mutex::new(Some(stop_sender)),
+        abort_handle,
+    };
+
+    let result_fut = async move {
+        // If the run was aborted before it completed, the result channel
+        // will be closed without sending a result.
+        let result: Result<Result<()>, _> = result_receiver.await;
+        result.unwrap_or_else(|_| Err(anyhow::anyhow!("The run was aborted")))
+    };
+
+    (controller, result_fut)
+}
+
+async fn do_run(config: Configuration, stop_receiver: oneshot::Receiver<()>) -> Result<()> {
     let start_time = Instant::now();
     let ctx = Arc::new(WorkerContext::new(&config, start_time));
 
@@ -118,18 +185,22 @@ pub async fn run(config: Configuration) -> Result<()> {
         })
         .collect::<FuturesUnordered<_>>();
 
-    // If there is a time limit, spawn a task which will ask_to_stop
-    // after the bench period has elapsed
+    // If there is a time limit, stop the run after the defined duration
     let ctx_clone = Arc::clone(&ctx);
-    let _stopper_handle = config.max_duration.map(move |duration| {
+    let sleeper = match config.max_duration {
+        Some(duration) => tokio::time::sleep_until(start_time + duration).fuse(),
+        None => Fuse::terminated(),
+    };
+    let _stopper_handle = {
         let (fut, handle) = async move {
-            tokio::time::sleep_until(start_time + duration).await;
+            futures::pin_mut!(sleeper);
+            futures::future::select(sleeper, stop_receiver).await;
             ctx_clone.ask_to_stop();
         }
         .remote_handle();
         tokio::task::spawn(fut);
         handle
-    });
+    };
 
     let mut result: Result<()> = Ok(());
 
@@ -149,6 +220,7 @@ mod tests {
     use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
 
+    use tokio::sync::Semaphore;
     use tokio::time::Instant;
 
     use super::*;
@@ -204,7 +276,8 @@ mod tests {
 
         let cfg = make_test_cfg(Op(counter.clone()));
 
-        run(cfg).await.unwrap();
+        let (_, fut) = run(cfg);
+        fut.await.unwrap();
         assert_eq!(counter.load(Ordering::SeqCst), 499500);
     }
 
@@ -227,7 +300,8 @@ mod tests {
 
         let cfg = make_test_cfg(Op(counter.clone()));
 
-        run(cfg).await.unwrap_err();
+        let (_, fut) = run(cfg);
+        fut.await.unwrap_err();
         assert_eq!(counter.load(Ordering::SeqCst), 500);
     }
 
@@ -246,6 +320,46 @@ mod tests {
         let mut cfg = make_test_cfg(IdleOp);
         cfg.max_duration = Some(Duration::from_millis(100));
 
-        run(cfg).await.unwrap();
+        let (_, fut) = run(cfg);
+        fut.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_run_until_asked_to_stop() {
+        let cfg = make_test_cfg(IdleOp);
+
+        let (ctrl, fut) = run(cfg);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        ctrl.ask_to_stop();
+        fut.await.unwrap();
+    }
+
+    struct StuckOp(pub Arc<Semaphore>);
+
+    #[async_trait]
+    impl Operation for StuckOp {
+        async fn execute(&self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
+            // Mark that we begun the operation and became "stuck"
+            self.0.add_permits(1);
+            // The `pending()` future never resolves
+            futures::future::pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_until_aborted() {
+        let sem = Arc::new(Semaphore::new(0));
+
+        let cfg = make_test_cfg(StuckOp(Arc::clone(&sem)));
+        let concurrency = cfg.concurrency as u32;
+
+        let (ctrl, fut) = run(cfg);
+
+        // Wait until all operations become stuck
+        let _ = sem.acquire_many(concurrency).await.unwrap();
+
+        // Abort and check that the stuck operations weren't a problem
+        ctrl.abort();
+        fut.await.unwrap_err();
     }
 }
