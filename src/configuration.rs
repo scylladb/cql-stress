@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use tokio::time::Instant;
 
 /// Defines the configuration of a benchmark.
 pub struct Configuration {
@@ -41,6 +42,18 @@ pub struct OperationContext {
     /// if an operation with ID `X` > 0 was issued, then the tool has attempted
     /// or will attempt to execute operations of IDs less than `X`.
     pub operation_id: u64,
+
+    /// The time of the supposed operation start time.
+    ///
+    /// If rate limiting is enabled, then each operation has a scheduled
+    /// start time. If the run does not keep up and operations take longer
+    /// than expected, operations will be executed past their schedule.
+    /// In order to account for the coordinated omission problem, latency
+    /// should be measured as the duration between the scheduled start time
+    /// and the actual operation end time.
+    ///
+    /// If rate limiting is disabled, this will always be equal to `now`.
+    pub scheduled_start_time: Instant,
 }
 
 /// Creates operations which can later be used by workers during the stress.

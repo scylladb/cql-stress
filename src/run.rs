@@ -87,13 +87,17 @@ impl WorkerContext {
         let mut operation = self.operation_factory.create();
 
         while let Some(op_id) = self.issue_operation_id() {
-            if let Some(rate_limiter) = &self.rate_limiter {
+            let scheduled_start_time = if let Some(rate_limiter) = &self.rate_limiter {
                 let start_time = rate_limiter.issue_next_start_time();
                 tokio::time::sleep_until(start_time).await;
-            }
+                start_time
+            } else {
+                Instant::now()
+            };
 
             let ctx = OperationContext {
                 operation_id: op_id,
+                scheduled_start_time,
             };
 
             // TODO: Allow specifying a strategy for retrying in case of error
