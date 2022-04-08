@@ -231,23 +231,19 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 500);
     }
 
+    struct IdleOp;
+
+    #[async_trait]
+    impl Operation for IdleOp {
+        async fn execute(&self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            Ok(ControlFlow::Continue(()))
+        }
+    }
+
     #[tokio::test]
     async fn test_run_to_max_duration() {
-        // We can't reliably check the number of `execute` invocations
-        // because they are racing with the max duration period.
-        // We just check that `run` stops at all.
-
-        struct Op;
-
-        #[async_trait]
-        impl Operation for Op {
-            async fn execute(&self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-                Ok(ControlFlow::Continue(()))
-            }
-        }
-
-        let mut cfg = make_test_cfg(Op);
+        let mut cfg = make_test_cfg(IdleOp);
         cfg.max_duration = Some(Duration::from_millis(100));
 
         run(cfg).await.unwrap();
