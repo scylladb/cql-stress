@@ -1,3 +1,4 @@
+mod args;
 mod distribution;
 mod gocompat;
 pub(crate) mod stats;
