@@ -7,6 +7,7 @@ pub(crate) mod test_util;
 pub mod configuration;
 pub mod distribution;
 pub mod run;
+pub mod sharded_stats;
 
 #[cfg(test)]
 mod tests {

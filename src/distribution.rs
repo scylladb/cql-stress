@@ -19,6 +19,18 @@ pub struct Description<'a> {
     pub inverted: bool,
 }
 
+impl<'a> Description<'a> {
+    pub fn check_argument_count(&self, expected: usize) -> Result<()> {
+        anyhow::ensure!(
+            self.args.len() == expected,
+            "Expected {} arguments, but got {}",
+            expected,
+            self.args.len(),
+        );
+        Ok(())
+    }
+}
+
 // Parses the description of a distribution.
 //
 // Both cassandra-stress and scylla-bench share a common format of distribution

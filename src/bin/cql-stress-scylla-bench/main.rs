@@ -1,3 +1,186 @@
-fn main() {
-    todo!("The scylla-bench frontend is not implemented yet");
+#[macro_use]
+extern crate async_trait;
+
+mod args;
+mod distribution;
+mod gocompat;
+mod operation;
+pub(crate) mod stats;
+mod workload;
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{Context, Result};
+use scylla::{Session, SessionBuilder};
+
+use cql_stress::configuration::{Configuration, OperationFactory};
+use cql_stress::run::RunController;
+use cql_stress::sharded_stats::{Stats as _, StatsFactory as _};
+
+use crate::args::{Mode, ScyllaBenchArgs, WorkloadType};
+use crate::operation::read::ReadOperationFactory;
+use crate::operation::write::WriteOperationFactory;
+use crate::stats::{ShardedStats, StatsFactory, StatsPrinter};
+use crate::workload::{
+    SequentialConfig, SequentialFactory, UniformConfig, UniformFactory, WorkloadFactory,
+};
+
+// TODO: Return exit code
+#[tokio::main]
+async fn main() -> Result<()> {
+    let sb_config = match args::parse_scylla_bench_args(std::env::args()) {
+        Some(sb_config) => sb_config,
+        None => return Ok(()), // TODO: Return some kind of error
+    };
+    let sb_config = Arc::new(sb_config);
+
+    let stats_factory = Arc::new(StatsFactory);
+    let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
+
+    let run_config = prepare(sb_config, Arc::clone(&sharded_stats))
+        .await
+        .context("Failed to prepare the benchmark")?;
+
+    let mut combined_stats = stats_factory.create();
+
+    let (ctrl, run_finished) = cql_stress::run::run(run_config);
+    let ctrl = Arc::new(ctrl);
+
+    // Don't care about the leaking task, it won't prevent the runtime
+    // from being stopped.
+    tokio::task::spawn(stop_on_signal(Arc::clone(&ctrl)));
+
+    let printer = StatsPrinter::new(true);
+    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    futures::pin_mut!(run_finished);
+
+    // Skip the first tick, which is immediate
+    ticker.tick().await;
+
+    printer.print_header(&mut std::io::stdout())?;
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                let partial_stats = sharded_stats.get_combined_and_clear();
+                printer.print_partial(&partial_stats, &mut std::io::stdout())?;
+                combined_stats.combine(&partial_stats);
+            }
+            result = &mut run_finished => {
+                if result.is_ok() {
+                    // Combine stats for the last time
+                    let partial_stats = sharded_stats.get_combined_and_clear();
+                    combined_stats.combine(&partial_stats);
+                    printer.print_final(&combined_stats, &mut std::io::stdout())?;
+                }
+                return result.context("An error occurred during the benchmark");
+            }
+        }
+    }
+}
+
+async fn stop_on_signal(runner: Arc<RunController>) {
+    tokio::signal::ctrl_c().await.unwrap();
+    runner.ask_to_stop();
+
+    tokio::signal::ctrl_c().await.unwrap();
+    runner.abort();
+}
+
+async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result<Configuration> {
+    let session = SessionBuilder::new()
+        .known_nodes(&args.nodes)
+        .build()
+        .await?;
+    let session = Arc::new(session);
+
+    create_schema(&session, &args).await?;
+    let workload_factory = create_workload_factory(&args)?;
+    let operation_factory =
+        create_operation_factory(session, stats, Arc::clone(&args), workload_factory).await?;
+
+    let max_duration = (args.test_duration > Duration::ZERO).then(|| args.test_duration);
+    let rate_limit_per_second = (args.maximum_rate > 0).then(|| args.maximum_rate as f64);
+
+    Ok(Configuration {
+        max_duration,
+        concurrency: args.concurrency,
+        rate_limit_per_second,
+        operation_factory,
+    })
+}
+
+async fn create_schema(session: &Session, args: &ScyllaBenchArgs) -> Result<()> {
+    let create_keyspace_query_str = format!(
+        "CREATE KEYSPACE IF NOT EXISTS {} WITH REPLICATION = \
+        {{'class': 'SimpleStrategy', 'replication_factor': {}}}",
+        args.keyspace_name, args.replication_factor,
+    );
+    session.query(create_keyspace_query_str, ()).await?;
+    session.use_keyspace(&args.keyspace_name, true).await?;
+    session.await_schema_agreement().await?;
+
+    let create_regular_table_query_str = format!(
+        "CREATE TABLE IF NOT EXISTS {} \
+        (pk bigint, ck bigint, v blob, PRIMARY KEY (pk, ck)) \
+        WITH compression = {{ }}",
+        args.table_name,
+    );
+    session.query(create_regular_table_query_str, ()).await?;
+    session.await_schema_agreement().await?;
+
+    Ok(())
+}
+
+async fn create_operation_factory(
+    session: Arc<Session>,
+    stats: Arc<ShardedStats>,
+    args: Arc<ScyllaBenchArgs>,
+    workload_factory: Box<dyn WorkloadFactory>,
+) -> Result<Arc<dyn OperationFactory>> {
+    match &args.mode {
+        Mode::Write => {
+            let factory =
+                WriteOperationFactory::new(session, stats, workload_factory, args).await?;
+            Ok(Arc::new(factory))
+        }
+        Mode::Read => {
+            let factory = ReadOperationFactory::new(session, stats, workload_factory, args).await?;
+            Ok(Arc::new(factory))
+        }
+        mode => {
+            // TODO: Implement more later
+            Err(anyhow::anyhow!("Mode not implemented: {:?}", mode))
+        }
+    }
+}
+
+fn create_workload_factory(args: &ScyllaBenchArgs) -> Result<Box<dyn WorkloadFactory>> {
+    match (&args.workload, &args.mode) {
+        (WorkloadType::Sequential, _) => {
+            let seq_config = SequentialConfig {
+                iterations: args.iterations,
+                partition_offset: args.partition_offset,
+                pks: args.partition_count,
+                cks_per_pk: args.clustering_row_count,
+            };
+            Ok(Box::new(SequentialFactory::new(seq_config)?))
+        }
+        (WorkloadType::Uniform, _) => {
+            let uni_config = UniformConfig {
+                pk_range: 0..args.partition_count,
+                ck_range: 0..args.clustering_row_count,
+            };
+            Ok(Box::new(UniformFactory::new(uni_config)?))
+        }
+        (workload, mode) => {
+            // TODO: Implement more later
+            Err(anyhow::anyhow!(
+                "Unsupported combination of workload and mode: {:?}, {:?}",
+                workload,
+                mode,
+            ))
+        }
+    }
 }

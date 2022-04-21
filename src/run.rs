@@ -10,7 +10,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use crate::configuration::{Configuration, Operation, OperationContext};
+use crate::configuration::{Configuration, OperationContext, OperationFactory};
 
 // Rate limits operations by issuing timestamps indicating when the next
 // operation should happen. Uses atomics, can be shared between threads.
@@ -50,7 +50,7 @@ const INVALID_OP_ID_THRESHOLD: u64 = 1u64 << 63u64;
 // Represents shareable state and configuration of a worker.
 struct WorkerContext {
     operation_counter: AtomicU64,
-    operation: Arc<dyn Operation>,
+    operation_factory: Arc<dyn OperationFactory>,
 
     rate_limiter: Option<RateLimiter>,
 }
@@ -59,7 +59,7 @@ impl WorkerContext {
     pub fn new(config: &Configuration, now: Instant) -> Self {
         Self {
             operation_counter: AtomicU64::new(0),
-            operation: Arc::clone(&config.operation),
+            operation_factory: Arc::clone(&config.operation_factory),
 
             rate_limiter: config
                 .rate_limit_per_second
@@ -84,18 +84,24 @@ impl WorkerContext {
     // or an execution of the `operation` will either return `Err`
     // or `ControlFlow::Break`.
     pub async fn run_worker(&self) -> Result<()> {
+        let mut operation = self.operation_factory.create();
+
         while let Some(op_id) = self.issue_operation_id() {
-            if let Some(rate_limiter) = &self.rate_limiter {
+            let scheduled_start_time = if let Some(rate_limiter) = &self.rate_limiter {
                 let start_time = rate_limiter.issue_next_start_time();
                 tokio::time::sleep_until(start_time).await;
-            }
+                start_time
+            } else {
+                Instant::now()
+            };
 
             let ctx = OperationContext {
                 operation_id: op_id,
+                scheduled_start_time,
             };
 
             // TODO: Allow specifying a strategy for retrying in case of error
-            match self.operation.execute(&ctx).await {
+            match operation.execute(&ctx).await {
                 Ok(ControlFlow::Continue(_)) => continue,
                 Ok(ControlFlow::Break(_)) => break,
                 Err(err) => return Err(err),
@@ -226,6 +232,18 @@ mod tests {
     use super::*;
     use crate::configuration::{Configuration, Operation, OperationContext};
 
+    struct FnOperationFactory<F>(pub F);
+
+    impl<T, F> OperationFactory for FnOperationFactory<F>
+    where
+        T: Operation + 'static,
+        F: Fn() -> T + Send + Sync,
+    {
+        fn create(&self) -> Box<dyn Operation> {
+            Box::new((self.0)())
+        }
+    }
+
     #[test]
     fn test_rate_limiter() {
         let count_in_period = |ops: f64, period: Duration| -> usize {
@@ -248,12 +266,16 @@ mod tests {
         assert_eq!(count_in_period(2.0, 10 * sec), 20);
     }
 
-    fn make_test_cfg(op: impl Operation + 'static) -> Configuration {
+    fn make_test_cfg<T, F>(f: F) -> Configuration
+    where
+        T: Operation + 'static,
+        F: Fn() -> T + Send + Sync + 'static,
+    {
         Configuration {
             max_duration: None,
             concurrency: 10,
             rate_limit_per_second: None,
-            operation: Arc::new(op),
+            operation_factory: Arc::new(FnOperationFactory(f)),
         }
     }
 
@@ -265,7 +287,7 @@ mod tests {
 
         #[async_trait]
         impl Operation for Op {
-            async fn execute(&self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
+            async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
                 if ctx.operation_id >= 1000 {
                     return Ok(ControlFlow::Break(()));
                 }
@@ -274,7 +296,10 @@ mod tests {
             }
         }
 
-        let cfg = make_test_cfg(Op(counter.clone()));
+        let cfg = {
+            let counter = counter.clone();
+            make_test_cfg(move || Op(counter.clone()))
+        };
 
         let (_, fut) = run(cfg);
         fut.await.unwrap();
@@ -289,7 +314,7 @@ mod tests {
 
         #[async_trait]
         impl Operation for Op {
-            async fn execute(&self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
+            async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
                 if ctx.operation_id >= 500 {
                     return Err(anyhow::anyhow!("failure"));
                 }
@@ -298,7 +323,10 @@ mod tests {
             }
         }
 
-        let cfg = make_test_cfg(Op(counter.clone()));
+        let cfg = {
+            let counter = counter.clone();
+            make_test_cfg(move || Op(counter.clone()))
+        };
 
         let (_, fut) = run(cfg);
         fut.await.unwrap_err();
@@ -309,7 +337,7 @@ mod tests {
 
     #[async_trait]
     impl Operation for IdleOp {
-        async fn execute(&self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
+        async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             tokio::time::sleep(Duration::from_millis(10)).await;
             Ok(ControlFlow::Continue(()))
         }
@@ -317,7 +345,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_to_max_duration() {
-        let mut cfg = make_test_cfg(IdleOp);
+        let mut cfg = make_test_cfg(|| IdleOp);
         cfg.max_duration = Some(Duration::from_millis(100));
 
         let (_, fut) = run(cfg);
@@ -326,7 +354,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_until_asked_to_stop() {
-        let cfg = make_test_cfg(IdleOp);
+        let cfg = make_test_cfg(|| IdleOp);
 
         let (ctrl, fut) = run(cfg);
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -338,7 +366,7 @@ mod tests {
 
     #[async_trait]
     impl Operation for StuckOp {
-        async fn execute(&self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
+        async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             // Mark that we begun the operation and became "stuck"
             self.0.add_permits(1);
             // The `pending()` future never resolves
@@ -349,8 +377,9 @@ mod tests {
     #[tokio::test]
     async fn test_run_until_aborted() {
         let sem = Arc::new(Semaphore::new(0));
+        let sem_clone = Arc::clone(&sem);
 
-        let cfg = make_test_cfg(StuckOp(Arc::clone(&sem)));
+        let cfg = make_test_cfg(move || StuckOp(Arc::clone(&sem_clone)));
         let concurrency = cfg.concurrency as u32;
 
         let (ctrl, fut) = run(cfg);
