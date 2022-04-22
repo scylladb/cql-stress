@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use scylla::load_balancing::{self, LoadBalancingPolicy};
 use scylla::statement::Consistency;
 
 use crate::distribution::{parse_distribution, Distribution, Fixed};
@@ -29,8 +30,7 @@ pub(crate) struct ScyllaBenchArgs {
     // writeRate    int64
     // distribution string
     // var startTimestamp int64
-
-    // hostSelectionPolicy string
+    pub host_selection_policy: Arc<dyn LoadBalancingPolicy>,
     pub tls_encryption: bool,
     pub keyspace_name: String,
     pub table_name: String,
@@ -122,6 +122,12 @@ where
         "start of the partition range (only for sequential workload)",
     );
 
+    let host_selection_policy = flag.string_var(
+        "host-selection-policy",
+        "token-aware",
+        "set the driver host selection policy \
+        (round-robin,token-aware,dc-aware:name-of-local-dc),default 'token-aware'",
+    );
     let tls_encryption = flag.bool_var(
         "tls",
         false,
@@ -207,6 +213,7 @@ where
         let workload = parse_workload(&workload.get())?;
         let mode = parse_mode(&mode.get())?;
         let consistency_level = parse_consistency_level(&consistency_level.get())?;
+        let host_selection_policy = parse_host_selection_policy(&host_selection_policy.get())?;
 
         Ok(ScyllaBenchArgs {
             workload,
@@ -221,6 +228,7 @@ where
             client_compression: client_compression.get(),
             page_size: page_size.get(),
             partition_offset: partition_offset.get(),
+            host_selection_policy,
             tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),
             table_name: table_name.get(),
@@ -322,4 +330,23 @@ fn parse_consistency_level(s: &str) -> Result<Consistency> {
         _ => return Err(anyhow::anyhow!("Unknown consistency level: {}", s)),
     };
     Ok(level)
+}
+
+fn parse_host_selection_policy(s: &str) -> Result<Arc<dyn LoadBalancingPolicy>> {
+    // host-pool is unsupported
+    let policy: Arc<dyn LoadBalancingPolicy> = match s {
+        "round-robin" => Arc::new(load_balancing::RoundRobinPolicy::new()),
+        "token-aware" => Arc::new(load_balancing::TokenAwarePolicy::new(Box::new(
+            load_balancing::RoundRobinPolicy::new(),
+        ))),
+        // dc-aware is unimplemented in the original s-b, so here is
+        // my interpretation of it
+        _ => match s.strip_prefix("dc-aware:") {
+            Some(local_dc) => Arc::new(load_balancing::DcAwareRoundRobinPolicy::new(
+                local_dc.to_string(),
+            )),
+            None => return Err(anyhow::anyhow!("Unknown host selection policy: {}", s)),
+        },
+    };
+    Ok(policy)
 }

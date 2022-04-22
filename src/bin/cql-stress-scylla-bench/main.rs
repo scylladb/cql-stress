@@ -105,6 +105,8 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
         builder = builder.compression(Some(Compression::Snappy));
     }
 
+    builder = builder.load_balancing(Arc::clone(&args.host_selection_policy));
+
     let session = builder.build().await?;
     let session = Arc::new(session);
 
