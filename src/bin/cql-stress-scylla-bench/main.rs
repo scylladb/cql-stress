@@ -8,6 +8,9 @@ mod operation;
 pub(crate) mod stats;
 mod workload;
 
+#[cfg(test)]
+mod args_test;
+
 use std::sync::Arc;
 use std::time::Duration;
 
