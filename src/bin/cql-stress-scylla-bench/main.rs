@@ -30,7 +30,7 @@ use crate::workload::{
 // TODO: Return exit code
 #[tokio::main]
 async fn main() -> Result<()> {
-    let sb_config = match args::parse_scylla_bench_args(std::env::args()) {
+    let sb_config = match args::parse_scylla_bench_args(std::env::args(), true) {
         Some(sb_config) => sb_config,
         None => return Ok(()), // TODO: Return some kind of error
     };

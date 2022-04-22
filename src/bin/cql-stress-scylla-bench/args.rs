@@ -67,7 +67,10 @@ pub(crate) struct ScyllaBenchArgs {
 }
 
 // Parses and validates scylla bench params.
-pub(crate) fn parse_scylla_bench_args<I, S>(mut args: I) -> Option<ScyllaBenchArgs>
+pub(crate) fn parse_scylla_bench_args<I, S>(
+    mut args: I,
+    print_usage_on_fail: bool,
+) -> Option<ScyllaBenchArgs>
 where
     I: Iterator<Item = S>,
     S: AsRef<str>,
@@ -265,7 +268,9 @@ where
         Err(err) => {
             // TODO: Should we print to stdout or stderr?
             println!("Failed to parse flags: {}", err);
-            desc.print_help(program_name.as_ref());
+            if print_usage_on_fail {
+                desc.print_help(program_name.as_ref());
+            }
             None
         }
     }
