@@ -22,7 +22,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub host_verification: bool,
     pub client_compression: bool,
     // connectionCount   int // the driver will automatically choose this
-    // pageSize          int
+    pub page_size: i64,
     pub partition_offset: i64,
 
     // (Timeseries-related parameters)
@@ -115,7 +115,7 @@ where
         4,
         "number of connections (currently ignored)",
     );
-
+    let page_size = flag.i64_var("page-size", 1000, "page size");
     let partition_offset = flag.i64_var(
         "partition-offset",
         0,
@@ -214,6 +214,7 @@ where
             server_name: server_name.get(),
             host_verification: host_verification.get(),
             client_compression: client_compression.get(),
+            page_size: page_size.get(),
             partition_offset: partition_offset.get(),
             tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),

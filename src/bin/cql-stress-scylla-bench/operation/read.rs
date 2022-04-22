@@ -65,7 +65,7 @@ impl ReadOperationFactory {
         );
         let mut statement = session.prepare(statement_str).await?;
         statement.set_is_idempotent(true);
-        // TODO: Set page size
+        statement.set_page_size(args.page_size.try_into()?);
         statement.set_consistency(args.consistency_level);
         Ok(Self {
             session,
