@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
-use scylla::{Session, SessionBuilder};
+use scylla::{transport::Compression, Session, SessionBuilder};
 
 use cql_stress::configuration::{Configuration, OperationFactory};
 use cql_stress::run::RunController;
@@ -99,6 +99,10 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
     if args.tls_encryption {
         let ssl_ctx = generate_ssl_context(&args)?;
         builder = builder.ssl_context(Some(ssl_ctx));
+    }
+
+    if args.client_compression {
+        builder = builder.compression(Some(Compression::Snappy));
     }
 
     let session = builder.build().await?;

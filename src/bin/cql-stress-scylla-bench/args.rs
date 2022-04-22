@@ -20,7 +20,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub client_key_file: String,
     pub server_name: String,
     pub host_verification: bool,
-    // clientCompression bool
+    pub client_compression: bool,
     // connectionCount   int // the driver will automatically choose this
     // pageSize          int
     pub partition_offset: i64,
@@ -89,6 +89,11 @@ where
     );
     let host_verification =
         flag.bool_var("tls-host-verification", false, "verify server certificate");
+    let client_compression = flag.bool_var(
+        "client-compression",
+        true,
+        "use compression for client-coordinator communication",
+    );
     let ca_cert_file = flag.string_var(
         "tls-ca-cert-file",
         "",
@@ -208,6 +213,7 @@ where
             client_key_file: client_key_file.get(),
             server_name: server_name.get(),
             host_verification: host_verification.get(),
+            client_compression: client_compression.get(),
             partition_offset: partition_offset.get(),
             tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),
