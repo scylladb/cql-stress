@@ -53,7 +53,7 @@ pub(crate) struct ScyllaBenchArgs {
     // selectOrderBy       string
     // selectOrderByParsed []string
     pub no_lower_bound: bool,
-    // bypassCache         bool
+    pub bypass_cache: bool,
 
     // rangeCount int
     pub timeout: Duration,
@@ -178,6 +178,11 @@ where
         false,
         "do not provide lower bound in read requests",
     );
+    let bypass_cache = flag.bool_var(
+        "bypass-cache",
+        false,
+        "Execute queries with the \"BYPASS CACHE\" CQL clause",
+    );
 
     let timeout = flag.duration_var("timeout", Duration::from_secs(5), "request timeout");
     let iterations = flag.u64_var(
@@ -232,6 +237,7 @@ where
             provide_upper_bound: provide_upper_bound.get(),
             in_restriction: in_restriction.get(),
             no_lower_bound: no_lower_bound.get(),
+            bypass_cache: bypass_cache.get(),
             timeout: timeout.get(),
             iterations: iterations.get(),
             validate_data: validate_data.get(),

@@ -59,10 +59,13 @@ impl ReadOperationFactory {
         };
         let ck_restriction = read_restriction.as_query_string();
 
-        let statement_str = format!(
+        let mut statement_str = format!(
             "SELECT ck, v FROM {} WHERE pk = ? {}",
             args.table_name, ck_restriction,
         );
+        if args.bypass_cache {
+            statement_str += " BYPASS CACHE";
+        }
         let mut statement = session.prepare(statement_str).await?;
         statement.set_is_idempotent(true);
         statement.set_page_size(args.page_size.try_into()?);
