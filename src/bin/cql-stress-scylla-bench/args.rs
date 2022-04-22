@@ -15,11 +15,11 @@ pub(crate) struct ScyllaBenchArgs {
     pub consistency_level: Consistency,
     pub replication_factor: i64,
     pub nodes: Vec<String>,
-    // caCertFile        string
-    // clientCertFile    string
-    // clientKeyFile     string
-    // serverName        string
-    // hostVerification  bool
+    pub ca_cert_file: String,
+    pub client_cert_file: String,
+    pub client_key_file: String,
+    pub server_name: String,
+    pub host_verification: bool,
     // clientCompression bool
     // connectionCount   int // the driver will automatically choose this
     // pageSize          int
@@ -31,7 +31,7 @@ pub(crate) struct ScyllaBenchArgs {
     // var startTimestamp int64
 
     // hostSelectionPolicy string
-    // tlsEncryption       bool
+    pub tls_encryption: bool,
     pub keyspace_name: String,
     pub table_name: String,
     pub username: String,
@@ -82,6 +82,28 @@ where
     let replication_factor = flag.i64_var("replication-factor", 1, "replication factor");
 
     let nodes = flag.string_var("nodes", "127.0.0.1:9042", "cluster contact nodes");
+    let server_name = flag.string_var(
+        "tls-server-name",
+        "",
+        "TLS server hostname (currently unimplemented)",
+    );
+    let host_verification =
+        flag.bool_var("tls-host-verification", false, "verify server certificate");
+    let ca_cert_file = flag.string_var(
+        "tls-ca-cert-file",
+        "",
+        "path to CA certificate file, needed to enable encryption",
+    );
+    let client_cert_file = flag.string_var(
+        "tls-client-cert-file",
+        "",
+        "path to client certificate file, needed to enable client certificate authentication",
+    );
+    let client_key_file = flag.string_var(
+        "tls-client-key-file",
+        "",
+        "path to client key file, needed to enable client certificate authentication",
+    );
 
     let _connection_count = flag.i64_var(
         "connection-count",
@@ -95,6 +117,11 @@ where
         "start of the partition range (only for sequential workload)",
     );
 
+    let tls_encryption = flag.bool_var(
+        "tls",
+        false,
+        "use TLS encryption for clien-coordinator communication",
+    );
     let keyspace_name = flag.string_var("keyspace", "scylla_bench", "keyspace to use");
     let table_name = flag.string_var("table", "test", "table to use");
     let username = flag.string_var("username", "", "cql username for authentication");
@@ -176,7 +203,13 @@ where
             consistency_level,
             replication_factor: replication_factor.get(),
             nodes,
+            ca_cert_file: ca_cert_file.get(),
+            client_cert_file: client_cert_file.get(),
+            client_key_file: client_key_file.get(),
+            server_name: server_name.get(),
+            host_verification: host_verification.get(),
             partition_offset: partition_offset.get(),
+            tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),
             table_name: table_name.get(),
             username: username.get(),
