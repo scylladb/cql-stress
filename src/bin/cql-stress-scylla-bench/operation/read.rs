@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use futures::StreamExt;
@@ -16,6 +17,7 @@ pub(crate) struct ReadOperationFactory {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
     statement: PreparedStatement,
+    timeout: Duration,
     workload_factory: Box<dyn WorkloadFactory>,
     read_restriction: ReadRestrictionKind,
     args: Arc<ScyllaBenchArgs>,
@@ -25,6 +27,7 @@ struct ReadOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
     statement: PreparedStatement,
+    timeout: Duration,
     workload: Box<dyn Workload>,
     read_restriction: ReadRestrictionKind,
     validate_data: bool,
@@ -68,6 +71,7 @@ impl ReadOperationFactory {
             session,
             stats,
             statement,
+            timeout: args.timeout,
             workload_factory,
             read_restriction,
             args,
@@ -81,6 +85,7 @@ impl OperationFactory for ReadOperationFactory {
             session: Arc::clone(&self.session),
             stats: Arc::clone(&self.stats),
             statement: self.statement.clone(),
+            timeout: self.timeout,
             workload: self.workload_factory.create(),
             read_restriction: self.read_restriction,
             validate_data: self.args.validate_data,
@@ -111,9 +116,15 @@ impl Operation for ReadOperation {
         let mut rows_read = 0;
         let mut errors = 0;
 
-        while let Some(r) = iter.next().await {
+        // TODO: use driver-side timeouts after they get implemented
+        loop {
+            let r = tokio::time::timeout(self.timeout, iter.next()).await;
             match r {
-                Ok((ck, v)) => {
+                Ok(None) => {
+                    // End of the iterator
+                    break;
+                }
+                Ok(Some(Ok((ck, v)))) => {
                     rows_read += 1;
                     if self.validate_data {
                         if let Err(err) = super::validate_row_data(pk, ck, &v) {
@@ -122,7 +133,12 @@ impl Operation for ReadOperation {
                         }
                     }
                 }
+                Ok(Some(Err(_))) => {
+                    // Query error
+                    errors += 1;
+                }
                 Err(_) => {
+                    // Timeout
                     errors += 1;
                 }
             }

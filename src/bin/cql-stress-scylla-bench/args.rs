@@ -56,8 +56,7 @@ pub(crate) struct ScyllaBenchArgs {
     // bypassCache         bool
 
     // rangeCount int
-
-    // timeout    time.Duration
+    pub timeout: Duration,
     pub iterations: u64,
     // // Any error response that comes with delay greater than errorToTimeoutCutoffTime
     // // to be considered as timeout error and recorded to histogram as such
@@ -147,6 +146,7 @@ where
         "do not provide lower bound in read requests",
     );
 
+    let timeout = flag.duration_var("timeout", Duration::from_secs(5), "request timeout");
     let iterations = flag.u64_var(
         "iterations",
         1,
@@ -189,6 +189,7 @@ where
             provide_upper_bound: provide_upper_bound.get(),
             in_restriction: in_restriction.get(),
             no_lower_bound: no_lower_bound.get(),
+            timeout: timeout.get(),
             iterations: iterations.get(),
             validate_data: validate_data.get(),
         })
