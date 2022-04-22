@@ -89,10 +89,13 @@ async fn stop_on_signal(runner: Arc<RunController>) {
 }
 
 async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result<Configuration> {
-    let session = SessionBuilder::new()
-        .known_nodes(&args.nodes)
-        .build()
-        .await?;
+    let mut builder = SessionBuilder::new().known_nodes(&args.nodes);
+
+    if !args.username.is_empty() && !args.password.is_empty() {
+        builder = builder.user(&args.username, &args.password);
+    }
+
+    let session = builder.build().await?;
     let session = Arc::new(session);
 
     create_schema(&session, &args).await?;

@@ -34,8 +34,8 @@ pub(crate) struct ScyllaBenchArgs {
     // tlsEncryption       bool
     pub keyspace_name: String,
     pub table_name: String,
-    // username         string
-    // password         string
+    pub username: String,
+    pub password: String,
     pub mode: Mode,
     // latencyType    string
     // maxErrorsAtRow int
@@ -97,7 +97,8 @@ where
 
     let keyspace_name = flag.string_var("keyspace", "scylla_bench", "keyspace to use");
     let table_name = flag.string_var("table", "test", "table to use");
-
+    let username = flag.string_var("username", "", "cql username for authentication");
+    let password = flag.string_var("password", "", "cql password for authentication");
     let mode = flag.string_var(
         "mode",
         "",
@@ -178,6 +179,8 @@ where
             partition_offset: partition_offset.get(),
             keyspace_name: keyspace_name.get(),
             table_name: table_name.get(),
+            username: username.get(),
+            password: password.get(),
             mode,
             concurrency: concurrency.get(),
             maximum_rate: maximum_rate.get(),
