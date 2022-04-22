@@ -8,6 +8,7 @@ use scylla::statement::Consistency;
 
 use crate::distribution::{parse_distribution, Distribution, Fixed};
 use crate::gocompat::flags::{GoValue, ParserBuilder};
+use crate::gocompat::strconv::format_duration;
 
 // Explicitly marked as `pub(crate)`, because with `pub` rustc doesn't
 // complain about fields which are never read
@@ -276,6 +277,54 @@ where
     }
 }
 
+impl ScyllaBenchArgs {
+    pub fn print_configuration(&self) {
+        println!("Configuration");
+        println!("Mode:\t\t\t {}", show_mode(&self.mode));
+        println!("Workload:\t\t {}", show_workload(&self.workload));
+        println!("Timeout:\t\t {}", format_duration(self.timeout));
+        println!(
+            "Consistency level:\t {}",
+            show_consistency_level(&self.consistency_level)
+        );
+        println!("Partition count:\t {}", self.partition_count);
+        if self.workload == WorkloadType::Sequential && self.partition_offset != 0 {
+            println!("Partition offset:\t {}", self.partition_offset);
+        }
+        println!("Clustering rows:\t {}", self.clustering_row_count);
+        println!(
+            "Clustering row size:\t {}",
+            self.clustering_row_size_dist.describe()
+        );
+        println!("Rows per request:\t {}", self.rows_per_request);
+        if self.mode == Mode::Read {
+            println!("Provide upper bound:\t {}", self.provide_upper_bound);
+            println!("IN queries:\t\t {}", self.in_restriction);
+            println!(
+                "Order by:\t\t {}",
+                show_order_by_chain(&self.select_order_by)
+            );
+            println!("No lower bound:\t\t {}", self.no_lower_bound);
+        }
+        println!("Page size:\t\t {}", self.page_size);
+        println!("Concurrency:\t\t {}", self.concurrency);
+        // println!("Connections:\t\t {}", self.connection_count);
+        if self.maximum_rate > 0 {
+            println!("Maximum rate:\t\t {}ops/s", self.maximum_rate);
+        } else {
+            println!("Maximum rate:\t\t unlimited");
+        }
+        println!("Client compression:\t {}", self.client_compression);
+        // TODO: Enable when the timeseries workload is supported
+        // if workload == "timeseries" {
+        //     fmt.Println("Start timestamp:\t", startTime.UnixNano())
+        //     fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
+        // }
+
+        // println!("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes");
+    }
+}
+
 struct ScyllaBenchDistribution(Arc<dyn Distribution>);
 
 impl GoValue for ScyllaBenchDistribution {
@@ -323,6 +372,25 @@ fn parse_order_by(s: &str) -> Result<OrderBy> {
     }
 }
 
+fn show_order_by_chain(chain: &[OrderBy]) -> String {
+    let mut s = String::new();
+    for (idx, part) in chain.iter().enumerate() {
+        if idx > 0 {
+            s.push(',');
+        }
+        s.push_str(show_order_by(part));
+    }
+    s
+}
+
+fn show_order_by(order: &OrderBy) -> &'static str {
+    match order {
+        OrderBy::None => "none",
+        OrderBy::Asc => "asc",
+        OrderBy::Desc => "desc",
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     Write,
@@ -341,6 +409,16 @@ fn parse_mode(s: &str) -> Result<Mode> {
         "scan" => Ok(Mode::Scan),
         "" => Err(anyhow::anyhow!("mode needs to be specified")),
         _ => Err(anyhow::anyhow!("unknown mode: {}", s)),
+    }
+}
+
+fn show_mode(m: &Mode) -> &'static str {
+    match m {
+        Mode::Write => "write",
+        Mode::Read => "read",
+        Mode::CounterUpdate => "counter_update",
+        Mode::CounterRead => "counter_read",
+        Mode::Scan => "scan",
     }
 }
 
@@ -363,6 +441,15 @@ fn parse_workload(s: &str) -> Result<WorkloadType> {
     }
 }
 
+fn show_workload(w: &WorkloadType) -> &'static str {
+    match w {
+        WorkloadType::Sequential => "sequential",
+        WorkloadType::Uniform => "uniform",
+        WorkloadType::Timeseries => "timeseries",
+        WorkloadType::Scan => "scan",
+    }
+}
+
 fn parse_consistency_level(s: &str) -> Result<Consistency> {
     let level = match s {
         "any" => Consistency::Any,
@@ -377,6 +464,20 @@ fn parse_consistency_level(s: &str) -> Result<Consistency> {
         _ => return Err(anyhow::anyhow!("Unknown consistency level: {}", s)),
     };
     Ok(level)
+}
+
+fn show_consistency_level(cl: &Consistency) -> &'static str {
+    match cl {
+        Consistency::Any => "any",
+        Consistency::One => "one",
+        Consistency::Two => "two",
+        Consistency::Three => "three",
+        Consistency::Quorum => "quorum",
+        Consistency::All => "all",
+        Consistency::LocalQuorum => "local_quorum",
+        Consistency::EachQuorum => "each_quorum",
+        Consistency::LocalOne => "local_one",
+    }
 }
 
 fn parse_host_selection_policy(s: &str) -> Result<Arc<dyn LoadBalancingPolicy>> {

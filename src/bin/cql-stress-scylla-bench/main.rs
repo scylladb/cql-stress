@@ -39,6 +39,8 @@ async fn main() -> Result<()> {
     };
     let sb_config = Arc::new(sb_config);
 
+    sb_config.print_configuration();
+
     let stats_factory = Arc::new(StatsFactory);
     let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
 
