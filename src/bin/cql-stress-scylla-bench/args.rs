@@ -21,7 +21,7 @@ pub(crate) struct ScyllaBenchArgs {
     // serverName        string
     // hostVerification  bool
     // clientCompression bool
-    // connectionCount   int
+    // connectionCount   int // the driver will automatically choose this
     // pageSize          int
     pub partition_offset: i64,
 
@@ -83,6 +83,12 @@ where
     let replication_factor = flag.i64_var("replication-factor", 1, "replication factor");
 
     let nodes = flag.string_var("nodes", "127.0.0.1:9042", "cluster contact nodes");
+
+    let _connection_count = flag.i64_var(
+        "connection-count",
+        4,
+        "number of connections (currently ignored)",
+    );
 
     let partition_offset = flag.i64_var(
         "partition-offset",
