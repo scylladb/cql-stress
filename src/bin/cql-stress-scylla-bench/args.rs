@@ -254,7 +254,7 @@ fn parse_workload(s: &str) -> Result<WorkloadType> {
 
 fn parse_consistency_level(s: &str) -> Result<Consistency> {
     let level = match s {
-        "any" => Consistency::All,
+        "any" => Consistency::Any,
         "one" => Consistency::One,
         "two" => Consistency::Two,
         "three" => Consistency::Three,
@@ -262,7 +262,7 @@ fn parse_consistency_level(s: &str) -> Result<Consistency> {
         "all" => Consistency::All,
         "local_quorum" => Consistency::LocalQuorum,
         "each_quorum" => Consistency::EachQuorum,
-        "local_one" => Consistency::LocalQuorum,
+        "local_one" => Consistency::LocalOne,
         _ => return Err(anyhow::anyhow!("Unknown consistency level: {}", s)),
     };
     Ok(level)
