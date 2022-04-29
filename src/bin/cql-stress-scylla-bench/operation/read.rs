@@ -180,6 +180,10 @@ pub enum ReadRestrictionKind {
 
 impl ReadRestrictionKind {
     fn as_query_string(&self) -> String {
+        format!("{} {}", self.get_selector_string(), self.get_limit_string())
+    }
+
+    fn get_selector_string(&self) -> String {
         match *self {
             ReadRestrictionKind::InRestriction { cks_to_select } => {
                 if cks_to_select == 0 {
@@ -190,12 +194,18 @@ impl ReadRestrictionKind {
                 format!("AND ck IN ({})", ins)
             }
             ReadRestrictionKind::BothBounds { .. } => "AND ck >= ? AND ck < ?".to_owned(),
-            ReadRestrictionKind::OnlyLowerBound { limit } => {
-                format!("AND ck >= ? LIMIT {}", limit)
-            }
-            ReadRestrictionKind::NoBounds { limit } => {
+            ReadRestrictionKind::OnlyLowerBound { .. } => "AND ck >= ?".to_string(),
+            ReadRestrictionKind::NoBounds { .. } => "".to_string(),
+        }
+    }
+
+    fn get_limit_string(&self) -> String {
+        match *self {
+            ReadRestrictionKind::OnlyLowerBound { limit }
+            | ReadRestrictionKind::NoBounds { limit } => {
                 format!("LIMIT {}", limit)
             }
+            _ => "".to_string(),
         }
     }
 
