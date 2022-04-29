@@ -268,7 +268,7 @@ where
         Ok(config) => Some(config),
         Err(err) => {
             // TODO: Should we print to stdout or stderr?
-            println!("Failed to parse flags: {}", err);
+            println!("Failed to parse flags: {:?}", err);
             if print_usage_on_fail {
                 desc.print_help(program_name.as_ref());
             }
