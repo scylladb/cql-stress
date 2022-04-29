@@ -57,19 +57,9 @@ impl ReadOperationFactory {
                 limit: args.rows_per_request,
             }
         };
-        let ck_restriction = read_restriction.as_query_string();
 
-        let mut statement_str = format!(
-            "SELECT ck, v FROM {} WHERE pk = ? {}",
-            args.table_name, ck_restriction,
-        );
-        if args.bypass_cache {
-            statement_str += " BYPASS CACHE";
-        }
-        let mut statement = session.prepare(statement_str).await?;
-        statement.set_is_idempotent(true);
-        statement.set_page_size(args.page_size.try_into()?);
-        statement.set_consistency(args.consistency_level);
+        let statement = prepare_statement(&*session, &*args, &read_restriction).await?;
+
         Ok(Self {
             session,
             stats,
@@ -80,6 +70,28 @@ impl ReadOperationFactory {
             args,
         })
     }
+}
+
+async fn prepare_statement(
+    session: &Session,
+    args: &ScyllaBenchArgs,
+    read_restriction: &ReadRestrictionKind,
+) -> Result<PreparedStatement> {
+    let ck_restriction = read_restriction.as_query_string();
+
+    let mut statement_str = format!(
+        "SELECT ck, v FROM {} WHERE pk = ? {}",
+        args.table_name, ck_restriction,
+    );
+    if args.bypass_cache {
+        statement_str += " BYPASS CACHE";
+    }
+    let mut statement = session.prepare(statement_str).await?;
+    statement.set_is_idempotent(true);
+    statement.set_page_size(args.page_size.try_into()?);
+    statement.set_consistency(args.consistency_level);
+
+    Ok(statement)
 }
 
 impl OperationFactory for ReadOperationFactory {
