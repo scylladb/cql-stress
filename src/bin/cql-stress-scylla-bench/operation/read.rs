@@ -154,6 +154,11 @@ impl Operation for ReadOperation {
 
         // TODO: use driver-side timeouts after they get implemented
         loop {
+            let mut report_error = |err: &dyn std::error::Error| {
+                println!("failed to execute a read: {}", err);
+                errors += 1;
+            };
+
             let r = tokio::time::timeout(self.timeout, iter.next()).await;
             match r {
                 Ok(None) => {
@@ -169,13 +174,13 @@ impl Operation for ReadOperation {
                         }
                     }
                 }
-                Ok(Some(Err(_))) => {
+                Ok(Some(Err(err))) => {
                     // Query error
-                    errors += 1;
+                    report_error(&err);
                 }
-                Err(_) => {
+                Err(err) => {
                     // Timeout
-                    errors += 1;
+                    report_error(&err);
                 }
             }
         }

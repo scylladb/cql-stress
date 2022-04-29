@@ -96,6 +96,10 @@ impl Operation for WriteOperation {
             Ordering::Less => Ok(()),
         };
 
+        if let Err(err) = result.as_ref() {
+            println!("failed to execute a write: {}", err);
+        }
+
         let mut stats = self.stats.get_shard_mut();
         stats.account_op(ctx.scheduled_start_time, &result, cks.len());
 
