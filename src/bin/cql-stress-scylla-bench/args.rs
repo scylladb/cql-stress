@@ -2,7 +2,7 @@ use std::iter::Iterator;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use scylla::load_balancing::{self, LoadBalancingPolicy};
 use scylla::statement::Consistency;
 
@@ -50,8 +50,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub rows_per_request: u64,
     pub provide_upper_bound: bool,
     pub in_restriction: bool,
-    // selectOrderBy       string
-    // selectOrderByParsed []string
+    pub select_order_by: Vec<OrderBy>,
     pub no_lower_bound: bool,
     pub bypass_cache: bool,
 
@@ -179,6 +178,13 @@ where
         false,
         "use IN restriction in read requests",
     );
+    let select_order_by = flag.string_var(
+        "select-order-by",
+        "none",
+        "controls order part 'order by ck asc/desc' of the read query, \
+        you can set it to: none,asc,desc or to the list of them, i.e. 'none,asc', \
+        in such case it will run queries with these orders one by one",
+    );
     let no_lower_bound = flag.bool_var(
         "no-lower-bound",
         false,
@@ -214,6 +220,7 @@ where
         let mode = parse_mode(&mode.get())?;
         let consistency_level = parse_consistency_level(&consistency_level.get())?;
         let host_selection_policy = parse_host_selection_policy(&host_selection_policy.get())?;
+        let select_order_by = parse_order_by_chain(&select_order_by.get())?;
 
         Ok(ScyllaBenchArgs {
             workload,
@@ -244,6 +251,7 @@ where
             rows_per_request: rows_per_request.get(),
             provide_upper_bound: provide_upper_bound.get(),
             in_restriction: in_restriction.get(),
+            select_order_by,
             no_lower_bound: no_lower_bound.get(),
             bypass_cache: bypass_cache.get(),
             timeout: timeout.get(),
@@ -273,6 +281,40 @@ impl GoValue for ScyllaBenchDistribution {
 
     fn to_string(&self) -> String {
         self.0.describe()
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum OrderBy {
+    None,
+    Asc,
+    Desc,
+}
+
+fn parse_order_by_chain(s: &str) -> Result<Vec<OrderBy>> {
+    if s.is_empty() {
+        return Ok(vec![OrderBy::None]);
+    }
+
+    s.split(',')
+        .enumerate()
+        .map(|(idx, s)| {
+            parse_order_by(s)
+                .with_context(|| format!("failed to parse part {} of the order by chain", idx))
+        })
+        .collect()
+}
+
+fn parse_order_by(s: &str) -> Result<OrderBy> {
+    match s.to_lowercase().as_str() {
+        "none" => Ok(OrderBy::None),
+        "asc" => Ok(OrderBy::Asc),
+        "desc" => Ok(OrderBy::Desc),
+        _ => Err(anyhow::anyhow!(
+            "invalid order-by specifier: {} \
+            (expected \"none\", \"asc\" or \"desc\")",
+            s,
+        )),
     }
 }
 
