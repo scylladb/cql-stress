@@ -16,7 +16,16 @@ pub trait Distribution: Send + Sync {
 }
 
 pub fn parse_distribution(desc: &str) -> Result<Box<dyn Distribution>> {
-    // TODO: Support parsing single numbers as fixed distribution
+    // If `desc` is a single number, then it's a fixed distribution
+    if desc.trim().chars().all(|c| c.is_ascii_digit()) {
+        let desc = Description {
+            name: "fixed",
+            args: vec![desc.trim()],
+            inverted: false,
+        };
+        let fixed = Fixed::parse_from_desc(desc)?;
+        return Ok(Box::new(fixed));
+    }
 
     let desc = parse_description(desc, SyntaxFlavor::ClassicOrShort)?;
 

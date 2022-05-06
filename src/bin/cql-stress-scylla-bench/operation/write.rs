@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use rand::Rng;
@@ -20,6 +21,7 @@ use crate::workload::{Workload, WorkloadFactory};
 pub(crate) struct WriteOperationFactory {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
+    timeout: Duration,
     statement: PreparedStatement,
     workload_factory: Box<dyn WorkloadFactory>,
     args: Arc<ScyllaBenchArgs>,
@@ -28,6 +30,7 @@ pub(crate) struct WriteOperationFactory {
 struct WriteOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
+    timeout: Duration,
     statement: PreparedStatement,
     workload: Box<dyn Workload>,
     clustering_row_size_dist: Arc<dyn Distribution>,
@@ -54,6 +57,7 @@ impl WriteOperationFactory {
         Ok(Self {
             session,
             stats,
+            timeout: args.timeout,
             statement,
             workload_factory,
             args,
@@ -67,6 +71,7 @@ impl OperationFactory for WriteOperationFactory {
             session: Arc::clone(&self.session),
             stats: Arc::clone(&self.stats),
             statement: self.statement.clone(),
+            timeout: self.timeout,
             workload: self.workload_factory.create(),
             clustering_row_size_dist: Arc::clone(&self.args.clustering_row_size_dist),
             rows_per_op: self.args.rows_per_request,
@@ -91,6 +96,10 @@ impl Operation for WriteOperation {
             Ordering::Less => Ok(()),
         };
 
+        if let Err(err) = result.as_ref() {
+            println!("failed to execute a write: {}", err);
+        }
+
         let mut stats = self.stats.get_shard_mut();
         stats.account_op(ctx.scheduled_start_time, &result, cks.len());
 
@@ -101,9 +110,12 @@ impl Operation for WriteOperation {
 impl WriteOperation {
     async fn write_single(&mut self, pk: i64, ck: i64) -> Result<()> {
         let data = self.generate_row(pk, ck);
-        self.session
-            .execute(&self.statement, (pk, ck, data))
-            .await?;
+        // TODO: Use driver-side timeouts after they are implemented
+        tokio::time::timeout(
+            self.timeout,
+            self.session.execute(&self.statement, (pk, ck, data)),
+        )
+        .await??;
         Ok(())
     }
 
@@ -117,7 +129,8 @@ impl WriteOperation {
             batch.append_statement(self.statement.clone());
             vals.push((pk, ck, data));
         }
-        self.session.batch(&batch, vals).await?;
+        // TODO: Use driver-side timeouts after they are implemented
+        tokio::time::timeout(self.timeout, self.session.batch(&batch, vals)).await??;
         Ok(())
     }
 

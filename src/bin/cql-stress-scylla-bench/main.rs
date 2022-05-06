@@ -8,11 +8,15 @@ mod operation;
 pub(crate) mod stats;
 mod workload;
 
+#[cfg(test)]
+mod args_test;
+
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use scylla::{Session, SessionBuilder};
+use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
+use scylla::{transport::Compression, Session, SessionBuilder};
 
 use cql_stress::configuration::{Configuration, OperationFactory};
 use cql_stress::run::RunController;
@@ -29,11 +33,13 @@ use crate::workload::{
 // TODO: Return exit code
 #[tokio::main]
 async fn main() -> Result<()> {
-    let sb_config = match args::parse_scylla_bench_args(std::env::args()) {
+    let sb_config = match args::parse_scylla_bench_args(std::env::args(), true) {
         Some(sb_config) => sb_config,
         None => return Ok(()), // TODO: Return some kind of error
     };
     let sb_config = Arc::new(sb_config);
+
+    sb_config.print_configuration();
 
     let stats_factory = Arc::new(StatsFactory);
     let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
@@ -89,10 +95,24 @@ async fn stop_on_signal(runner: Arc<RunController>) {
 }
 
 async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result<Configuration> {
-    let session = SessionBuilder::new()
-        .known_nodes(&args.nodes)
-        .build()
-        .await?;
+    let mut builder = SessionBuilder::new().known_nodes(&args.nodes);
+
+    if !args.username.is_empty() && !args.password.is_empty() {
+        builder = builder.user(&args.username, &args.password);
+    }
+
+    if args.tls_encryption {
+        let ssl_ctx = generate_ssl_context(&args)?;
+        builder = builder.ssl_context(Some(ssl_ctx));
+    }
+
+    if args.client_compression {
+        builder = builder.compression(Some(Compression::Snappy));
+    }
+
+    builder = builder.load_balancing(Arc::clone(&args.host_selection_policy));
+
+    let session = builder.build().await?;
     let session = Arc::new(session);
 
     create_schema(&session, &args).await?;
@@ -109,6 +129,48 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
         rate_limit_per_second,
         operation_factory,
     })
+}
+
+fn generate_ssl_context(args: &ScyllaBenchArgs) -> Result<SslContext> {
+    let mut context_builder = SslContextBuilder::new(SslMethod::tls_client())?;
+
+    anyhow::ensure!(
+        args.client_key_file.is_empty() == args.client_cert_file.is_empty(),
+        "tls-client-cert-file and tls-client-key-file either should be both provided or left empty",
+    );
+
+    if args.host_verification {
+        context_builder.set_verify(SslVerifyMode::PEER);
+    } else {
+        context_builder.set_verify(SslVerifyMode::NONE);
+    }
+
+    if !args.ca_cert_file.is_empty() {
+        let ca_cert_path = std::fs::canonicalize(&args.ca_cert_file)?;
+        context_builder.set_ca_file(ca_cert_path)?;
+    }
+    if !args.client_cert_file.is_empty() {
+        let client_cert_path = std::fs::canonicalize(&args.client_cert_file)?;
+        context_builder.set_certificate_file(client_cert_path, SslFiletype::PEM)?;
+    }
+    if !args.client_key_file.is_empty() {
+        let client_key_file = std::fs::canonicalize(&args.client_key_file)?;
+        context_builder.set_private_key_file(client_key_file, SslFiletype::PEM)?;
+    }
+
+    // TODO: Set server name (for SNI)
+    // I'm afraid it is impossible to do with the current driver.
+    // The hostname must be set on the Ssl object which is created
+    // by the driver just before creating a connection, and is not available
+    // for customization in the configuration.
+    //
+    // I believe it's this method:
+    // https://docs.rs/openssl/latest/openssl/ssl/struct.Ssl.html#method.set_hostname
+
+    // Silence "unused" warnings for now
+    let _ = &args.server_name;
+
+    Ok(context_builder.build())
 }
 
 async fn create_schema(session: &Session, args: &ScyllaBenchArgs) -> Result<()> {

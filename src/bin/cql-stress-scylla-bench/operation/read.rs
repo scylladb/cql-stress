@@ -1,21 +1,23 @@
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
-use futures::StreamExt;
+use futures::{stream, StreamExt, TryStreamExt};
 use scylla::frame::value::SerializedValues;
 use scylla::{prepared_statement::PreparedStatement, Session};
 
 use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
 
-use crate::args::ScyllaBenchArgs;
+use crate::args::{OrderBy, ScyllaBenchArgs};
 use crate::stats::ShardedStats;
 use crate::workload::{Workload, WorkloadFactory};
 
 pub(crate) struct ReadOperationFactory {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
-    statement: PreparedStatement,
+    statements: Vec<PreparedStatement>,
+    timeout: Duration,
     workload_factory: Box<dyn WorkloadFactory>,
     read_restriction: ReadRestrictionKind,
     args: Arc<ScyllaBenchArgs>,
@@ -24,10 +26,13 @@ pub(crate) struct ReadOperationFactory {
 struct ReadOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
-    statement: PreparedStatement,
+    statements: Vec<PreparedStatement>,
+    timeout: Duration,
     workload: Box<dyn Workload>,
     read_restriction: ReadRestrictionKind,
     validate_data: bool,
+
+    current_statement_idx: usize,
 }
 
 impl ReadOperationFactory {
@@ -54,24 +59,54 @@ impl ReadOperationFactory {
                 limit: args.rows_per_request,
             }
         };
-        let ck_restriction = read_restriction.as_query_string();
 
-        let statement_str = format!(
-            "SELECT ck, v FROM {} WHERE pk = ? {}",
-            args.table_name, ck_restriction,
-        );
-        let mut statement = session.prepare(statement_str).await?;
-        statement.set_is_idempotent(true);
-        // TODO: Set page size
-        statement.set_consistency(args.consistency_level);
+        let statements = stream::iter(&args.select_order_by)
+            .then(|order_by| prepare_statement(&*session, &*args, &read_restriction, order_by))
+            .try_collect::<Vec<_>>()
+            .await?;
+
         Ok(Self {
             session,
             stats,
-            statement,
+            statements,
+            timeout: args.timeout,
             workload_factory,
             read_restriction,
             args,
         })
+    }
+}
+
+async fn prepare_statement(
+    session: &Session,
+    args: &ScyllaBenchArgs,
+    read_restriction: &ReadRestrictionKind,
+    order_by: &OrderBy,
+) -> Result<PreparedStatement> {
+    let selector = read_restriction.get_selector_string();
+    let order_by = get_order_by_string(order_by);
+    let limit = read_restriction.get_limit_string();
+
+    let mut statement_str = format!(
+        "SELECT ck, v FROM {} WHERE pk = ? {} {} {}",
+        args.table_name, selector, order_by, limit,
+    );
+    if args.bypass_cache {
+        statement_str += " BYPASS CACHE";
+    }
+    let mut statement = session.prepare(statement_str).await?;
+    statement.set_is_idempotent(true);
+    statement.set_page_size(args.page_size.try_into()?);
+    statement.set_consistency(args.consistency_level);
+
+    Ok(statement)
+}
+
+fn get_order_by_string(order: &OrderBy) -> &'static str {
+    match order {
+        OrderBy::None => "",
+        OrderBy::Asc => "ORDER BY ck ASC",
+        OrderBy::Desc => "ORDER BY ck DESC",
     }
 }
 
@@ -80,10 +115,13 @@ impl OperationFactory for ReadOperationFactory {
         Box::new(ReadOperation {
             session: Arc::clone(&self.session),
             stats: Arc::clone(&self.stats),
-            statement: self.statement.clone(),
+            statements: self.statements.clone(),
+            timeout: self.timeout,
             workload: self.workload_factory.create(),
             read_restriction: self.read_restriction,
             validate_data: self.args.validate_data,
+
+            current_statement_idx: 0,
         })
     }
 }
@@ -102,18 +140,32 @@ impl Operation for ReadOperation {
             values.add_value(&ck)?;
         }
 
+        let stmt = &self.statements[self.current_statement_idx];
+        self.current_statement_idx = (self.current_statement_idx + 1) % self.statements.len();
+
         let mut iter = self
             .session
-            .execute_iter(self.statement.clone(), values)
+            .execute_iter(stmt.clone(), values)
             .await?
             .into_typed::<(i64, Vec<u8>)>();
 
         let mut rows_read = 0;
         let mut errors = 0;
 
-        while let Some(r) = iter.next().await {
+        // TODO: use driver-side timeouts after they get implemented
+        loop {
+            let mut report_error = |err: &dyn std::error::Error| {
+                println!("failed to execute a read: {}", err);
+                errors += 1;
+            };
+
+            let r = tokio::time::timeout(self.timeout, iter.next()).await;
             match r {
-                Ok((ck, v)) => {
+                Ok(None) => {
+                    // End of the iterator
+                    break;
+                }
+                Ok(Some(Ok((ck, v)))) => {
                     rows_read += 1;
                     if self.validate_data {
                         if let Err(err) = super::validate_row_data(pk, ck, &v) {
@@ -122,8 +174,13 @@ impl Operation for ReadOperation {
                         }
                     }
                 }
-                Err(_) => {
-                    errors += 1;
+                Ok(Some(Err(err))) => {
+                    // Query error
+                    report_error(&err);
+                }
+                Err(err) => {
+                    // Timeout
+                    report_error(&err);
                 }
             }
         }
@@ -148,7 +205,7 @@ pub enum ReadRestrictionKind {
 }
 
 impl ReadRestrictionKind {
-    fn as_query_string(&self) -> String {
+    fn get_selector_string(&self) -> String {
         match *self {
             ReadRestrictionKind::InRestriction { cks_to_select } => {
                 if cks_to_select == 0 {
@@ -159,12 +216,18 @@ impl ReadRestrictionKind {
                 format!("AND ck IN ({})", ins)
             }
             ReadRestrictionKind::BothBounds { .. } => "AND ck >= ? AND ck < ?".to_owned(),
-            ReadRestrictionKind::OnlyLowerBound { limit } => {
-                format!("AND ck >= ? LIMIT {}", limit)
-            }
-            ReadRestrictionKind::NoBounds { limit } => {
+            ReadRestrictionKind::OnlyLowerBound { .. } => "AND ck >= ?".to_string(),
+            ReadRestrictionKind::NoBounds { .. } => "".to_string(),
+        }
+    }
+
+    fn get_limit_string(&self) -> String {
+        match *self {
+            ReadRestrictionKind::OnlyLowerBound { limit }
+            | ReadRestrictionKind::NoBounds { limit } => {
                 format!("LIMIT {}", limit)
             }
+            _ => "".to_string(),
         }
     }
 
