@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
@@ -126,6 +127,26 @@ impl OperationFactory for ReadOperationFactory {
     }
 }
 
+#[derive(Default)]
+struct ReadContext {
+    pub errors: u64,
+    pub rows_read: u64,
+}
+
+impl ReadContext {
+    pub fn failed_read(&mut self, err: &impl Display) {
+        println!("failed to execute a read: {}", err);
+        self.errors += 1;
+    }
+    pub fn data_corruption(&mut self, pk: i64, ck: i64, err: &impl Display) {
+        println!("data corruption in pk({}), ck({}): {}", pk, ck, err);
+        self.errors += 1;
+    }
+    pub fn row_read(&mut self) {
+        self.rows_read += 1;
+    }
+}
+
 #[async_trait]
 impl Operation for ReadOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
@@ -149,16 +170,10 @@ impl Operation for ReadOperation {
             .await?
             .into_typed::<(i64, Vec<u8>)>();
 
-        let mut rows_read = 0;
-        let mut errors = 0;
+        let mut rctx = ReadContext::default();
 
         // TODO: use driver-side timeouts after they get implemented
         loop {
-            let mut report_error = |err: &dyn std::error::Error| {
-                println!("failed to execute a read: {}", err);
-                errors += 1;
-            };
-
             let r = tokio::time::timeout(self.timeout, iter.next()).await;
             match r {
                 Ok(None) => {
@@ -166,21 +181,20 @@ impl Operation for ReadOperation {
                     break;
                 }
                 Ok(Some(Ok((ck, v)))) => {
-                    rows_read += 1;
+                    rctx.row_read();
                     if self.validate_data {
                         if let Err(err) = super::validate_row_data(pk, ck, &v) {
-                            errors += 1;
-                            println!("data corruption in pk({}), ck({}): {}", pk, ck, err);
+                            rctx.data_corruption(pk, ck, &err);
                         }
                     }
                 }
                 Ok(Some(Err(err))) => {
                     // Query error
-                    report_error(&err);
+                    rctx.failed_read(&err);
                 }
                 Err(err) => {
                     // Timeout
-                    report_error(&err);
+                    rctx.failed_read(&err);
                 }
             }
         }
@@ -188,8 +202,8 @@ impl Operation for ReadOperation {
         let mut stats_lock = self.stats.get_shard_mut();
         let stats = &mut *stats_lock;
         stats.operations += 1;
-        stats.errors += errors;
-        stats.clustering_rows += rows_read;
+        stats.errors += rctx.errors;
+        stats.clustering_rows += rctx.rows_read;
         stats_lock.account_latency(ctx.scheduled_start_time);
 
         Ok(ControlFlow::Continue(()))
