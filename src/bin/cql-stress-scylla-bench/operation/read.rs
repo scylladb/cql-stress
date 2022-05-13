@@ -196,28 +196,11 @@ impl ReadOperation {
         let mut iter = iter.into_typed::<(i64, Vec<u8>)>();
 
         // TODO: use driver-side timeouts after they get implemented
-        loop {
-            let r = tokio::time::timeout(self.timeout, iter.next()).await;
-            match r {
-                Ok(None) => {
-                    // End of the iterator
-                    break;
-                }
-                Ok(Some(Ok((ck, v)))) => {
-                    rctx.row_read();
-                    if self.validate_data {
-                        if let Err(err) = super::validate_row_data(pk, ck, &v) {
-                            rctx.data_corruption(pk, ck, &err);
-                        }
-                    }
-                }
-                Ok(Some(Err(err))) => {
-                    // Query error
-                    rctx.failed_read(&err);
-                }
-                Err(err) => {
-                    // Timeout
-                    rctx.failed_read(&err);
+        while let Some((ck, v)) = tokio::time::timeout(self.timeout, iter.try_next()).await?? {
+            rctx.row_read();
+            if self.validate_data {
+                if let Err(err) = super::validate_row_data(pk, ck, &v) {
+                    rctx.data_corruption(pk, ck, &err);
                 }
             }
         }
