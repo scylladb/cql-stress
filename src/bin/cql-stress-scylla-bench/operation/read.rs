@@ -150,6 +150,8 @@ impl ReadContext {
 #[async_trait]
 impl Operation for ReadOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
+        let mut rctx = ReadContext::default();
+
         let (pk, cks) = match self.read_restriction.generate_values(&mut *self.workload) {
             Some(p) => p,
             None => return Ok(ControlFlow::Break(())),
@@ -161,16 +163,32 @@ impl Operation for ReadOperation {
             values.add_value(&ck)?;
         }
 
-        let stmt = &self.statements[self.current_statement_idx];
+        let stmt = self.statements[self.current_statement_idx].clone();
         self.current_statement_idx = (self.current_statement_idx + 1) % self.statements.len();
 
-        let mut iter = self
-            .session
-            .execute_iter(stmt.clone(), values)
-            .await?
-            .into_typed::<(i64, Vec<u8>)>();
+        let flow = self.do_execute(&mut rctx, pk, stmt, values).await?;
 
-        let mut rctx = ReadContext::default();
+        let mut stats_lock = self.stats.get_shard_mut();
+        let stats = &mut *stats_lock;
+        stats.operations += 1;
+        stats.errors += rctx.errors;
+        stats.clustering_rows += rctx.rows_read;
+        stats_lock.account_latency(ctx.scheduled_start_time);
+
+        Ok(flow)
+    }
+}
+
+impl ReadOperation {
+    async fn do_execute(
+        &mut self,
+        rctx: &mut ReadContext,
+        pk: i64,
+        stmt: PreparedStatement,
+        values: SerializedValues,
+    ) -> Result<ControlFlow<()>> {
+        let iter = self.session.execute_iter(stmt, values).await?;
+        let mut iter = iter.into_typed::<(i64, Vec<u8>)>();
 
         // TODO: use driver-side timeouts after they get implemented
         loop {
@@ -198,13 +216,6 @@ impl Operation for ReadOperation {
                 }
             }
         }
-
-        let mut stats_lock = self.stats.get_shard_mut();
-        let stats = &mut *stats_lock;
-        stats.operations += 1;
-        stats.errors += rctx.errors;
-        stats.clustering_rows += rctx.rows_read;
-        stats_lock.account_latency(ctx.scheduled_start_time);
 
         Ok(ControlFlow::Continue(()))
     }
