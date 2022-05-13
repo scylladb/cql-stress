@@ -192,7 +192,8 @@ impl ReadOperation {
         stmt: PreparedStatement,
         values: SerializedValues,
     ) -> Result<ControlFlow<()>> {
-        let iter = self.session.execute_iter(stmt, values).await?;
+        let iter =
+            tokio::time::timeout(self.timeout, self.session.execute_iter(stmt, values)).await??;
         let mut iter = iter.into_typed::<(i64, Vec<u8>)>();
 
         // TODO: use driver-side timeouts after they get implemented
