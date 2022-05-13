@@ -1,7 +1,11 @@
 mod sequential;
+mod timeseries_read;
+mod timeseries_write;
 mod uniform;
 
 pub use sequential::{SequentialConfig, SequentialFactory};
+pub use timeseries_read::{TimeseriesReadConfig, TimeseriesReadFactory};
+pub use timeseries_write::{TimeseriesWriteConfig, TimeseriesWriteFactory};
 pub use uniform::{UniformConfig, UniformFactory};
 
 pub trait WorkloadFactory: Sync + Send {

@@ -1,6 +1,6 @@
 use std::iter::Iterator;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use scylla::load_balancing::{self, LoadBalancingPolicy};
@@ -28,9 +28,10 @@ pub(crate) struct ScyllaBenchArgs {
     pub partition_offset: i64,
 
     // (Timeseries-related parameters)
-    // writeRate    int64
-    // distribution string
-    // var startTimestamp int64
+    pub write_rate: u64,
+    pub distribution: TimeseriesDistribution,
+    pub start_timestamp: u64,
+
     pub host_selection_policy: Arc<dyn LoadBalancingPolicy>,
     pub tls_encryption: bool,
     pub keyspace_name: String,
@@ -123,6 +124,22 @@ where
         "partition-offset",
         0,
         "start of the partition range (only for sequential workload)",
+    );
+
+    let write_rate = flag.u64_var(
+        "write-rate",
+        0,
+        "rate of writes (relevant only for time series reads)",
+    );
+    let distribution = flag.string_var(
+        "distribution",
+        "uniform",
+        "distribution of keys (relevant only for time series reads): uniform, hnormal",
+    );
+    let start_timestamp = flag.u64_var(
+        "start-timestamp",
+        0,
+        "start timestamp of the write load (relevant only for time series reads)",
     );
 
     let host_selection_policy = flag.string_var(
@@ -223,8 +240,39 @@ where
         let workload = parse_workload(&workload.get())?;
         let mode = parse_mode(&mode.get())?;
         let consistency_level = parse_consistency_level(&consistency_level.get())?;
+        let distribution = parse_timeseries_distribution(&distribution.get())?;
+        let mut start_timestamp = start_timestamp.get();
+        if start_timestamp == 0 {
+            start_timestamp = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos() as u64;
+        }
         let host_selection_policy = parse_host_selection_policy(&host_selection_policy.get())?;
         let select_order_by = parse_order_by_chain(&select_order_by.get())?;
+        let write_rate = write_rate.get();
+        let concurrency = concurrency.get();
+        let partition_count = partition_count.get();
+        let maximum_rate = maximum_rate.get();
+
+        if workload == WorkloadType::Timeseries {
+            if mode == Mode::Read {
+                anyhow::ensure!(
+                    write_rate != 0,
+                    "Write rate must be provided for time series reads loads",
+                );
+                anyhow::ensure!(
+                    start_timestamp != 0,
+                    "Start timestamp must be provided for time series reads loads",
+                );
+            } else if mode == Mode::Write {
+                anyhow::ensure!(
+                    concurrency <= partition_count,
+                    "Time series writes require concurrency less than or equal partition count",
+                );
+                anyhow::ensure!(
+                    maximum_rate != 0,
+                    "max-rate must be provided for time series write loads"
+                );
+            }
+        }
 
         Ok(ScyllaBenchArgs {
             workload,
@@ -239,6 +287,9 @@ where
             client_compression: client_compression.get(),
             page_size: page_size.get(),
             partition_offset: partition_offset.get(),
+            write_rate,
+            distribution,
+            start_timestamp,
             host_selection_policy,
             tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),
@@ -246,10 +297,10 @@ where
             username: username.get(),
             password: password.get(),
             mode,
-            concurrency: concurrency.get(),
-            maximum_rate: maximum_rate.get(),
+            concurrency,
+            maximum_rate,
             test_duration: test_duration.get(),
-            partition_count: partition_count.get(),
+            partition_count,
             clustering_row_count: clustering_row_count.get(),
             clustering_row_size_dist: clustering_row_size_dist.get().0,
             rows_per_request: rows_per_request.get(),
@@ -315,11 +366,13 @@ impl ScyllaBenchArgs {
             println!("Maximum rate:\t\t unlimited");
         }
         println!("Client compression:\t {}", self.client_compression);
-        // TODO: Enable when the timeseries workload is supported
-        // if workload == "timeseries" {
-        //     fmt.Println("Start timestamp:\t", startTime.UnixNano())
-        //     fmt.Println("Write rate:\t\t", int64(maximumRate)/partitionCount)
-        // }
+        if self.workload == WorkloadType::Timeseries {
+            println!("Start timestamp:\t {}", self.start_timestamp);
+            println!(
+                "Write rate:\t\t {}",
+                self.maximum_rate / self.partition_count
+            );
+        }
 
         // println!("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes");
     }
@@ -464,6 +517,20 @@ fn parse_consistency_level(s: &str) -> Result<Consistency> {
         _ => return Err(anyhow::anyhow!("Unknown consistency level: {}", s)),
     };
     Ok(level)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TimeseriesDistribution {
+    Uniform,
+    HalfNormal,
+}
+
+fn parse_timeseries_distribution(s: &str) -> Result<TimeseriesDistribution> {
+    match s {
+        "uniform" => Ok(TimeseriesDistribution::Uniform),
+        "hnormal" => Ok(TimeseriesDistribution::HalfNormal),
+        _ => Err(anyhow::anyhow!("Unknown timeseries distribution: {}", s)),
+    }
 }
 
 fn show_consistency_level(cl: &Consistency) -> &'static str {

@@ -27,7 +27,8 @@ use crate::operation::read::ReadOperationFactory;
 use crate::operation::write::WriteOperationFactory;
 use crate::stats::{ShardedStats, StatsFactory, StatsPrinter};
 use crate::workload::{
-    SequentialConfig, SequentialFactory, UniformConfig, UniformFactory, WorkloadFactory,
+    SequentialConfig, SequentialFactory, TimeseriesReadConfig, TimeseriesReadFactory,
+    TimeseriesWriteConfig, TimeseriesWriteFactory, UniformConfig, UniformFactory, WorkloadFactory,
 };
 
 // TODO: Return exit code
@@ -236,6 +237,31 @@ fn create_workload_factory(args: &ScyllaBenchArgs) -> Result<Box<dyn WorkloadFac
             };
             Ok(Box::new(UniformFactory::new(uni_config)?))
         }
+        (WorkloadType::Timeseries, Mode::Write) => {
+            let tsw_config = TimeseriesWriteConfig {
+                partition_offset: args.partition_offset,
+                pks_per_generation: args.partition_count,
+                cks_per_pk: args.clustering_row_count,
+                start_nanos: args.start_timestamp,
+                max_rate: args.maximum_rate,
+            };
+            Ok(Box::new(TimeseriesWriteFactory::new(tsw_config)?))
+        }
+        (WorkloadType::Timeseries, Mode::Read) => {
+            let period = 1_000_000_000 / args.write_rate;
+            let tsr_config = TimeseriesReadConfig {
+                partition_offset: args.partition_offset,
+                pks_per_generation: args.partition_count,
+                cks_per_pk: args.clustering_row_count,
+                start_nanos: args.start_timestamp,
+                period_nanos: period,
+                distribution: args.distribution.clone(),
+            };
+            Ok(Box::new(TimeseriesReadFactory::new(tsr_config)?))
+        }
+        (WorkloadType::Timeseries, _) => Err(anyhow::anyhow!(
+            "Timeseries workload supports only write and read modes"
+        )),
         (workload, mode) => {
             // TODO: Implement more later
             Err(anyhow::anyhow!(
