@@ -166,7 +166,11 @@ impl Operation for ReadOperation {
         let stmt = self.statements[self.current_statement_idx].clone();
         self.current_statement_idx = (self.current_statement_idx + 1) % self.statements.len();
 
-        let flow = self.do_execute(&mut rctx, pk, stmt, values).await?;
+        let result = self.do_execute(&mut rctx, pk, stmt, values).await;
+
+        if let Err(err) = &result {
+            rctx.failed_read(err);
+        }
 
         let mut stats_lock = self.stats.get_shard_mut();
         let stats = &mut *stats_lock;
@@ -175,7 +179,8 @@ impl Operation for ReadOperation {
         stats.clustering_rows += rctx.rows_read;
         stats_lock.account_latency(ctx.scheduled_start_time);
 
-        Ok(flow)
+        // Ignore errors from execute
+        Ok(result.unwrap_or(ControlFlow::Continue(())))
     }
 }
 
