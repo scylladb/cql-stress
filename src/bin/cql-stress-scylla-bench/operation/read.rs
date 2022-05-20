@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use futures::{stream, StreamExt, TryStreamExt};
-use scylla::frame::value::SerializedValues;
+use scylla::cql_to_rust::FromRow;
+use scylla::frame::value::{Counter, SerializedValues};
 use scylla::{prepared_statement::PreparedStatement, Session};
 
 use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
@@ -14,12 +15,19 @@ use crate::args::{OrderBy, ScyllaBenchArgs};
 use crate::stats::ShardedStats;
 use crate::workload::{Workload, WorkloadFactory};
 
+#[derive(Copy, Clone)]
+pub enum ReadKind {
+    Regular,
+    Counter,
+}
+
 pub(crate) struct ReadOperationFactory {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
     statements: Vec<PreparedStatement>,
     timeout: Duration,
     workload_factory: Box<dyn WorkloadFactory>,
+    read_kind: ReadKind,
     read_restriction: ReadRestrictionKind,
     args: Arc<ScyllaBenchArgs>,
 }
@@ -30,6 +38,7 @@ struct ReadOperation {
     statements: Vec<PreparedStatement>,
     timeout: Duration,
     workload: Box<dyn Workload>,
+    read_kind: ReadKind,
     read_restriction: ReadRestrictionKind,
     validate_data: bool,
 
@@ -40,6 +49,7 @@ impl ReadOperationFactory {
     pub async fn new(
         session: Arc<Session>,
         stats: Arc<ShardedStats>,
+        read_kind: ReadKind,
         workload_factory: Box<dyn WorkloadFactory>,
         args: Arc<ScyllaBenchArgs>,
     ) -> Result<Self> {
@@ -62,7 +72,9 @@ impl ReadOperationFactory {
         };
 
         let statements = stream::iter(&args.select_order_by)
-            .then(|order_by| prepare_statement(&*session, &*args, &read_restriction, order_by))
+            .then(|order_by| {
+                prepare_statement(&*session, &*args, read_kind, &read_restriction, order_by)
+            })
             .try_collect::<Vec<_>>()
             .await?;
 
@@ -72,6 +84,7 @@ impl ReadOperationFactory {
             statements,
             timeout: args.timeout,
             workload_factory,
+            read_kind,
             read_restriction,
             args,
         })
@@ -81,6 +94,7 @@ impl ReadOperationFactory {
 async fn prepare_statement(
     session: &Session,
     args: &ScyllaBenchArgs,
+    read_kind: ReadKind,
     read_restriction: &ReadRestrictionKind,
     order_by: &OrderBy,
 ) -> Result<PreparedStatement> {
@@ -88,10 +102,16 @@ async fn prepare_statement(
     let order_by = get_order_by_string(order_by);
     let limit = read_restriction.get_limit_string();
 
-    let mut statement_str = format!(
-        "SELECT ck, v FROM {} WHERE pk = ? {} {} {}",
-        args.table_name, selector, order_by, limit,
-    );
+    let mut statement_str = match read_kind {
+        ReadKind::Regular => format!(
+            "SELECT ck, v FROM {} WHERE pk = ? {} {} {}",
+            args.table_name, selector, order_by, limit,
+        ),
+        ReadKind::Counter => format!(
+            "SELECT ck, c1, c2, c3, c4, c5 FROM {} WHERE pk = ? {} {} {}",
+            args.counter_table_name, selector, order_by, limit,
+        ),
+    };
     if args.bypass_cache {
         statement_str += " BYPASS CACHE";
     }
@@ -119,6 +139,7 @@ impl OperationFactory for ReadOperationFactory {
             statements: self.statements.clone(),
             timeout: self.timeout,
             workload: self.workload_factory.create(),
+            read_kind: self.read_kind,
             read_restriction: self.read_restriction,
             validate_data: self.args.validate_data,
 
@@ -192,16 +213,33 @@ impl ReadOperation {
         stmt: PreparedStatement,
         values: SerializedValues,
     ) -> Result<ControlFlow<()>> {
-        let iter =
+        let mut iter =
             tokio::time::timeout(self.timeout, self.session.execute_iter(stmt, values)).await??;
-        let mut iter = iter.into_typed::<(i64, Vec<u8>)>();
 
         // TODO: use driver-side timeouts after they get implemented
-        while let Some((ck, v)) = tokio::time::timeout(self.timeout, iter.try_next()).await?? {
+        while let Some(row) = tokio::time::timeout(self.timeout, iter.try_next()).await?? {
             rctx.row_read();
-            if self.validate_data {
-                if let Err(err) = super::validate_row_data(pk, ck, &v) {
-                    rctx.data_corruption(pk, ck, &err);
+            match self.read_kind {
+                ReadKind::Regular => {
+                    let (ck, v) = <(i64, Vec<u8>) as FromRow>::from_row(row)?;
+                    if self.validate_data {
+                        if let Err(err) = super::validate_row_data(pk, ck, &v) {
+                            rctx.data_corruption(pk, ck, &err);
+                        }
+                    }
+                }
+                ReadKind::Counter => {
+                    let (ck, c1, c2, c3, c4, c5) =
+                        <(i64, Counter, Counter, Counter, Counter, Counter) as FromRow>::from_row(
+                            row,
+                        )?;
+                    if self.validate_data {
+                        if let Err(err) =
+                            super::validate_counter_row_data(pk, ck, c1.0, c2.0, c3.0, c4.0, c5.0)
+                        {
+                            rctx.data_corruption(pk, ck, &err);
+                        }
+                    }
                 }
             }
         }

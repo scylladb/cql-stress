@@ -36,6 +36,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub tls_encryption: bool,
     pub keyspace_name: String,
     pub table_name: String,
+    pub counter_table_name: String,
     pub username: String,
     pub password: String,
     pub mode: Mode,
@@ -155,6 +156,8 @@ where
     );
     let keyspace_name = flag.string_var("keyspace", "scylla_bench", "keyspace to use");
     let table_name = flag.string_var("table", "test", "table to use");
+    let counter_table_name =
+        flag.string_var("counter-table", "test_counters", "counter table to use");
     let username = flag.string_var("username", "", "cql username for authentication");
     let password = flag.string_var("password", "", "cql password for authentication");
     let mode = flag.string_var(
@@ -294,6 +297,7 @@ where
             tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),
             table_name: table_name.get(),
+            counter_table_name: counter_table_name.get(),
             username: username.get(),
             password: password.get(),
             mode,
