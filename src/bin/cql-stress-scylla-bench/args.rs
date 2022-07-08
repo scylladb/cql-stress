@@ -57,7 +57,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub no_lower_bound: bool,
     pub bypass_cache: bool,
 
-    // rangeCount int
+    pub range_count: u64,
     pub timeout: Duration,
     pub iterations: u64,
     // // Any error response that comes with delay greater than errorToTimeoutCutoffTime
@@ -220,6 +220,11 @@ where
         "Execute queries with the \"BYPASS CACHE\" CQL clause",
     );
 
+    let range_count = flag.u64_var(
+        "range-count",
+        1,
+        "number of ranges to split the token space into (relevant only for scan mode)",
+    );
     let timeout = flag.duration_var("timeout", Duration::from_secs(5), "request timeout");
     let iterations = flag.u64_var(
         "iterations",
@@ -313,6 +318,7 @@ where
             select_order_by,
             no_lower_bound: no_lower_bound.get(),
             bypass_cache: bypass_cache.get(),
+            range_count: range_count.get(),
             timeout: timeout.get(),
             iterations: iterations.get(),
             validate_data: validate_data.get(),

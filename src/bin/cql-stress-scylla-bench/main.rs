@@ -26,6 +26,7 @@ use cql_stress::sharded_stats::{Stats as _, StatsFactory as _};
 use crate::args::{Mode, ScyllaBenchArgs, WorkloadType};
 use crate::operation::counter_update::CounterUpdateOperationFactory;
 use crate::operation::read::{ReadKind, ReadOperationFactory};
+use crate::operation::scan::ScanOperationFactory;
 use crate::operation::write::WriteOperationFactory;
 use crate::stats::{ShardedStats, StatsFactory, StatsPrinter};
 use crate::workload::{
@@ -248,9 +249,9 @@ async fn create_operation_factory(
             .await?;
             Ok(Arc::new(factory))
         }
-        mode => {
-            // TODO: Implement more later
-            Err(anyhow::anyhow!("Mode not implemented: {:?}", mode))
+        Mode::Scan => {
+            let factory = ScanOperationFactory::new(session, stats, args).await?;
+            Ok(Arc::new(factory))
         }
     }
 }
