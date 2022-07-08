@@ -180,8 +180,7 @@ impl Operation for ReadOperation {
         stats.clustering_rows += rctx.rows_read;
         stats_lock.account_latency(ctx.scheduled_start_time);
 
-        // Ignore errors from execute
-        Ok(result.unwrap_or(ControlFlow::Continue(())))
+        result
     }
 }
 
