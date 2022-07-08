@@ -245,8 +245,16 @@ where
         parser.parse_args(args)?;
 
         let nodes = nodes.get().split(',').map(str::to_string).collect();
-        let workload = parse_workload(&workload.get())?;
         let mode = parse_mode(&mode.get())?;
+        let workload = if mode == Mode::Scan {
+            anyhow::ensure!(
+                workload.get() == "",
+                "workload type cannot be specified for scan mode",
+            );
+            WorkloadType::Scan
+        } else {
+            parse_workload(&workload.get())?
+        };
         let consistency_level = parse_consistency_level(&consistency_level.get())?;
         let distribution = parse_timeseries_distribution(&distribution.get())?;
         let mut start_timestamp = start_timestamp.get();
@@ -498,7 +506,7 @@ fn parse_workload(s: &str) -> Result<WorkloadType> {
         "sequential" => Ok(WorkloadType::Sequential),
         "uniform" => Ok(WorkloadType::Uniform),
         "timeseries" => Ok(WorkloadType::Timeseries),
-        "scan" => Ok(WorkloadType::Scan),
+        // scan workload cannot be specified through CLI
         "" => Err(anyhow::anyhow!("workload type needs to be specified")),
         _ => Err(anyhow::anyhow!("unknown workload type: {}", s)),
     }
