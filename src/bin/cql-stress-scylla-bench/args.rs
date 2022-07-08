@@ -41,7 +41,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub password: String,
     pub mode: Mode,
     // latencyType    string
-    // maxErrorsAtRow int
+    pub max_retries_per_op: u64,
     pub concurrency: u64,
     pub maximum_rate: u64,
 
@@ -164,6 +164,13 @@ where
         "mode",
         "",
         "operating mode: write, read, counter_update, counter_read, scan",
+    );
+    let max_errors_at_row = flag.u64_var(
+        "error-at-row-limit",
+        0,
+        "the maximum number of attempts allowed for a single operation. \
+        After exceeding it, the workflow will terminate with an error. \
+        Set to 0 if you want to have unlimited retries",
     );
     let concurrency = flag.u64_var("concurrency", 16, "number of used tasks");
     let maximum_rate = flag.u64_var(
@@ -290,6 +297,11 @@ where
             }
         }
 
+        // Zero means unlimited tries,
+        // and #tries == #retries + 1,
+        // therefore just subtract with wraparound and treat u64::MAX as infinity
+        let max_retries_per_op = max_errors_at_row.get().wrapping_sub(1);
+
         Ok(ScyllaBenchArgs {
             workload,
             consistency_level,
@@ -315,6 +327,7 @@ where
             password: password.get(),
             mode,
             concurrency,
+            max_retries_per_op,
             maximum_rate,
             test_duration: test_duration.get(),
             partition_count,
