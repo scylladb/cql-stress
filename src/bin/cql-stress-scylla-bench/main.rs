@@ -119,9 +119,7 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
     let session = Arc::new(session);
 
     create_schema(&session, &args).await?;
-    let workload_factory = create_workload_factory(&args)?;
-    let operation_factory =
-        create_operation_factory(session, stats, Arc::clone(&args), workload_factory).await?;
+    let operation_factory = create_operation_factory(session, stats, Arc::clone(&args)).await?;
 
     let max_duration = (args.test_duration > Duration::ZERO).then(|| args.test_duration);
     let rate_limit_per_second = (args.maximum_rate > 0).then(|| args.maximum_rate as f64);
@@ -212,15 +210,16 @@ async fn create_operation_factory(
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
     args: Arc<ScyllaBenchArgs>,
-    workload_factory: Box<dyn WorkloadFactory>,
 ) -> Result<Arc<dyn OperationFactory>> {
     match &args.mode {
         Mode::Write => {
+            let workload_factory = create_workload_factory(&args)?;
             let factory =
                 WriteOperationFactory::new(session, stats, workload_factory, args).await?;
             Ok(Arc::new(factory))
         }
         Mode::Read => {
+            let workload_factory = create_workload_factory(&args)?;
             let factory = ReadOperationFactory::new(
                 session,
                 stats,
@@ -232,11 +231,13 @@ async fn create_operation_factory(
             Ok(Arc::new(factory))
         }
         Mode::CounterUpdate => {
+            let workload_factory = create_workload_factory(&args)?;
             let factory =
                 CounterUpdateOperationFactory::new(session, stats, workload_factory, args).await?;
             Ok(Arc::new(factory))
         }
         Mode::CounterRead => {
+            let workload_factory = create_workload_factory(&args)?;
             let factory = ReadOperationFactory::new(
                 session,
                 stats,
