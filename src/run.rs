@@ -53,6 +53,7 @@ struct WorkerContext {
     operation_factory: Arc<dyn OperationFactory>,
 
     rate_limiter: Option<RateLimiter>,
+    max_retries_per_op: usize,
 }
 
 impl WorkerContext {
@@ -64,6 +65,7 @@ impl WorkerContext {
             rate_limiter: config
                 .rate_limit_per_second
                 .map(|rate| RateLimiter::new(now, rate)),
+            max_retries_per_op: config.max_retries_per_op,
         }
     }
 
@@ -86,25 +88,27 @@ impl WorkerContext {
     pub async fn run_worker(&self) -> Result<()> {
         let mut operation = self.operation_factory.create();
 
-        while let Some(op_id) = self.issue_operation_id() {
-            let scheduled_start_time = if let Some(rate_limiter) = &self.rate_limiter {
-                let start_time = rate_limiter.issue_next_start_time();
-                tokio::time::sleep_until(start_time).await;
-                start_time
-            } else {
-                Instant::now()
-            };
+        'ops: while let Some(op_id) = self.issue_operation_id() {
+            'trying: for trial_idx in 0.. {
+                let scheduled_start_time = if let Some(rate_limiter) = &self.rate_limiter {
+                    let start_time = rate_limiter.issue_next_start_time();
+                    tokio::time::sleep_until(start_time).await;
+                    start_time
+                } else {
+                    Instant::now()
+                };
 
-            let ctx = OperationContext {
-                operation_id: op_id,
-                scheduled_start_time,
-            };
+                let ctx = OperationContext {
+                    operation_id: op_id,
+                    scheduled_start_time,
+                };
 
-            // TODO: Allow specifying a strategy for retrying in case of error
-            match operation.execute(&ctx).await {
-                Ok(ControlFlow::Continue(_)) => continue,
-                Ok(ControlFlow::Break(_)) => break,
-                Err(err) => return Err(err),
+                match operation.execute(&ctx).await {
+                    Ok(ControlFlow::Continue(_)) => continue 'ops,
+                    Ok(ControlFlow::Break(_)) => break 'ops,
+                    Err(err) if trial_idx >= self.max_retries_per_op => return Err(err),
+                    Err(_) => continue 'trying,
+                }
             }
         }
 
@@ -223,8 +227,10 @@ async fn do_run(config: Configuration, stop_receiver: oneshot::Receiver<()>) -> 
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
+    use std::sync::Mutex;
 
     use tokio::sync::Semaphore;
     use tokio::time::Instant;
@@ -276,6 +282,7 @@ mod tests {
             concurrency: 10,
             rate_limit_per_second: None,
             operation_factory: Arc::new(FnOperationFactory(f)),
+            max_retries_per_op: 0,
         }
     }
 
@@ -390,5 +397,48 @@ mod tests {
         // Abort and check that the stuck operations weren't a problem
         ctrl.abort();
         fut.await.unwrap_err();
+    }
+
+    struct AlternatingSuccessFailOp {
+        tried_ops: Mutex<HashSet<u64>>,
+    }
+
+    impl AlternatingSuccessFailOp {
+        fn new() -> Self {
+            AlternatingSuccessFailOp {
+                tried_ops: Mutex::new(HashSet::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Operation for AlternatingSuccessFailOp {
+        async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
+            if ctx.operation_id >= 100 {
+                return Ok(ControlFlow::Break(()));
+            }
+
+            let mut lock = self.tried_ops.lock().unwrap();
+            let was_missing = lock.insert(ctx.operation_id);
+            if was_missing {
+                // First visit, so fail
+                Err(anyhow::anyhow!("oops"))
+            } else {
+                // Already tried and failed - return success this time
+                Ok(ControlFlow::Continue(()))
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_retrying() {
+        let cfg = make_test_cfg(AlternatingSuccessFailOp::new);
+        let (_, fut) = run(cfg);
+        fut.await.unwrap_err(); // Expect error as there were no retries
+
+        let mut cfg = make_test_cfg(AlternatingSuccessFailOp::new);
+        cfg.max_retries_per_op = 1;
+        let (_, fut) = run(cfg);
+        fut.await.unwrap(); // Expect success as each op was retried
     }
 }
