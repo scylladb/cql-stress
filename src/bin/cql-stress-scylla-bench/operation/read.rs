@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +11,7 @@ use scylla::{prepared_statement::PreparedStatement, Session};
 use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
 
 use crate::args::{OrderBy, ScyllaBenchArgs};
+use crate::operation::ReadContext;
 use crate::stats::ShardedStats;
 use crate::workload::{Workload, WorkloadFactory};
 
@@ -145,26 +145,6 @@ impl OperationFactory for ReadOperationFactory {
 
             current_statement_idx: 0,
         })
-    }
-}
-
-#[derive(Default)]
-struct ReadContext {
-    pub errors: u64,
-    pub rows_read: u64,
-}
-
-impl ReadContext {
-    pub fn failed_read(&mut self, err: &impl Display) {
-        println!("failed to execute a read: {}", err);
-        self.errors += 1;
-    }
-    pub fn data_corruption(&mut self, pk: i64, ck: i64, err: &impl Display) {
-        println!("data corruption in pk({}), ck({}): {}", pk, ck, err);
-        self.errors += 1;
-    }
-    pub fn row_read(&mut self) {
-        self.rows_read += 1;
     }
 }
 

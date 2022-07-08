@@ -1,6 +1,9 @@
 pub mod counter_update;
 pub mod read;
+pub mod scan;
 pub mod write;
+
+use std::fmt::Display;
 
 use anyhow::Result;
 use rand::RngCore;
@@ -146,6 +149,26 @@ pub(self) fn validate_counter_row_data(
     );
 
     Ok(())
+}
+
+#[derive(Default)]
+pub struct ReadContext {
+    pub errors: u64,
+    pub rows_read: u64,
+}
+
+impl ReadContext {
+    pub fn failed_read(&mut self, err: &impl Display) {
+        println!("failed to execute a read: {}", err);
+        self.errors += 1;
+    }
+    pub fn data_corruption(&mut self, pk: i64, ck: i64, err: &impl Display) {
+        println!("data corruption in pk({}), ck({}): {}", pk, ck, err);
+        self.errors += 1;
+    }
+    pub fn row_read(&mut self) {
+        self.rows_read += 1;
+    }
 }
 
 #[cfg(test)]
