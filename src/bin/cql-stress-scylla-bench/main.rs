@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::{transport::Compression, Session, SessionBuilder};
 
@@ -23,7 +24,9 @@ use cql_stress::run::RunController;
 use cql_stress::sharded_stats::{Stats as _, StatsFactory as _};
 
 use crate::args::{Mode, ScyllaBenchArgs, WorkloadType};
-use crate::operation::read::ReadOperationFactory;
+use crate::operation::counter_update::CounterUpdateOperationFactory;
+use crate::operation::read::{ReadKind, ReadOperationFactory};
+use crate::operation::scan::ScanOperationFactory;
 use crate::operation::write::WriteOperationFactory;
 use crate::stats::{ShardedStats, StatsFactory, StatsPrinter};
 use crate::workload::{
@@ -117,9 +120,7 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
     let session = Arc::new(session);
 
     create_schema(&session, &args).await?;
-    let workload_factory = create_workload_factory(&args)?;
-    let operation_factory =
-        create_operation_factory(session, stats, Arc::clone(&args), workload_factory).await?;
+    let operation_factory = create_operation_factory(session, stats, Arc::clone(&args)).await?;
 
     let max_duration = (args.test_duration > Duration::ZERO).then(|| args.test_duration);
     let rate_limit_per_second = (args.maximum_rate > 0).then(|| args.maximum_rate as f64);
@@ -190,7 +191,17 @@ async fn create_schema(session: &Session, args: &ScyllaBenchArgs) -> Result<()> 
         WITH compression = {{ }}",
         args.table_name,
     );
-    session.query(create_regular_table_query_str, ()).await?;
+    let q1 = session.query(create_regular_table_query_str, ());
+
+    let create_counter_table_query_str = format!(
+        "CREATE TABLE IF NOT EXISTS {} \
+        (pk bigint, ck bigint, c1 counter, c2 counter, c3 counter, c4 counter, c5 counter, PRIMARY KEY (pk, ck)) \
+        WITH compression = {{ }}",
+        args.counter_table_name,
+    );
+    let q2 = session.query(create_counter_table_query_str, ());
+
+    future::try_join(q1, q2).await?;
     session.await_schema_agreement().await?;
 
     Ok(())
@@ -200,21 +211,47 @@ async fn create_operation_factory(
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
     args: Arc<ScyllaBenchArgs>,
-    workload_factory: Box<dyn WorkloadFactory>,
 ) -> Result<Arc<dyn OperationFactory>> {
     match &args.mode {
         Mode::Write => {
+            let workload_factory = create_workload_factory(&args)?;
             let factory =
                 WriteOperationFactory::new(session, stats, workload_factory, args).await?;
             Ok(Arc::new(factory))
         }
         Mode::Read => {
-            let factory = ReadOperationFactory::new(session, stats, workload_factory, args).await?;
+            let workload_factory = create_workload_factory(&args)?;
+            let factory = ReadOperationFactory::new(
+                session,
+                stats,
+                ReadKind::Regular,
+                workload_factory,
+                args,
+            )
+            .await?;
             Ok(Arc::new(factory))
         }
-        mode => {
-            // TODO: Implement more later
-            Err(anyhow::anyhow!("Mode not implemented: {:?}", mode))
+        Mode::CounterUpdate => {
+            let workload_factory = create_workload_factory(&args)?;
+            let factory =
+                CounterUpdateOperationFactory::new(session, stats, workload_factory, args).await?;
+            Ok(Arc::new(factory))
+        }
+        Mode::CounterRead => {
+            let workload_factory = create_workload_factory(&args)?;
+            let factory = ReadOperationFactory::new(
+                session,
+                stats,
+                ReadKind::Counter,
+                workload_factory,
+                args,
+            )
+            .await?;
+            Ok(Arc::new(factory))
+        }
+        Mode::Scan => {
+            let factory = ScanOperationFactory::new(session, stats, args).await?;
+            Ok(Arc::new(factory))
         }
     }
 }

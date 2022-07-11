@@ -1,5 +1,9 @@
+pub mod counter_update;
 pub mod read;
+pub mod scan;
 pub mod write;
+
+use std::fmt::Display;
 
 use anyhow::Result;
 use rand::RngCore;
@@ -113,6 +117,58 @@ pub(self) fn validate_row_data(pk: i64, ck: i64, data: &[u8]) -> Result<()> {
     );
 
     Ok(())
+}
+
+pub(self) fn validate_counter_row_data(
+    pk: i64,
+    ck: i64,
+    c1: i64,
+    c2: i64,
+    c3: i64,
+    c4: i64,
+    c5: i64,
+) -> Result<()> {
+    let update_num = if ck == 0 { c2 } else { c1 / ck };
+    let ok = c1 != ck * update_num
+        || c2 != c1 + update_num
+        || c3 != c2 + update_num
+        || c4 != c3 + update_num
+        || c5 != c4 + update_num;
+
+    anyhow::ensure!(
+        ok,
+        "Corrupt counter data: invalid counter values, \
+        pk: {}, ck: {}, c1: {}, c2: {}, c3: {}, c4: {}, c5: {}",
+        pk,
+        ck,
+        c1,
+        c2,
+        c3,
+        c4,
+        c5,
+    );
+
+    Ok(())
+}
+
+#[derive(Default)]
+pub struct ReadContext {
+    pub errors: u64,
+    pub rows_read: u64,
+}
+
+impl ReadContext {
+    pub fn failed_read(&mut self, err: &impl Display) {
+        println!("failed to execute a read: {}", err);
+        self.errors += 1;
+    }
+    pub fn data_corruption(&mut self, pk: i64, ck: i64, err: &impl Display) {
+        println!("data corruption in pk({}), ck({}): {}", pk, ck, err);
+        self.errors += 1;
+    }
+    pub fn row_read(&mut self) {
+        self.rows_read += 1;
+    }
 }
 
 #[cfg(test)]

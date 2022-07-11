@@ -36,6 +36,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub tls_encryption: bool,
     pub keyspace_name: String,
     pub table_name: String,
+    pub counter_table_name: String,
     pub username: String,
     pub password: String,
     pub mode: Mode,
@@ -56,7 +57,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub no_lower_bound: bool,
     pub bypass_cache: bool,
 
-    // rangeCount int
+    pub range_count: u64,
     pub timeout: Duration,
     pub iterations: u64,
     // // Any error response that comes with delay greater than errorToTimeoutCutoffTime
@@ -155,6 +156,8 @@ where
     );
     let keyspace_name = flag.string_var("keyspace", "scylla_bench", "keyspace to use");
     let table_name = flag.string_var("table", "test", "table to use");
+    let counter_table_name =
+        flag.string_var("counter-table", "test_counters", "counter table to use");
     let username = flag.string_var("username", "", "cql username for authentication");
     let password = flag.string_var("password", "", "cql password for authentication");
     let mode = flag.string_var(
@@ -217,6 +220,11 @@ where
         "Execute queries with the \"BYPASS CACHE\" CQL clause",
     );
 
+    let range_count = flag.u64_var(
+        "range-count",
+        1,
+        "number of ranges to split the token space into (relevant only for scan mode)",
+    );
     let timeout = flag.duration_var("timeout", Duration::from_secs(5), "request timeout");
     let iterations = flag.u64_var(
         "iterations",
@@ -237,8 +245,16 @@ where
         parser.parse_args(args)?;
 
         let nodes = nodes.get().split(',').map(str::to_string).collect();
-        let workload = parse_workload(&workload.get())?;
         let mode = parse_mode(&mode.get())?;
+        let workload = if mode == Mode::Scan {
+            anyhow::ensure!(
+                workload.get() == "",
+                "workload type cannot be specified for scan mode",
+            );
+            WorkloadType::Scan
+        } else {
+            parse_workload(&workload.get())?
+        };
         let consistency_level = parse_consistency_level(&consistency_level.get())?;
         let distribution = parse_timeseries_distribution(&distribution.get())?;
         let mut start_timestamp = start_timestamp.get();
@@ -294,6 +310,7 @@ where
             tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),
             table_name: table_name.get(),
+            counter_table_name: counter_table_name.get(),
             username: username.get(),
             password: password.get(),
             mode,
@@ -309,6 +326,7 @@ where
             select_order_by,
             no_lower_bound: no_lower_bound.get(),
             bypass_cache: bypass_cache.get(),
+            range_count: range_count.get(),
             timeout: timeout.get(),
             iterations: iterations.get(),
             validate_data: validate_data.get(),
@@ -488,7 +506,7 @@ fn parse_workload(s: &str) -> Result<WorkloadType> {
         "sequential" => Ok(WorkloadType::Sequential),
         "uniform" => Ok(WorkloadType::Uniform),
         "timeseries" => Ok(WorkloadType::Timeseries),
-        "scan" => Ok(WorkloadType::Scan),
+        // scan workload cannot be specified through CLI
         "" => Err(anyhow::anyhow!("workload type needs to be specified")),
         _ => Err(anyhow::anyhow!("unknown workload type: {}", s)),
     }
