@@ -103,6 +103,7 @@ impl Operation for WriteOperation {
         let mut stats = self.stats.get_shard_mut();
         stats.account_op(ctx.scheduled_start_time, &result, cks.len());
 
+        result?;
         Ok(ControlFlow::Continue(()))
     }
 }

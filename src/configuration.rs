@@ -31,6 +31,10 @@ pub struct Configuration {
     /// A factory which creates operations that will be executed'
     /// during the stress.
     pub operation_factory: Arc<dyn OperationFactory>,
+
+    /// The maximum number of attempts an operation should be retried
+    /// before giving up.
+    pub max_retries_per_op: usize,
 }
 
 /// Contains all necessary context needed to execute an Operation.
