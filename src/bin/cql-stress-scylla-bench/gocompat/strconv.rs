@@ -147,7 +147,7 @@ pub fn parse_duration(mut s: &str) -> Result<Duration> {
     while !s.is_empty() {
         // Consume a number (possibly floating point)
         let number_end = s
-            .find(|c: char| c != '.' && !c.is_digit(10))
+            .find(|c: char| c != '.' && !c.is_ascii_digit())
             .unwrap_or(s.len());
         let (number_s, rest) = s.split_at(number_end);
         s = rest;
@@ -156,7 +156,7 @@ pub fn parse_duration(mut s: &str) -> Result<Duration> {
 
         // Consume a unit
         let unit_end = s
-            .find(|c: char| c == '.' || c.is_digit(10))
+            .find(|c: char| c == '.' || c.is_ascii_digit())
             .unwrap_or(s.len());
         let (unit, rest) = s.split_at(unit_end);
         s = rest;
