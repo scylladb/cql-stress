@@ -9,6 +9,7 @@ use scylla::statement::Consistency;
 use crate::distribution::{parse_distribution, Distribution, Fixed};
 use crate::gocompat::flags::{GoValue, ParserBuilder};
 use crate::gocompat::strconv::format_duration;
+use crate::stats::LatencyType;
 
 // Explicitly marked as `pub(crate)`, because with `pub` rustc doesn't
 // complain about fields which are never read
@@ -40,7 +41,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub username: String,
     pub password: String,
     pub mode: Mode,
-    // latencyType    string
+    pub latency_type: LatencyType,
     pub max_retries_per_op: u64,
     pub concurrency: u64,
     pub maximum_rate: u64,
@@ -164,6 +165,11 @@ where
         "mode",
         "",
         "operating mode: write, read, counter_update, counter_read, scan",
+    );
+    let latency_type = flag.string_var(
+        "latency-type",
+        "raw",
+        "type of the latency to print during the run: raw, fixed-coordinated-omission",
     );
     let max_errors_at_row = flag.u64_var(
         "error-at-row-limit",
@@ -297,6 +303,12 @@ where
             }
         }
 
+        let latency_type = match latency_type.get().as_str() {
+            "raw" => LatencyType::Raw,
+            "fixed-coordinated-omission" => LatencyType::AdjustedForCoordinatorOmission,
+            s => return Err(anyhow::anyhow!("Unsupported latency type: {}; supported types are: raw, fixed-coordinated-omission", s)),
+        };
+
         // Zero means unlimited tries,
         // and #tries == #retries + 1,
         // therefore just subtract with wraparound and treat u64::MAX as infinity
@@ -327,6 +339,7 @@ where
             password: password.get(),
             mode,
             concurrency,
+            latency_type,
             max_retries_per_op,
             maximum_rate,
             test_duration: test_duration.get(),

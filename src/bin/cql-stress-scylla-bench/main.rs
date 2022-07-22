@@ -29,7 +29,7 @@ use crate::operation::counter_update::CounterUpdateOperationFactory;
 use crate::operation::read::{ReadKind, ReadOperationFactory};
 use crate::operation::scan::ScanOperationFactory;
 use crate::operation::write::WriteOperationFactory;
-use crate::stats::{LatencyType, ShardedStats, StatsFactory, StatsPrinter};
+use crate::stats::{ShardedStats, StatsFactory, StatsPrinter};
 use crate::workload::{
     SequentialConfig, SequentialFactory, TimeseriesReadConfig, TimeseriesReadFactory,
     TimeseriesWriteConfig, TimeseriesWriteFactory, UniformConfig, UniformFactory, WorkloadFactory,
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
     let stats_factory = Arc::new(StatsFactory);
     let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
 
-    let run_config = prepare(sb_config, Arc::clone(&sharded_stats))
+    let run_config = prepare(sb_config.clone(), Arc::clone(&sharded_stats))
         .await
         .context("Failed to prepare the benchmark")?;
 
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     // from being stopped.
     tokio::task::spawn(stop_on_signal(Arc::clone(&ctrl)));
 
-    let printer = StatsPrinter::new(Some(LatencyType::AdjustedForCoordinatorOmission));
+    let printer = StatsPrinter::new(Some(sb_config.latency_type));
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
     futures::pin_mut!(run_finished);
 
