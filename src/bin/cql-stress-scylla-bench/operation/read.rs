@@ -160,8 +160,8 @@ impl Operation for ReadOperation {
 
         let mut values = SerializedValues::new();
         values.add_value(&pk)?;
-        for ck in cks {
-            values.add_value(&ck)?;
+        for ck in cks.iter() {
+            values.add_value(ck)?;
         }
 
         let stmt = self.statements[self.current_statement_idx].clone();
@@ -170,7 +170,7 @@ impl Operation for ReadOperation {
         let result = self.do_execute(&mut rctx, pk, stmt, values).await;
 
         if let Err(err) = &result {
-            rctx.failed_read(err);
+            rctx.failed_read(err, pk, &cks);
         }
 
         let mut stats_lock = self.stats.get_shard_mut();

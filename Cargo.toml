@@ -19,3 +19,4 @@ rand_pcg = "0.3"
 sha2 = "0.10"
 thread_local = "1.1.4"
 tokio = { version = "1.15.0", features = ["full"] } # TODO: Include only necessary features
+tracing = "0.1.35"

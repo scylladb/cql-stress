@@ -85,25 +85,6 @@ impl Operation for ScanOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         let mut rctx = ReadContext::default();
 
-        let result = self.do_execute(&mut rctx).await;
-
-        if let Err(err) = &result {
-            rctx.failed_read(err);
-        }
-
-        let mut stats_lock = self.stats.get_shard_mut();
-        let stats = &mut *stats_lock;
-        stats.operations += 1;
-        stats.errors += rctx.errors;
-        stats.clustering_rows += rctx.rows_read;
-        stats_lock.account_latency(ctx.scheduled_start_time);
-
-        result
-    }
-}
-
-impl ScanOperation {
-    async fn do_execute(&mut self, rctx: &mut ReadContext) -> Result<ControlFlow<()>> {
         let range_idx = self
             .shared_state
             .next_range_idx
@@ -120,10 +101,34 @@ impl ScanOperation {
         let range_begin = calc_bound(range_idx);
         let range_end = calc_bound(range_idx + 1);
 
+        let result = self.do_execute(&mut rctx, range_begin, range_end).await;
+
+        if let Err(err) = &result {
+            rctx.failed_scan(err, range_begin, range_end);
+        }
+
+        let mut stats_lock = self.stats.get_shard_mut();
+        let stats = &mut *stats_lock;
+        stats.operations += 1;
+        stats.errors += rctx.errors;
+        stats.clustering_rows += rctx.rows_read;
+        stats_lock.account_latency(ctx.scheduled_start_time);
+
+        result
+    }
+}
+
+impl ScanOperation {
+    async fn do_execute(
+        &mut self,
+        rctx: &mut ReadContext,
+        first: i64,
+        last: i64,
+    ) -> Result<ControlFlow<()>> {
         let iter = tokio::time::timeout(
             self.timeout,
             self.session
-                .execute_iter(self.statement.clone(), (range_begin, range_end)),
+                .execute_iter(self.statement.clone(), (first, last)),
         )
         .await??;
 
