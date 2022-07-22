@@ -22,7 +22,8 @@ impl sharded_stats::StatsFactory for StatsFactory {
             operations: 0,
             clustering_rows: 0,
             errors: 0,
-            latency: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
+            raw_latency: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
+            co_fixed_latency: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
 
             latency_resolution: 1,
         }
@@ -33,7 +34,10 @@ pub struct Stats {
     pub operations: u64,
     pub clustering_rows: u64,
     pub errors: u64,
-    pub latency: Histogram<u64>,
+
+    // Latency, measured both with and without the coordinated omission fix
+    pub raw_latency: Histogram<u64>,
+    pub co_fixed_latency: Histogram<u64>,
 
     // Do not change in workloads, this should be constant
     pub latency_resolution: u64,
@@ -44,14 +48,16 @@ impl sharded_stats::Stats for Stats {
         self.operations = 0;
         self.clustering_rows = 0;
         self.errors = 0;
-        self.latency.reset();
+        self.raw_latency.reset();
+        self.co_fixed_latency.reset();
     }
 
     fn combine(&mut self, other: &Self) {
         self.operations += other.operations;
         self.clustering_rows += other.clustering_rows;
         self.errors += other.errors;
-        self.latency.add(&other.latency).unwrap();
+        self.raw_latency.add(&other.raw_latency).unwrap();
+        self.co_fixed_latency.add(&other.co_fixed_latency).unwrap();
     }
 }
 
@@ -72,27 +78,43 @@ impl Stats {
     pub fn account_latency(&mut self, ctx: &OperationContext) {
         let now = Instant::now();
         let _ = self
-            .latency
+            .raw_latency
+            .record((now - ctx.actual_start_time).as_nanos() as u64);
+        let _ = self
+            .co_fixed_latency
             .record((now - ctx.scheduled_start_time).as_nanos() as u64);
     }
+
+    pub fn get_histogram(&self, typ: LatencyType) -> &Histogram<u64> {
+        match typ {
+            LatencyType::Raw => &self.raw_latency,
+            LatencyType::AdjustedForCoordinatorOmission => &self.co_fixed_latency,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum LatencyType {
+    Raw,
+    AdjustedForCoordinatorOmission,
 }
 
 // TODO: Should we have two impls, one with latency and another without?
 pub struct StatsPrinter {
     start_time: Instant,
-    with_latency: bool,
+    latency_type: Option<LatencyType>,
 }
 
 impl StatsPrinter {
-    pub fn new(with_latency: bool) -> Self {
+    pub fn new(latency_type: Option<LatencyType>) -> Self {
         Self {
             start_time: Instant::now(),
-            with_latency,
+            latency_type,
         }
     }
 
     pub fn print_header(&self, out: &mut impl Write) -> Result<()> {
-        if self.with_latency {
+        if self.latency_type.is_some() {
             writeln!(
                 out,
                 "{:9} {:>7} {:>7} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6}",
@@ -121,14 +143,17 @@ impl StatsPrinter {
 
     pub fn print_partial(&self, stats: &Stats, out: &mut impl Write) -> Result<()> {
         let time = Instant::now() - self.start_time;
-        if self.with_latency {
-            let p50 = Duration::from_nanos(stats.latency.value_at_quantile(0.5));
-            let p90 = Duration::from_nanos(stats.latency.value_at_quantile(0.9));
-            let p95 = Duration::from_nanos(stats.latency.value_at_quantile(0.95));
-            let p99 = Duration::from_nanos(stats.latency.value_at_quantile(0.99));
-            let p999 = Duration::from_nanos(stats.latency.value_at_quantile(0.999));
-            let max = Duration::from_nanos(stats.latency.max());
-            let mean = Duration::from_nanos(stats.latency.mean() as u64);
+
+        if let Some(typ) = self.latency_type {
+            let histogram = stats.get_histogram(typ);
+
+            let p50 = Duration::from_nanos(histogram.value_at_quantile(0.5));
+            let p90 = Duration::from_nanos(histogram.value_at_quantile(0.9));
+            let p95 = Duration::from_nanos(histogram.value_at_quantile(0.95));
+            let p99 = Duration::from_nanos(histogram.value_at_quantile(0.99));
+            let p999 = Duration::from_nanos(histogram.value_at_quantile(0.999));
+            let max = Duration::from_nanos(histogram.max());
+            let mean = Duration::from_nanos(histogram.mean() as u64);
             writeln!(
                 out,
                 "{:9} {:>7} {:>7} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6}",
@@ -175,8 +200,8 @@ impl StatsPrinter {
         let rows_per_second = stats.clustering_rows as f64 / time.as_secs_f64();
         writeln!(out, "Rows/s:\t\t{}", rows_per_second)?;
 
-        // TODO: co-fixed latency
-        self.print_final_latency_histogram("raw latency", &stats.latency, out)?;
+        self.print_final_latency_histogram("raw latency", &stats.raw_latency, out)?;
+        self.print_final_latency_histogram("c-o fixed latency", &stats.co_fixed_latency, out)?;
 
         // TODO: "critical errors"
 
