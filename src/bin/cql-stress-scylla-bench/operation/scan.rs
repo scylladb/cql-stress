@@ -108,7 +108,7 @@ impl Operation for ScanOperation {
         stats.operations += 1;
         stats.errors += rctx.errors;
         stats.clustering_rows += rctx.rows_read;
-        stats_lock.account_latency(ctx.scheduled_start_time);
+        stats_lock.account_latency(ctx);
 
         result
     }

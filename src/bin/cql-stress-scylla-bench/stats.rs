@@ -5,6 +5,7 @@ use anyhow::Result;
 use hdrhistogram::Histogram;
 use tokio::time::Instant;
 
+use cql_stress::configuration::OperationContext;
 use cql_stress::sharded_stats;
 
 use crate::gocompat::strconv::format_duration;
@@ -55,12 +56,12 @@ impl sharded_stats::Stats for Stats {
 }
 
 impl Stats {
-    pub fn account_op(&mut self, op_start: Instant, result: &Result<()>, rows: usize) {
+    pub fn account_op(&mut self, ctx: &OperationContext, result: &Result<()>, rows: usize) {
         self.operations += 1;
         match result {
             Ok(()) => {
                 self.clustering_rows += rows as u64;
-                self.account_latency(op_start);
+                self.account_latency(ctx);
             }
             Err(_) => {
                 self.errors += 1;
@@ -68,9 +69,11 @@ impl Stats {
         }
     }
 
-    pub fn account_latency(&mut self, op_start: Instant) {
-        let op_latency = Instant::now() - op_start;
-        let _ = self.latency.record(op_latency.as_nanos() as u64);
+    pub fn account_latency(&mut self, ctx: &OperationContext) {
+        let now = Instant::now();
+        let _ = self
+            .latency
+            .record((now - ctx.scheduled_start_time).as_nanos() as u64);
     }
 }
 
