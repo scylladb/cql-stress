@@ -8,6 +8,7 @@ use std::fmt::Display;
 use anyhow::Result;
 use rand::RngCore;
 use sha2::{Digest, Sha256};
+use tracing::error;
 
 const GENERATED_DATA_HEADER_SIZE: usize = 24;
 const GENERATED_DATA_MIN_SIZE: usize = GENERATED_DATA_HEADER_SIZE + 33;
@@ -158,12 +159,32 @@ pub struct ReadContext {
 }
 
 impl ReadContext {
-    pub fn failed_read(&mut self, err: &impl Display) {
-        println!("failed to execute a read: {}", err);
+    pub fn failed_read(&mut self, err: &impl Display, pk: i64, cks: &[i64]) {
+        error!(
+            error = %err,
+            partition_key = pk,
+            clustering_keys = ?cks,
+            "read error",
+        );
+        self.errors += 1;
+    }
+    pub fn failed_scan(&mut self, err: &impl Display, first: i64, last: i64) {
+        error!(
+            error = %err,
+            first_token = first,
+            last_token = last,
+            "scan error",
+        );
         self.errors += 1;
     }
     pub fn data_corruption(&mut self, pk: i64, ck: i64, err: &impl Display) {
-        println!("data corruption in pk({}), ck({}): {}", pk, ck, err);
+        eprintln!("data corruption in pk({}), ck({}): {}", pk, ck, err);
+        error!(
+            error = %err,
+            partition_key = pk,
+            clustering_key = ck,
+            "data corruption",
+        );
         self.errors += 1;
     }
     pub fn row_read(&mut self) {

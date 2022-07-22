@@ -349,10 +349,10 @@ where
     match result {
         Ok(config) => Some(config),
         Err(err) => {
-            // TODO: Should we print to stdout or stderr?
-            println!("Failed to parse flags: {:?}", err);
+            eprintln!("Failed to parse flags: {:?}", err);
             if print_usage_on_fail {
-                desc.print_help(program_name.as_ref());
+                desc.print_help(&mut std::io::stderr(), program_name.as_ref())
+                    .unwrap();
             }
             None
         }

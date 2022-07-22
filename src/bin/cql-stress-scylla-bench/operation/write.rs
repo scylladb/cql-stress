@@ -10,6 +10,7 @@ use scylla::{
     prepared_statement::PreparedStatement,
     Session,
 };
+use tracing::error;
 
 use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
 
@@ -97,7 +98,12 @@ impl Operation for WriteOperation {
         };
 
         if let Err(err) = result.as_ref() {
-            println!("failed to execute a write: {}", err);
+            error!(
+                error = %err,
+                partition_key = pk,
+                clustering_keys = ?cks,
+                "write error",
+            );
         }
 
         let mut stats = self.stats.get_shard_mut();
