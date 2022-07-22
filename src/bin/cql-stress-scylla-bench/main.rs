@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
 
     let sb_config = match args::parse_scylla_bench_args(std::env::args(), true) {
         Some(sb_config) => sb_config,
-        None => return Ok(()), // TODO: Return some kind of error
+        None => return Err(anyhow::anyhow!("Failed to parse the CLI arguments")),
     };
     let sb_config = Arc::new(sb_config);
 
