@@ -63,7 +63,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub iterations: u64,
     // // Any error response that comes with delay greater than errorToTimeoutCutoffTime
     // // to be considered as timeout error and recorded to histogram as such
-    // measureLatency           bool
+    pub measure_latency: bool,
     // hdrLatencyFile           string
     // hdrLatencyUnits          string
     // hdrLatencySigFig         int
@@ -246,6 +246,8 @@ where
         that have a defined number of ops to execute)",
     );
 
+    let measure_latency = flag.bool_var("measure-latency", true, "measure request latency");
+
     let validate_data = flag.bool_var(
         "validate-data",
         false,
@@ -355,6 +357,7 @@ where
             range_count: range_count.get(),
             timeout: timeout.get(),
             iterations: iterations.get(),
+            measure_latency: measure_latency.get(),
             validate_data: validate_data.get(),
         })
     }();

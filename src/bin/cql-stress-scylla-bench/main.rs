@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
 
     sb_config.print_configuration();
 
-    let stats_factory = Arc::new(StatsFactory::new(true));
+    let stats_factory = Arc::new(StatsFactory::new(sb_config.measure_latency));
     let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
 
     let run_config = prepare(sb_config.clone(), Arc::clone(&sharded_stats))
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     // from being stopped.
     tokio::task::spawn(stop_on_signal(Arc::clone(&ctrl)));
 
-    let printer = StatsPrinter::new(Some(sb_config.latency_type));
+    let printer = StatsPrinter::new(sb_config.measure_latency.then(|| sb_config.latency_type));
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
     futures::pin_mut!(run_finished);
 
