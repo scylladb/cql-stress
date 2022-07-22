@@ -65,7 +65,7 @@ pub(crate) struct ScyllaBenchArgs {
     // // to be considered as timeout error and recorded to histogram as such
     pub measure_latency: bool,
     // hdrLatencyFile           string
-    // hdrLatencyUnits          string
+    pub hdr_latency_resolution: u64,
     pub hdr_latency_sig_fig: u64,
     pub validate_data: bool,
 }
@@ -248,6 +248,11 @@ where
 
     let measure_latency = flag.bool_var("measure-latency", true, "measure request latency");
 
+    let hdr_latency_units = flag.string_var(
+        "hdr-latency-units",
+        "ns",
+        "ns (nano seconds), us (microseconds), ms (milliseconds)",
+    );
     let hdr_latency_sig_fig = flag.u64_var(
         "hdr-latency-sig",
         3,
@@ -322,6 +327,13 @@ where
         // therefore just subtract with wraparound and treat u64::MAX as infinity
         let max_retries_per_op = max_errors_at_row.get().wrapping_sub(1);
 
+        let hdr_latency_resolution = match hdr_latency_units.get().as_str() {
+            "ns" => 1,
+            "us" => 1000,
+            "ms" => 1000 * 1000,
+            _ => return Err(anyhow::anyhow!("Unsupported units for hdr-latency-units, supported units are: ns, us,ms"))
+        };
+
         let hdr_latency_sig_fig = hdr_latency_sig_fig.get();
         if !(1..=5).contains(&hdr_latency_sig_fig) {
             return Err(anyhow::anyhow!(
@@ -372,6 +384,7 @@ where
             iterations: iterations.get(),
             measure_latency: measure_latency.get(),
             hdr_latency_sig_fig,
+            hdr_latency_resolution,
             validate_data: validate_data.get(),
         })
     }();

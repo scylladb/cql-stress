@@ -16,6 +16,7 @@ pub type ShardedStats = sharded_stats::ShardedStats<StatsFactory>;
 pub struct StatsFactory {
     measure_latency: bool,
     latency_sig_fig: u8,
+    latency_resolution: u64,
 }
 
 impl StatsFactory {
@@ -23,6 +24,7 @@ impl StatsFactory {
         StatsFactory {
             measure_latency: args.measure_latency,
             latency_sig_fig: args.hdr_latency_sig_fig as u8,
+            latency_resolution: args.hdr_latency_resolution,
         }
     }
 
@@ -44,7 +46,7 @@ impl sharded_stats::StatsFactory for StatsFactory {
                 co_fixed: self.create_histogram(),
             }),
 
-            latency_resolution: 1,
+            latency_resolution: self.latency_resolution,
         }
     }
 }
@@ -107,10 +109,10 @@ impl Stats {
             let now = Instant::now();
             let _ = ls
                 .raw
-                .record((now - ctx.actual_start_time).as_nanos() as u64);
-            let _ = ls
-                .co_fixed
-                .record((now - ctx.scheduled_start_time).as_nanos() as u64);
+                .record((now - ctx.actual_start_time).as_nanos() as u64 / self.latency_resolution);
+            let _ = ls.co_fixed.record(
+                (now - ctx.scheduled_start_time).as_nanos() as u64 / self.latency_resolution,
+            );
         }
     }
 
@@ -178,13 +180,16 @@ impl StatsPrinter {
         if let Some(typ) = self.latency_type {
             let histogram = stats.get_histogram(typ).unwrap();
 
-            let p50 = Duration::from_nanos(histogram.value_at_quantile(0.5));
-            let p90 = Duration::from_nanos(histogram.value_at_quantile(0.9));
-            let p95 = Duration::from_nanos(histogram.value_at_quantile(0.95));
-            let p99 = Duration::from_nanos(histogram.value_at_quantile(0.99));
-            let p999 = Duration::from_nanos(histogram.value_at_quantile(0.999));
-            let max = Duration::from_nanos(histogram.max());
-            let mean = Duration::from_nanos(histogram.mean() as u64);
+            let to_duration =
+                |d: u64| -> Duration { Duration::from_nanos(d * stats.latency_resolution) };
+
+            let p50 = to_duration(histogram.value_at_quantile(0.5));
+            let p90 = to_duration(histogram.value_at_quantile(0.9));
+            let p95 = to_duration(histogram.value_at_quantile(0.95));
+            let p99 = to_duration(histogram.value_at_quantile(0.99));
+            let p999 = to_duration(histogram.value_at_quantile(0.999));
+            let max = to_duration(histogram.max());
+            let mean = to_duration(histogram.mean() as u64);
             writeln!(
                 out,
                 "{:9} {:>7} {:>7} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6} {:>6}",
