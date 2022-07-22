@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -416,8 +417,8 @@ pub struct FlagSetDescription {
 
 impl FlagSetDescription {
     /// Prints the help message with information about the flag usage.
-    pub fn print_help(&self, program_name: &str) {
-        println!("Usage of {}:", program_name);
+    pub fn print_help(&self, write: &mut impl Write, program_name: &str) -> Result<()> {
+        writeln!(write, "Usage of {}:", program_name)?;
         let mut flag_names: Vec<&str> = self.flags.keys().copied().collect();
         flag_names.sort_unstable();
 
@@ -453,8 +454,10 @@ impl FlagSetDescription {
                 s.push(')');
             }
 
-            println!("{}", s);
+            writeln!(write, "{}", s)?;
         }
+
+        Ok(())
     }
 }
 
