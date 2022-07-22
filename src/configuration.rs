@@ -58,6 +58,13 @@ pub struct OperationContext {
     ///
     /// If rate limiting is disabled, this will always be equal to `now`.
     pub scheduled_start_time: Instant,
+
+    /// The time when the operation actually started executing.
+    ///
+    /// Unless rate limiting is enabled and the run does not keep
+    /// with configured rate, this will be either equal or close
+    /// to `scheduled_start_time`.
+    pub actual_start_time: Instant,
 }
 
 /// Creates operations which can later be used by workers during the stress.

@@ -97,10 +97,12 @@ impl WorkerContext {
                 } else {
                     Instant::now()
                 };
+                let actual_start_time = Instant::now();
 
                 let ctx = OperationContext {
                     operation_id: op_id,
                     scheduled_start_time,
+                    actual_start_time,
                 };
 
                 match operation.execute(&ctx).await {
