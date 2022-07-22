@@ -12,7 +12,15 @@ use crate::gocompat::strconv::format_duration;
 
 pub type ShardedStats = sharded_stats::ShardedStats<StatsFactory>;
 
-pub struct StatsFactory;
+pub struct StatsFactory {
+    measure_latency: bool,
+}
+
+impl StatsFactory {
+    pub fn new(measure_latency: bool) -> Self {
+        StatsFactory { measure_latency }
+    }
+}
 
 impl sharded_stats::StatsFactory for StatsFactory {
     type Stats = Stats;
@@ -22,8 +30,12 @@ impl sharded_stats::StatsFactory for StatsFactory {
             operations: 0,
             clustering_rows: 0,
             errors: 0,
-            raw_latency: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
-            co_fixed_latency: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
+            latencies: self.measure_latency.then(|| {
+                LatencyHistograms {
+                    raw: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
+                    co_fixed: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
+                }
+            }),
 
             latency_resolution: 1,
         }
@@ -35,12 +47,16 @@ pub struct Stats {
     pub clustering_rows: u64,
     pub errors: u64,
 
-    // Latency, measured both with and without the coordinated omission fix
-    pub raw_latency: Histogram<u64>,
-    pub co_fixed_latency: Histogram<u64>,
+    pub latencies: Option<LatencyHistograms>,
 
     // Do not change in workloads, this should be constant
     pub latency_resolution: u64,
+}
+
+pub struct LatencyHistograms {
+    // Latency, measured both with and without the coordinated omission fix
+    pub raw: Histogram<u64>,
+    pub co_fixed: Histogram<u64>,
 }
 
 impl sharded_stats::Stats for Stats {
@@ -48,16 +64,20 @@ impl sharded_stats::Stats for Stats {
         self.operations = 0;
         self.clustering_rows = 0;
         self.errors = 0;
-        self.raw_latency.reset();
-        self.co_fixed_latency.reset();
+        if let Some(ls) = &mut self.latencies {
+            ls.raw.reset();
+            ls.co_fixed.reset();
+        }
     }
 
     fn combine(&mut self, other: &Self) {
         self.operations += other.operations;
         self.clustering_rows += other.clustering_rows;
         self.errors += other.errors;
-        self.raw_latency.add(&other.raw_latency).unwrap();
-        self.co_fixed_latency.add(&other.co_fixed_latency).unwrap();
+        if let (Some(ls1), Some(ls2)) = (&mut self.latencies, &other.latencies) {
+            ls1.raw.add(&ls2.raw).unwrap();
+            ls1.co_fixed.add(&ls2.co_fixed).unwrap();
+        }
     }
 }
 
@@ -76,20 +96,24 @@ impl Stats {
     }
 
     pub fn account_latency(&mut self, ctx: &OperationContext) {
-        let now = Instant::now();
-        let _ = self
-            .raw_latency
-            .record((now - ctx.actual_start_time).as_nanos() as u64);
-        let _ = self
-            .co_fixed_latency
-            .record((now - ctx.scheduled_start_time).as_nanos() as u64);
+        if let Some(ls) = &mut self.latencies {
+            let now = Instant::now();
+            let _ = ls
+                .raw
+                .record((now - ctx.actual_start_time).as_nanos() as u64);
+            let _ = ls
+                .co_fixed
+                .record((now - ctx.scheduled_start_time).as_nanos() as u64);
+        }
     }
 
-    pub fn get_histogram(&self, typ: LatencyType) -> &Histogram<u64> {
-        match typ {
-            LatencyType::Raw => &self.raw_latency,
-            LatencyType::AdjustedForCoordinatorOmission => &self.co_fixed_latency,
-        }
+    pub fn get_histogram(&self, typ: LatencyType) -> Option<&Histogram<u64>> {
+        let ls = self.latencies.as_ref()?;
+        let histogram = match typ {
+            LatencyType::Raw => &ls.raw,
+            LatencyType::AdjustedForCoordinatorOmission => &ls.co_fixed,
+        };
+        Some(histogram)
     }
 }
 
@@ -145,7 +169,7 @@ impl StatsPrinter {
         let time = Instant::now() - self.start_time;
 
         if let Some(typ) = self.latency_type {
-            let histogram = stats.get_histogram(typ);
+            let histogram = stats.get_histogram(typ).unwrap();
 
             let p50 = Duration::from_nanos(histogram.value_at_quantile(0.5));
             let p90 = Duration::from_nanos(histogram.value_at_quantile(0.9));
@@ -200,8 +224,10 @@ impl StatsPrinter {
         let rows_per_second = stats.clustering_rows as f64 / time.as_secs_f64();
         writeln!(out, "Rows/s:\t\t{}", rows_per_second)?;
 
-        self.print_final_latency_histogram("raw latency", &stats.raw_latency, out)?;
-        self.print_final_latency_histogram("c-o fixed latency", &stats.co_fixed_latency, out)?;
+        if let Some(ls) = &stats.latencies {
+            self.print_final_latency_histogram("raw latency", &ls.raw, out)?;
+            self.print_final_latency_histogram("c-o fixed latency", &ls.co_fixed, out)?;
+        }
 
         // TODO: "critical errors"
 
