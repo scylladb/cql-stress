@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
 
     sb_config.print_configuration();
 
-    let stats_factory = Arc::new(StatsFactory::new(sb_config.measure_latency));
+    let stats_factory = Arc::new(StatsFactory::new(&sb_config));
     let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
 
     let run_config = prepare(sb_config.clone(), Arc::clone(&sharded_stats))

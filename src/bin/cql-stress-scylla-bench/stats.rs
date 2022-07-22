@@ -8,17 +8,26 @@ use tokio::time::Instant;
 use cql_stress::configuration::OperationContext;
 use cql_stress::sharded_stats;
 
+use crate::args::ScyllaBenchArgs;
 use crate::gocompat::strconv::format_duration;
 
 pub type ShardedStats = sharded_stats::ShardedStats<StatsFactory>;
 
 pub struct StatsFactory {
     measure_latency: bool,
+    latency_sig_fig: u8,
 }
 
 impl StatsFactory {
-    pub fn new(measure_latency: bool) -> Self {
-        StatsFactory { measure_latency }
+    pub(crate) fn new(args: &ScyllaBenchArgs) -> Self {
+        StatsFactory {
+            measure_latency: args.measure_latency,
+            latency_sig_fig: args.hdr_latency_sig_fig as u8,
+        }
+    }
+
+    fn create_histogram(&self) -> Histogram<u64> {
+        Histogram::new(self.latency_sig_fig).unwrap()
     }
 }
 
@@ -30,11 +39,9 @@ impl sharded_stats::StatsFactory for StatsFactory {
             operations: 0,
             clustering_rows: 0,
             errors: 0,
-            latencies: self.measure_latency.then(|| {
-                LatencyHistograms {
-                    raw: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
-                    co_fixed: Histogram::new(3).unwrap(), // TODO: This shouldn't be hardcoded
-                }
+            latencies: self.measure_latency.then(|| LatencyHistograms {
+                raw: self.create_histogram(),
+                co_fixed: self.create_histogram(),
             }),
 
             latency_resolution: 1,

@@ -66,7 +66,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub measure_latency: bool,
     // hdrLatencyFile           string
     // hdrLatencyUnits          string
-    // hdrLatencySigFig         int
+    pub hdr_latency_sig_fig: u64,
     pub validate_data: bool,
 }
 
@@ -248,6 +248,12 @@ where
 
     let measure_latency = flag.bool_var("measure-latency", true, "measure request latency");
 
+    let hdr_latency_sig_fig = flag.u64_var(
+        "hdr-latency-sig",
+        3,
+        "significant figures of the hdr histogram, number from 1 to 5 (default: 3)",
+    );
+
     let validate_data = flag.bool_var(
         "validate-data",
         false,
@@ -316,6 +322,13 @@ where
         // therefore just subtract with wraparound and treat u64::MAX as infinity
         let max_retries_per_op = max_errors_at_row.get().wrapping_sub(1);
 
+        let hdr_latency_sig_fig = hdr_latency_sig_fig.get();
+        if !(1..=5).contains(&hdr_latency_sig_fig) {
+            return Err(anyhow::anyhow!(
+                "hdr-latency-sig must be an integer between 1 and 5"
+            ));
+        }
+
         Ok(ScyllaBenchArgs {
             workload,
             consistency_level,
@@ -358,6 +371,7 @@ where
             timeout: timeout.get(),
             iterations: iterations.get(),
             measure_latency: measure_latency.get(),
+            hdr_latency_sig_fig,
             validate_data: validate_data.get(),
         })
     }();
