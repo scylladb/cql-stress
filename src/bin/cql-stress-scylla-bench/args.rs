@@ -64,7 +64,7 @@ pub(crate) struct ScyllaBenchArgs {
     // // Any error response that comes with delay greater than errorToTimeoutCutoffTime
     // // to be considered as timeout error and recorded to histogram as such
     pub measure_latency: bool,
-    // hdrLatencyFile           string
+    pub hdr_latency_file: String,
     pub hdr_latency_resolution: u64,
     pub hdr_latency_sig_fig: u64,
     pub validate_data: bool,
@@ -248,6 +248,11 @@ where
 
     let measure_latency = flag.bool_var("measure-latency", true, "measure request latency");
 
+    let hdr_latency_file = flag.string_var(
+        "hdr-latency-file",
+        "",
+        "log co-fixed and raw latency hdr histograms into a file",
+    );
     let hdr_latency_units = flag.string_var(
         "hdr-latency-units",
         "ns",
@@ -331,7 +336,11 @@ where
             "ns" => 1,
             "us" => 1000,
             "ms" => 1000 * 1000,
-            _ => return Err(anyhow::anyhow!("Unsupported units for hdr-latency-units, supported units are: ns, us,ms"))
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Unsupported units for hdr-latency-units, supported units are: ns, us,ms"
+                ))
+            }
         };
 
         let hdr_latency_sig_fig = hdr_latency_sig_fig.get();
@@ -383,6 +392,7 @@ where
             timeout: timeout.get(),
             iterations: iterations.get(),
             measure_latency: measure_latency.get(),
+            hdr_latency_file: hdr_latency_file.get(),
             hdr_latency_sig_fig,
             hdr_latency_resolution,
             validate_data: validate_data.get(),
