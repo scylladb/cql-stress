@@ -75,6 +75,11 @@ impl WorkerContext {
             .store(INVALID_OP_ID_THRESHOLD, Ordering::Relaxed);
     }
 
+    // Was the worker asked to stop?
+    pub fn should_stop(&self) -> bool {
+        self.operation_counter.load(Ordering::Relaxed) >= INVALID_OP_ID_THRESHOLD
+    }
+
     // Issues the next operation id. If the context got a signal to stop
     // the stress operation, it will return `None`.
     fn issue_operation_id(&self) -> Option<u64> {
@@ -109,6 +114,7 @@ impl WorkerContext {
                     Ok(ControlFlow::Continue(_)) => continue 'ops,
                     Ok(ControlFlow::Break(_)) => break 'ops,
                     Err(err) if trial_idx >= self.max_retries_per_op => return Err(err),
+                    Err(err) if self.should_stop() => return Err(err),
                     Err(_) => continue 'trying,
                 }
             }
@@ -442,5 +448,38 @@ mod tests {
         cfg.max_retries_per_op = 1;
         let (_, fut) = run(cfg);
         fut.await.unwrap(); // Expect success as each op was retried
+    }
+
+    struct AlwaysFailsOp(pub Option<Arc<Semaphore>>);
+
+    #[async_trait]
+    impl Operation for AlwaysFailsOp {
+        async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
+            if let Some(s) = self.0.take() {
+                s.add_permits(1);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await; // Make sure we don't enter a spin loop
+            Err(anyhow::anyhow!("fail"))
+        }
+    }
+
+    #[tokio::test]
+    #[ntest::timeout(1000)]
+    async fn test_ask_to_stop_on_constant_failures() {
+        let sem = Arc::new(Semaphore::new(0));
+        let sem_clone = Arc::clone(&sem);
+
+        let mut cfg = make_test_cfg(move || AlwaysFailsOp(Some(sem_clone.clone())));
+        cfg.max_retries_per_op = usize::MAX;
+        let concurrency = cfg.concurrency as u32;
+
+        let (ctrl, fut) = run(cfg);
+
+        // Wait until all ops got stuck in retry loop
+        let _ = sem.acquire_many(concurrency).await.unwrap();
+
+        // Ask to stop and make sure that the workload finishes
+        ctrl.ask_to_stop();
+        fut.await.unwrap_err();
     }
 }
