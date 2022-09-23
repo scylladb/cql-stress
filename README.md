@@ -1,10 +1,47 @@
 # Cql Stress
 
 A benchmarking tool for Scylla/Cassandra, written in Rust, offering a command line interface compatible both with [cassandra-stress](https://cassandra.apache.org/doc/latest/cassandra/tools/cassandra_stress.html) and [scylla-bench](https://github.com/scylladb/scylla-bench/).
+The aim of the tool is to provide a more scalable and performant replacements of the original tools, and increase the usage of scylla-rust-driver in tests.
 
-The project is in an early stage of development.
+The `scylla-bench` frontend is feature-complete, `cassandra-stress` is a _work in progress_.
+
+## Usage
+
+`cql-stress` is not published on crates.io yet, therefore in order to use it you need to clone it and build from source.
+See the [Development](#development) section for more details.
+
+### Scylla Bench
+
+See the documentation of the original [`scylla-bench`](https://github.com/scylladb/scylla-bench/blob/master/README.md#usage) for a comprehensive explanation of the most important parameters.
+To see a list of all the parameters currently supported by the tool, use `cql-stress-scylla-bench -help`.
+
+### Cassandra Stress
+
+(Work in progress)
 
 ## Development
+
+You need the `cargo` command in order to build the tool:
+
+```bash
+# The --release flag can be omitted when developing features and testing them,
+# but don't forget to include it when building for benchmarking purposes
+cargo build --release
+```
+
+Then, run the frontend of your choice:
+
+```bash
+./target/release/cql-stress-scylla-bench <arguments>
+./target/release/cql-stress-cassandra-stress <arguments>
+```
+
+Alternatively you can combine compilation and running in a single step:
+
+```bash
+cargo run --release --bin cql-stress-scylla-bench -- <arguments>
+cargo run --release --bin cql-stress-cassandra-stress -- <arguments>
+```
 
 ### Running tests
 
