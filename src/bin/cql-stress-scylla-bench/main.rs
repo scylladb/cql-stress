@@ -40,6 +40,13 @@ use crate::workload::{
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
 
+    #[cfg(debug_assertions)]
+    {
+        tracing::warn!(
+            "The tool was NOT compiled in release mode, expect poor performance or switch to release mode!"
+        );
+    }
+
     let sb_config = match args::parse_scylla_bench_args(std::env::args(), true) {
         Some(sb_config) => sb_config,
         None => return Err(anyhow::anyhow!("Failed to parse the CLI arguments")),
