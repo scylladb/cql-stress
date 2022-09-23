@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use env_logger::Env;
 use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::{transport::Compression, Session, SessionBuilder};
@@ -37,7 +38,7 @@ use crate::workload::{
 // TODO: Return exit code
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
 
     let sb_config = match args::parse_scylla_bench_args(std::env::args(), true) {
         Some(sb_config) => sb_config,
