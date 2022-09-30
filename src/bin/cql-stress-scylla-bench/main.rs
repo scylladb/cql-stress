@@ -132,8 +132,8 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
     create_schema(&session, &args).await?;
     let operation_factory = create_operation_factory(session, stats, Arc::clone(&args)).await?;
 
-    let max_duration = (args.test_duration > Duration::ZERO).then(|| args.test_duration);
-    let rate_limit_per_second = (args.maximum_rate > 0).then(|| args.maximum_rate as f64);
+    let max_duration = (args.test_duration > Duration::ZERO).then_some(args.test_duration);
+    let rate_limit_per_second = (args.maximum_rate > 0).then_some(args.maximum_rate as f64);
 
     Ok(Configuration {
         max_duration,
