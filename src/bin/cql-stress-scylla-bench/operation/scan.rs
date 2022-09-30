@@ -1,7 +1,6 @@
 use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use futures::TryStreamExt;
@@ -20,7 +19,6 @@ struct SharedState {
 pub(crate) struct ScanOperationFactory {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
-    timeout: Duration,
     statement: PreparedStatement,
     args: Arc<ScyllaBenchArgs>,
 
@@ -30,7 +28,6 @@ pub(crate) struct ScanOperationFactory {
 struct ScanOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
-    timeout: Duration,
     statement: PreparedStatement,
     args: Arc<ScyllaBenchArgs>,
 
@@ -49,6 +46,7 @@ impl ScanOperationFactory {
         );
         let mut statement = session.prepare(statement_str).await?;
         statement.set_consistency(args.consistency_level);
+        statement.set_request_timeout(Some(args.timeout));
 
         let shared_state = Arc::new(SharedState {
             next_range_idx: AtomicU64::new(0),
@@ -57,7 +55,6 @@ impl ScanOperationFactory {
         Ok(Self {
             session,
             stats,
-            timeout: args.timeout,
             statement,
             args,
 
@@ -72,7 +69,6 @@ impl OperationFactory for ScanOperationFactory {
             session: Arc::clone(&self.session),
             stats: Arc::clone(&self.stats),
             statement: self.statement.clone(),
-            timeout: self.timeout,
             args: self.args.clone(),
 
             shared_state: self.shared_state.clone(),
@@ -125,16 +121,14 @@ impl ScanOperation {
         first: i64,
         last: i64,
     ) -> Result<ControlFlow<()>> {
-        let iter = tokio::time::timeout(
-            self.timeout,
-            self.session
-                .execute_iter(self.statement.clone(), (first, last)),
-        )
-        .await??;
+        let iter = self
+            .session
+            .execute_iter(self.statement.clone(), (first, last))
+            .await?;
 
         let mut iter = iter.into_typed::<(i64, i64, Vec<u8>)>();
 
-        while let Some((pk, ck, v)) = tokio::time::timeout(self.timeout, iter.try_next()).await?? {
+        while let Some((pk, ck, v)) = iter.try_next().await? {
             rctx.row_read();
             if self.args.validate_data {
                 if let Err(err) = super::validate_row_data(pk, ck, &v) {

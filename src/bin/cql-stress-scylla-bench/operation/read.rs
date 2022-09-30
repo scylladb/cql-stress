@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use futures::{stream, StreamExt, TryStreamExt};
@@ -25,7 +24,6 @@ pub(crate) struct ReadOperationFactory {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
     statements: Vec<PreparedStatement>,
-    timeout: Duration,
     workload_factory: Box<dyn WorkloadFactory>,
     read_kind: ReadKind,
     read_restriction: ReadRestrictionKind,
@@ -36,7 +34,6 @@ struct ReadOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
     statements: Vec<PreparedStatement>,
-    timeout: Duration,
     workload: Box<dyn Workload>,
     read_kind: ReadKind,
     read_restriction: ReadRestrictionKind,
@@ -82,7 +79,6 @@ impl ReadOperationFactory {
             session,
             stats,
             statements,
-            timeout: args.timeout,
             workload_factory,
             read_kind,
             read_restriction,
@@ -119,6 +115,7 @@ async fn prepare_statement(
     statement.set_is_idempotent(true);
     statement.set_page_size(args.page_size.try_into()?);
     statement.set_consistency(args.consistency_level);
+    statement.set_request_timeout(Some(args.timeout));
 
     Ok(statement)
 }
@@ -137,7 +134,6 @@ impl OperationFactory for ReadOperationFactory {
             session: Arc::clone(&self.session),
             stats: Arc::clone(&self.stats),
             statements: self.statements.clone(),
-            timeout: self.timeout,
             workload: self.workload_factory.create(),
             read_kind: self.read_kind,
             read_restriction: self.read_restriction,
@@ -192,11 +188,9 @@ impl ReadOperation {
         stmt: PreparedStatement,
         values: SerializedValues,
     ) -> Result<ControlFlow<()>> {
-        let mut iter =
-            tokio::time::timeout(self.timeout, self.session.execute_iter(stmt, values)).await??;
+        let mut iter = self.session.execute_iter(stmt, values).await?;
 
-        // TODO: use driver-side timeouts after they get implemented
-        while let Some(row) = tokio::time::timeout(self.timeout, iter.try_next()).await?? {
+        while let Some(row) = iter.try_next().await? {
             rctx.row_read();
             match self.read_kind {
                 ReadKind::Regular => {

@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use scylla::{prepared_statement::PreparedStatement, Session};
@@ -15,7 +14,6 @@ use crate::workload::{Workload, WorkloadFactory};
 pub(crate) struct CounterUpdateOperationFactory {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
-    timeout: Duration,
     statement: PreparedStatement,
     workload_factory: Box<dyn WorkloadFactory>,
 }
@@ -23,7 +21,6 @@ pub(crate) struct CounterUpdateOperationFactory {
 struct CounterUpdateOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
-    timeout: Duration,
     statement: PreparedStatement,
     workload: Box<dyn Workload>,
 }
@@ -42,10 +39,10 @@ impl CounterUpdateOperationFactory {
         );
         let mut statement = session.prepare(statement_str).await?;
         statement.set_consistency(args.consistency_level);
+        statement.set_request_timeout(Some(args.timeout));
         Ok(Self {
             session,
             stats,
-            timeout: args.timeout,
             statement,
             workload_factory,
         })
@@ -58,7 +55,6 @@ impl OperationFactory for CounterUpdateOperationFactory {
             session: Arc::clone(&self.session),
             stats: Arc::clone(&self.stats),
             statement: self.statement.clone(),
-            timeout: self.timeout,
             workload: self.workload_factory.create(),
         })
     }
@@ -94,15 +90,12 @@ impl Operation for CounterUpdateOperation {
 
 impl CounterUpdateOperation {
     async fn write_single(&mut self, pk: i64, ck: i64) -> Result<()> {
-        // TODO: Use driver-side timeouts after they are implemented
-        tokio::time::timeout(
-            self.timeout,
-            self.session.execute(
+        self.session
+            .execute(
                 &self.statement,
                 (ck + 1, ck + 2, ck + 3, ck + 4, ck + 5, pk, ck),
-            ),
-        )
-        .await??;
+            )
+            .await?;
         Ok(())
     }
 }
