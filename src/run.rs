@@ -10,7 +10,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use crate::configuration::{Configuration, OperationContext, OperationFactory};
+use crate::configuration::{Configuration, Operation, OperationContext};
 
 // Rate limits operations by issuing timestamps indicating when the next
 // operation should happen. Uses atomics, can be shared between threads.
@@ -50,7 +50,6 @@ const INVALID_OP_ID_THRESHOLD: u64 = 1u64 << 63u64;
 // Represents shareable state and configuration of a worker.
 struct WorkerContext {
     operation_counter: AtomicU64,
-    operation_factory: Arc<dyn OperationFactory>,
 
     rate_limiter: Option<RateLimiter>,
     max_retries_per_op: usize,
@@ -60,7 +59,6 @@ impl WorkerContext {
     pub fn new(config: &Configuration, now: Instant) -> Self {
         Self {
             operation_counter: AtomicU64::new(0),
-            operation_factory: Arc::clone(&config.operation_factory),
 
             rate_limiter: config
                 .rate_limit_per_second
@@ -90,9 +88,7 @@ impl WorkerContext {
     // Repeatedly runs the `operation` until it is asked to stop
     // or an execution of the `operation` will either return `Err`
     // or `ControlFlow::Break`.
-    pub async fn run_worker(&self) -> Result<()> {
-        let mut operation = self.operation_factory.create();
-
+    pub async fn run_worker(&self, mut operation: Box<dyn Operation>) -> Result<()> {
         'ops: while let Some(op_id) = self.issue_operation_id() {
             'trying: for trial_idx in 0.. {
                 let scheduled_start_time = if let Some(rate_limiter) = &self.rate_limiter {
@@ -197,7 +193,9 @@ async fn do_run(config: Configuration, stop_receiver: oneshot::Receiver<()>) -> 
     let mut worker_handles = (0..config.concurrency)
         .map(|_| {
             let ctx_clone = Arc::clone(&ctx);
-            let (fut, handle) = async move { ctx_clone.run_worker().await }.remote_handle();
+            let operation = config.operation_factory.create();
+            let (fut, handle) =
+                async move { ctx_clone.run_worker(operation).await }.remote_handle();
             tokio::task::spawn(fut);
             handle
         })
@@ -244,7 +242,7 @@ mod tests {
     use tokio::time::Instant;
 
     use super::*;
-    use crate::configuration::{Configuration, Operation, OperationContext};
+    use crate::configuration::{Configuration, Operation, OperationContext, OperationFactory};
 
     struct FnOperationFactory<F>(pub F);
 
