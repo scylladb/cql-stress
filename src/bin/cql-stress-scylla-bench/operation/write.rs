@@ -11,7 +11,7 @@ use scylla::{
 };
 use tracing::error;
 
-use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
+use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
 
 use crate::args::ScyllaBenchArgs;
 use crate::distribution::{Distribution, RngGen};
@@ -80,8 +80,8 @@ impl OperationFactory for WriteOperationFactory {
     }
 }
 
-#[async_trait]
-impl Operation for WriteOperation {
+make_runnable!(WriteOperation);
+impl WriteOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         let (pk, cks) = match self.workload.generate_keys(self.rows_per_op as usize) {
             Some((pk, cks)) => (pk, cks),
