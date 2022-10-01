@@ -5,7 +5,7 @@ use anyhow::Result;
 use scylla::{prepared_statement::PreparedStatement, Session};
 use tracing::error;
 
-use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
+use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
 
 use crate::args::ScyllaBenchArgs;
 use crate::stats::ShardedStats;
@@ -60,8 +60,8 @@ impl OperationFactory for CounterUpdateOperationFactory {
     }
 }
 
-#[async_trait]
-impl Operation for CounterUpdateOperation {
+make_runnable!(CounterUpdateOperation);
+impl CounterUpdateOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         // Counter updates always use one key
         let (pk, cks) = match self.workload.generate_keys(1) {

@@ -1,9 +1,10 @@
-use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use tokio::time::Instant;
+
+use crate::run::WorkerSession;
 
 /// Defines the configuration of a benchmark.
 pub struct Configuration {
@@ -76,10 +77,20 @@ pub trait OperationFactory: Send + Sync {
     fn create(&self) -> Box<dyn Operation>;
 }
 
-/// Represents an operation which is repeatedly performed during the stress.
+/// Represents an operation which runs its own operation loop.
+/// Implementing this interface instead of Operation leads to more efficient
+/// code because Rust, for now, forces us to Box futures returned
+/// from Operation::execute. This trait only incurs one allocation
+/// per running worker.
 #[async_trait]
 pub trait Operation: Send + Sync {
-    /// Executes the operation, given information in the OperationContext.
+    /// Classes that implement this trait should have the following, non-trait
+    /// method defined:
+    ///
+    /// async fn execute(&mut self, ctx: OperationContext) -> Result<ControlFlow<()>>;
+    ///
+    /// and they should use make_runnable!(TraitName) macro to generate
+    /// the implementation of the run() method.
     ///
     /// The operation should behave deterministically, i.e. the same action
     /// should be performed when given exactly the same OperationContext.
@@ -89,5 +100,31 @@ pub trait Operation: Send + Sync {
     /// Returns ControlFlow::Break if it should finish work, for example
     /// if the operation ID has exceeded the configured operation count.
     /// In other cases, it returns ControlFlow::Continue.
-    async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>>;
+    async fn run(&mut self, session: WorkerSession) -> Result<()>;
 }
+
+/// Implements Operation for a type which implements an execute method.
+/// Although we could put execute() into the Operation trait, doing what we
+/// are doing here has better performance because asynchronous traits require
+/// putting returned futures in a Box due to current language limitations.
+/// Boxing the futures imply an allocation per operation and those allocations
+/// can be clearly visible on the flamegraphs.
+#[macro_export]
+macro_rules! make_runnable {
+    ($op:ty) => {
+        #[async_trait]
+        impl $crate::configuration::Operation for $op {
+            async fn run(&mut self, mut session: $crate::run::WorkerSession) -> anyhow::Result<()> {
+                while let Some(ctx) = session.start().await {
+                    let result = self.execute(&ctx).await;
+                    if let std::ops::ControlFlow::Break(_) = session.end(result)? {
+                        return Ok(());
+                    }
+                }
+                Ok(())
+            }
+        }
+    };
+}
+
+pub use make_runnable;
