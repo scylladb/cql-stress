@@ -163,7 +163,7 @@ pub fn parse_duration(mut s: &str) -> Result<Duration> {
 
         let unit_multiplicand = UNIT_MULTIPLICANDS
             .iter()
-            .find_map(|(uname, mult)| (&unit == uname).then(|| mult))
+            .find_map(|(uname, mult)| (&unit == uname).then_some(mult))
             .ok_or_else(|| anyhow::anyhow!("Invalid duration unit: {}", unit))?;
 
         // Converting floats to ints when the float is too big to fit is UB,

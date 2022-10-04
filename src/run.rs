@@ -79,7 +79,7 @@ impl WorkerContext {
     // the stress operation, it will return `None`.
     fn issue_operation_id(&self) -> Option<u64> {
         let id = self.operation_counter.fetch_add(1, Ordering::Relaxed);
-        (id < INVALID_OP_ID_THRESHOLD).then(|| id)
+        (id < INVALID_OP_ID_THRESHOLD).then_some(id)
     }
 
     // Repeatedly runs the `operation` until it is asked to stop
