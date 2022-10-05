@@ -81,7 +81,7 @@ impl Operation for CounterUpdateOperation {
         }
 
         let mut stats = self.stats.get_shard_mut();
-        stats.account_op(ctx.scheduled_start_time, &result, cks.len());
+        stats.account_op(ctx, &result, cks.len());
 
         result?;
         Ok(ControlFlow::Continue(()))

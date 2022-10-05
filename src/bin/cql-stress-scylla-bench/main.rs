@@ -4,6 +4,7 @@ extern crate async_trait;
 mod args;
 mod distribution;
 mod gocompat;
+mod histogram_log_writer;
 mod operation;
 pub(crate) mod stats;
 mod workload;
@@ -55,10 +56,10 @@ async fn main() -> Result<()> {
 
     sb_config.print_configuration();
 
-    let stats_factory = Arc::new(StatsFactory);
+    let stats_factory = Arc::new(StatsFactory::new(&sb_config));
     let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
 
-    let run_config = prepare(sb_config, Arc::clone(&sharded_stats))
+    let run_config = prepare(sb_config.clone(), Arc::clone(&sharded_stats))
         .await
         .context("Failed to prepare the benchmark")?;
 
@@ -71,7 +72,11 @@ async fn main() -> Result<()> {
     // from being stopped.
     tokio::task::spawn(stop_on_signal(Arc::clone(&ctrl)));
 
-    let printer = StatsPrinter::new(true);
+    let mut printer = StatsPrinter::new(
+        sb_config.measure_latency.then_some(sb_config.latency_type),
+        (!sb_config.hdr_latency_file.is_empty()).then_some(sb_config.hdr_latency_file.as_str()),
+    )
+    .await?;
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
     futures::pin_mut!(run_finished);
 
@@ -84,7 +89,7 @@ async fn main() -> Result<()> {
         tokio::select! {
             _ = ticker.tick() => {
                 let partial_stats = sharded_stats.get_combined_and_clear();
-                printer.print_partial(&partial_stats, &mut std::io::stdout())?;
+                printer.print_partial(&partial_stats, &mut std::io::stdout()).await?;
                 combined_stats.combine(&partial_stats);
             }
             result = &mut run_finished => {

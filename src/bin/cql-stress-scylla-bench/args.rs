@@ -9,6 +9,7 @@ use scylla::statement::Consistency;
 use crate::distribution::{parse_distribution, Distribution, Fixed};
 use crate::gocompat::flags::{GoValue, ParserBuilder};
 use crate::gocompat::strconv::format_duration;
+use crate::stats::LatencyType;
 
 // Explicitly marked as `pub(crate)`, because with `pub` rustc doesn't
 // complain about fields which are never read
@@ -40,7 +41,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub username: String,
     pub password: String,
     pub mode: Mode,
-    // latencyType    string
+    pub latency_type: LatencyType,
     pub max_retries_per_op: u64,
     pub concurrency: u64,
     pub maximum_rate: u64,
@@ -62,10 +63,10 @@ pub(crate) struct ScyllaBenchArgs {
     pub iterations: u64,
     // // Any error response that comes with delay greater than errorToTimeoutCutoffTime
     // // to be considered as timeout error and recorded to histogram as such
-    // measureLatency           bool
-    // hdrLatencyFile           string
-    // hdrLatencyUnits          string
-    // hdrLatencySigFig         int
+    pub measure_latency: bool,
+    pub hdr_latency_file: String,
+    pub hdr_latency_resolution: u64,
+    pub hdr_latency_sig_fig: u64,
     pub validate_data: bool,
 }
 
@@ -165,6 +166,11 @@ where
         "",
         "operating mode: write, read, counter_update, counter_read, scan",
     );
+    let latency_type = flag.string_var(
+        "latency-type",
+        "raw",
+        "type of the latency to print during the run: raw, fixed-coordinated-omission",
+    );
     let max_errors_at_row = flag.u64_var(
         "error-at-row-limit",
         0,
@@ -240,6 +246,24 @@ where
         that have a defined number of ops to execute)",
     );
 
+    let measure_latency = flag.bool_var("measure-latency", true, "measure request latency");
+
+    let hdr_latency_file = flag.string_var(
+        "hdr-latency-file",
+        "",
+        "log co-fixed and raw latency hdr histograms into a file",
+    );
+    let hdr_latency_units = flag.string_var(
+        "hdr-latency-units",
+        "ns",
+        "ns (nano seconds), us (microseconds), ms (milliseconds)",
+    );
+    let hdr_latency_sig_fig = flag.u64_var(
+        "hdr-latency-sig",
+        3,
+        "significant figures of the hdr histogram, number from 1 to 5 (default: 3)",
+    );
+
     let validate_data = flag.bool_var(
         "validate-data",
         false,
@@ -297,10 +321,34 @@ where
             }
         }
 
+        let latency_type = match latency_type.get().as_str() {
+            "raw" => LatencyType::Raw,
+            "fixed-coordinated-omission" => LatencyType::AdjustedForCoordinatorOmission,
+            s => return Err(anyhow::anyhow!("Unsupported latency type: {}; supported types are: raw, fixed-coordinated-omission", s)),
+        };
+
         // Zero means unlimited tries,
         // and #tries == #retries + 1,
         // therefore just subtract with wraparound and treat u64::MAX as infinity
         let max_retries_per_op = max_errors_at_row.get().wrapping_sub(1);
+
+        let hdr_latency_resolution = match hdr_latency_units.get().as_str() {
+            "ns" => 1,
+            "us" => 1000,
+            "ms" => 1000 * 1000,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Unsupported units for hdr-latency-units, supported units are: ns, us,ms"
+                ))
+            }
+        };
+
+        let hdr_latency_sig_fig = hdr_latency_sig_fig.get();
+        if !(1..=5).contains(&hdr_latency_sig_fig) {
+            return Err(anyhow::anyhow!(
+                "hdr-latency-sig must be an integer between 1 and 5"
+            ));
+        }
 
         Ok(ScyllaBenchArgs {
             workload,
@@ -327,6 +375,7 @@ where
             password: password.get(),
             mode,
             concurrency,
+            latency_type,
             max_retries_per_op,
             maximum_rate,
             test_duration: test_duration.get(),
@@ -342,6 +391,10 @@ where
             range_count: range_count.get(),
             timeout: timeout.get(),
             iterations: iterations.get(),
+            measure_latency: measure_latency.get(),
+            hdr_latency_file: hdr_latency_file.get(),
+            hdr_latency_sig_fig,
+            hdr_latency_resolution,
             validate_data: validate_data.get(),
         })
     }();
