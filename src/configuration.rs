@@ -6,6 +6,7 @@ use tokio::time::Instant;
 
 use crate::run::WorkerSession;
 
+pub use runnable_macro::Operation;
 /// Defines the configuration of a benchmark.
 pub struct Configuration {
     /// The maximum duration of the test.
@@ -89,7 +90,7 @@ pub trait Operation: Send + Sync {
     ///
     /// async fn execute(&mut self, ctx: OperationContext) -> Result<ControlFlow<()>>;
     ///
-    /// and they should use make_runnable!(TraitName) macro to generate
+    /// and they should use #[derive(Operation)] macro to generate
     /// the implementation of the run() method.
     ///
     /// The operation should behave deterministically, i.e. the same action
@@ -102,29 +103,3 @@ pub trait Operation: Send + Sync {
     /// In other cases, it returns ControlFlow::Continue.
     async fn run(&mut self, session: WorkerSession) -> Result<()>;
 }
-
-/// Implements Operation for a type which implements an execute method.
-/// Although we could put execute() into the Operation trait, doing what we
-/// are doing here has better performance because asynchronous traits require
-/// putting returned futures in a Box due to current language limitations.
-/// Boxing the futures imply an allocation per operation and those allocations
-/// can be clearly visible on the flamegraphs.
-#[macro_export]
-macro_rules! make_runnable {
-    ($op:ty) => {
-        #[async_trait]
-        impl $crate::configuration::Operation for $op {
-            async fn run(&mut self, mut session: $crate::run::WorkerSession) -> anyhow::Result<()> {
-                while let Some(ctx) = session.start().await {
-                    let result = self.execute(&ctx).await;
-                    if let std::ops::ControlFlow::Break(_) = session.end(result)? {
-                        return Ok(());
-                    }
-                }
-                Ok(())
-            }
-        }
-    };
-}
-
-pub use make_runnable;

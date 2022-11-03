@@ -7,7 +7,7 @@ use scylla::cql_to_rust::FromRow;
 use scylla::frame::value::{Counter, SerializedValues};
 use scylla::{prepared_statement::PreparedStatement, Session};
 
-use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
+use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
 
 use crate::args::{OrderBy, ScyllaBenchArgs};
 use crate::operation::ReadContext;
@@ -30,6 +30,7 @@ pub(crate) struct ReadOperationFactory {
     args: Arc<ScyllaBenchArgs>,
 }
 
+#[derive(Operation)]
 struct ReadOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
@@ -144,7 +145,6 @@ impl OperationFactory for ReadOperationFactory {
     }
 }
 
-make_runnable!(ReadOperation);
 impl ReadOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         let mut rctx = ReadContext::default();

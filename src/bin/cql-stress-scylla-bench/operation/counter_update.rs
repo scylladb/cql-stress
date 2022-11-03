@@ -5,7 +5,7 @@ use anyhow::Result;
 use scylla::{prepared_statement::PreparedStatement, Session};
 use tracing::error;
 
-use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
+use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
 
 use crate::args::ScyllaBenchArgs;
 use crate::stats::ShardedStats;
@@ -17,7 +17,7 @@ pub(crate) struct CounterUpdateOperationFactory {
     statement: PreparedStatement,
     workload_factory: Box<dyn WorkloadFactory>,
 }
-
+#[derive(Operation)]
 struct CounterUpdateOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
@@ -60,7 +60,6 @@ impl OperationFactory for CounterUpdateOperationFactory {
     }
 }
 
-make_runnable!(CounterUpdateOperation);
 impl CounterUpdateOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         // Counter updates always use one key

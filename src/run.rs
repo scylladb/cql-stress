@@ -12,6 +12,9 @@ use tokio::time::Instant;
 
 use crate::configuration::{Configuration, OperationContext};
 
+#[allow(unused)] // It is actually used in [runnable] macro.
+use crate as cql_stress;
+
 // Rate limits operations by issuing timestamps indicating when the next
 // operation should happen. Uses atomics, can be shared between threads.
 struct RateLimiter {
@@ -265,9 +268,7 @@ mod tests {
     use tokio::time::Instant;
 
     use super::*;
-    use crate::configuration::{
-        make_runnable, Configuration, Operation, OperationContext, OperationFactory,
-    };
+    use crate::configuration::{Configuration, Operation, OperationContext, OperationFactory};
 
     struct FnOperationFactory<F>(pub F);
 
@@ -320,9 +321,8 @@ mod tests {
     #[tokio::test]
     async fn test_run_to_completion() {
         let counter = Arc::new(AtomicU64::new(0));
-
+        #[derive(Operation)]
         struct Op(Arc<AtomicU64>);
-        make_runnable!(Op);
 
         impl Op {
             async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
@@ -348,9 +348,9 @@ mod tests {
     async fn test_run_to_error() {
         let counter = Arc::new(AtomicU64::new(0));
 
+        #[derive(Operation)]
         struct Op(Arc<AtomicU64>);
 
-        make_runnable!(Op);
         impl Op {
             async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
                 if ctx.operation_id >= 500 {
@@ -370,10 +370,9 @@ mod tests {
         fut.await.unwrap_err();
         assert_eq!(counter.load(Ordering::SeqCst), 500);
     }
-
+    #[derive(Operation)]
     struct IdleOp;
 
-    make_runnable!(IdleOp);
     impl IdleOp {
         async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -400,9 +399,9 @@ mod tests {
         fut.await.unwrap();
     }
 
+    #[derive(Operation)]
     struct StuckOp(pub Arc<Semaphore>);
 
-    make_runnable!(StuckOp);
     impl StuckOp {
         async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             // Mark that we begun the operation and became "stuck"
@@ -430,11 +429,11 @@ mod tests {
         fut.await.unwrap_err();
     }
 
+    #[derive(Operation)]
     struct AlternatingSuccessFailOp {
         tried_ops: Mutex<HashSet<u64>>,
     }
 
-    make_runnable!(AlternatingSuccessFailOp);
     impl AlternatingSuccessFailOp {
         fn new() -> Self {
             AlternatingSuccessFailOp {
@@ -471,9 +470,9 @@ mod tests {
         fut.await.unwrap(); // Expect success as each op was retried
     }
 
+    #[derive(Operation)]
     struct AlwaysFailsOp(pub Option<Arc<Semaphore>>);
 
-    make_runnable!(AlwaysFailsOp);
     impl AlwaysFailsOp {
         async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             if let Some(s) = self.0.take() {

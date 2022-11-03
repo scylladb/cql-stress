@@ -6,7 +6,7 @@ use anyhow::Result;
 use futures::TryStreamExt;
 use scylla::{prepared_statement::PreparedStatement, Session};
 
-use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
+use cql_stress::configuration::{Operation, OperationContext, OperationFactory};
 
 use crate::args::ScyllaBenchArgs;
 use crate::operation::ReadContext;
@@ -25,6 +25,7 @@ pub(crate) struct ScanOperationFactory {
     shared_state: Arc<SharedState>,
 }
 
+#[derive(Operation)]
 struct ScanOperation {
     session: Arc<Session>,
     stats: Arc<ShardedStats>,
@@ -76,7 +77,6 @@ impl OperationFactory for ScanOperationFactory {
     }
 }
 
-make_runnable!(ScanOperation);
 impl ScanOperation {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         let mut rctx = ReadContext::default();

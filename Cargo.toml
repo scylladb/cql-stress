@@ -6,6 +6,7 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+runnable_macro = { path = "runnable_macro" }
 anyhow = "1.0.52"
 async-trait = "0.1.52"
 base64 = "0.13.0"
