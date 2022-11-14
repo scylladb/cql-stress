@@ -10,7 +10,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use crate::configuration::{Configuration, OperationContext, OperationFactory};
+use crate::configuration::{Configuration, OperationContext};
 
 // Rate limits operations by issuing timestamps indicating when the next
 // operation should happen. Uses atomics, can be shared between threads.
@@ -50,7 +50,6 @@ const INVALID_OP_ID_THRESHOLD: u64 = 1u64 << 63u64;
 // Represents shareable state and configuration of a worker.
 struct WorkerContext {
     operation_counter: AtomicU64,
-    operation_factory: Arc<dyn OperationFactory>,
 
     rate_limiter: Option<RateLimiter>,
     max_retries_per_op: usize,
@@ -60,7 +59,6 @@ impl WorkerContext {
     pub fn new(config: &Configuration, now: Instant) -> Self {
         Self {
             operation_counter: AtomicU64::new(0),
-            operation_factory: Arc::clone(&config.operation_factory),
 
             rate_limiter: config
                 .rate_limit_per_second
@@ -86,41 +84,62 @@ impl WorkerContext {
         let id = self.operation_counter.fetch_add(1, Ordering::Relaxed);
         (id < INVALID_OP_ID_THRESHOLD).then_some(id)
     }
+}
 
-    // Repeatedly runs the `operation` until it is asked to stop
-    // or an execution of the `operation` will either return `Err`
-    // or `ControlFlow::Break`.
-    pub async fn run_worker(&self) -> Result<()> {
-        let mut operation = self.operation_factory.create();
+pub struct WorkerSession {
+    context: Arc<WorkerContext>,
+    op_id: u64,
+    trial_idx: usize,
+}
 
-        'ops: while let Some(op_id) = self.issue_operation_id() {
-            'trying: for trial_idx in 0.. {
-                let scheduled_start_time = if let Some(rate_limiter) = &self.rate_limiter {
-                    let start_time = rate_limiter.issue_next_start_time();
-                    tokio::time::sleep_until(start_time).await;
-                    start_time
-                } else {
-                    Instant::now()
-                };
-                let actual_start_time = Instant::now();
+// Not the most beautiful interface, but it works - unlike async callbacks,
+// which I also tried, but failed to make the types work.
+impl WorkerSession {
+    fn new(context: Arc<WorkerContext>) -> Self {
+        Self {
+            context,
+            op_id: 0,
+            trial_idx: 0,
+        }
+    }
 
-                let ctx = OperationContext {
-                    operation_id: op_id,
-                    scheduled_start_time,
-                    actual_start_time,
-                };
-
-                match operation.execute(&ctx).await {
-                    Ok(ControlFlow::Continue(_)) => continue 'ops,
-                    Ok(ControlFlow::Break(_)) => break 'ops,
-                    Err(err) if trial_idx >= self.max_retries_per_op => return Err(err),
-                    Err(err) if self.should_stop() => return Err(err),
-                    Err(_) => continue 'trying,
-                }
-            }
+    // Should be called before starting an operation.
+    pub async fn start_operation(&mut self) -> Option<OperationContext> {
+        if self.trial_idx == 0 {
+            let next_op_id = self.context.issue_operation_id()?;
+            self.op_id = next_op_id;
         }
 
-        Ok(())
+        let scheduled_start_time = if let Some(rate_limiter) = &self.context.rate_limiter {
+            let start_time = rate_limiter.issue_next_start_time();
+            tokio::time::sleep_until(start_time).await;
+            start_time
+        } else {
+            Instant::now()
+        };
+        let actual_start_time = Instant::now();
+
+        Some(OperationContext {
+            operation_id: self.op_id,
+            scheduled_start_time,
+            actual_start_time,
+        })
+    }
+
+    // Should be called after ending an operation.
+    pub fn end_operation(&mut self, result: Result<ControlFlow<()>>) -> Result<ControlFlow<()>> {
+        match result {
+            Ok(flow) => {
+                self.trial_idx = 0;
+                Ok(flow)
+            }
+            Err(err) if self.trial_idx >= self.context.max_retries_per_op => Err(err),
+            Err(err) if self.context.should_stop() => Err(err),
+            Err(_) => {
+                self.trial_idx += 1;
+                Ok(ControlFlow::Continue(()))
+            }
+        }
     }
 }
 
@@ -197,7 +216,9 @@ async fn do_run(config: Configuration, stop_receiver: oneshot::Receiver<()>) -> 
     let mut worker_handles = (0..config.concurrency)
         .map(|_| {
             let ctx_clone = Arc::clone(&ctx);
-            let (fut, handle) = async move { ctx_clone.run_worker().await }.remote_handle();
+            let session = WorkerSession::new(ctx_clone);
+            let mut operation = config.operation_factory.create();
+            let (fut, handle) = async move { operation.run(session).await }.remote_handle();
             tokio::task::spawn(fut);
             handle
         })
@@ -244,7 +265,9 @@ mod tests {
     use tokio::time::Instant;
 
     use super::*;
-    use crate::configuration::{Configuration, Operation, OperationContext};
+    use crate::configuration::{
+        make_runnable, Configuration, Operation, OperationContext, OperationFactory,
+    };
 
     struct FnOperationFactory<F>(pub F);
 
@@ -299,9 +322,9 @@ mod tests {
         let counter = Arc::new(AtomicU64::new(0));
 
         struct Op(Arc<AtomicU64>);
+        make_runnable!(Op);
 
-        #[async_trait]
-        impl Operation for Op {
+        impl Op {
             async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
                 if ctx.operation_id >= 1000 {
                     return Ok(ControlFlow::Break(()));
@@ -327,8 +350,8 @@ mod tests {
 
         struct Op(Arc<AtomicU64>);
 
-        #[async_trait]
-        impl Operation for Op {
+        make_runnable!(Op);
+        impl Op {
             async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
                 if ctx.operation_id >= 500 {
                     return Err(anyhow::anyhow!("failure"));
@@ -350,8 +373,8 @@ mod tests {
 
     struct IdleOp;
 
-    #[async_trait]
-    impl Operation for IdleOp {
+    make_runnable!(IdleOp);
+    impl IdleOp {
         async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             tokio::time::sleep(Duration::from_millis(10)).await;
             Ok(ControlFlow::Continue(()))
@@ -379,8 +402,8 @@ mod tests {
 
     struct StuckOp(pub Arc<Semaphore>);
 
-    #[async_trait]
-    impl Operation for StuckOp {
+    make_runnable!(StuckOp);
+    impl StuckOp {
         async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             // Mark that we begun the operation and became "stuck"
             self.0.add_permits(1);
@@ -411,16 +434,14 @@ mod tests {
         tried_ops: Mutex<HashSet<u64>>,
     }
 
+    make_runnable!(AlternatingSuccessFailOp);
     impl AlternatingSuccessFailOp {
         fn new() -> Self {
             AlternatingSuccessFailOp {
                 tried_ops: Mutex::new(HashSet::new()),
             }
         }
-    }
 
-    #[async_trait]
-    impl Operation for AlternatingSuccessFailOp {
         async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
             if ctx.operation_id >= 100 {
                 return Ok(ControlFlow::Break(()));
@@ -452,8 +473,8 @@ mod tests {
 
     struct AlwaysFailsOp(pub Option<Arc<Semaphore>>);
 
-    #[async_trait]
-    impl Operation for AlwaysFailsOp {
+    make_runnable!(AlwaysFailsOp);
+    impl AlwaysFailsOp {
         async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
             if let Some(s) = self.0.take() {
                 s.add_permits(1);
