@@ -429,6 +429,22 @@ impl ScyllaBenchArgs {
         println!("Mode:\t\t\t {}", show_mode(&self.mode));
         println!("Workload:\t\t {}", show_workload(&self.workload));
         println!("Timeout:\t\t {}", format_duration(self.timeout));
+        if self.max_consecutive_errors_per_op == u64::MAX {
+            println!("Max error number at row: unlimited");
+        } else {
+            println!(
+                "Max error number at row: {}",
+                self.max_consecutive_errors_per_op as u128 + 1,
+            );
+        }
+        if self.max_errors_in_total == u64::MAX {
+            println!("Max error number:\t unlimited");
+        } else {
+            println!(
+                "Max error number:\t {}",
+                self.max_errors_in_total as u128 + 1,
+            );
+        }
         println!(
             "Consistency level:\t {}",
             show_consistency_level(&self.consistency_level)
