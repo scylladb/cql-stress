@@ -146,6 +146,7 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
         rate_limit_per_second,
         operation_factory,
         max_consecutive_errors_per_op: args.max_consecutive_errors_per_op,
+        max_errors_in_total: u64::MAX,
     })
 }
 

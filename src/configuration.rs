@@ -35,6 +35,10 @@ pub struct Configuration {
 
     /// The maximum number of consecutive errors allowed before giving up.
     pub max_consecutive_errors_per_op: u64,
+
+    /// The maximum, global number of errors allowed during the test.
+    /// After exceeding this number, the bench will be stopped.
+    pub max_errors_in_total: u64,
 }
 
 /// Contains all necessary context needed to execute an Operation.
