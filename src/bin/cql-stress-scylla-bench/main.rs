@@ -93,13 +93,19 @@ async fn main() -> Result<()> {
                 combined_stats.combine(&partial_stats);
             }
             result = &mut run_finished => {
+                let errors = match &result {
+                    Ok(_) => &[],
+                    Err(err) => err.errors.as_slice(),
+                };
+                // Combine stats for the last time
+                let partial_stats = sharded_stats.get_combined_and_clear();
+                combined_stats.combine(&partial_stats);
+                printer.print_final(&combined_stats, errors, &mut std::io::stdout())?;
                 if result.is_ok() {
-                    // Combine stats for the last time
-                    let partial_stats = sharded_stats.get_combined_and_clear();
-                    combined_stats.combine(&partial_stats);
-                    printer.print_final(&combined_stats, &mut std::io::stdout())?;
+                    return Ok(());
+                } else {
+                    return Err(anyhow::anyhow!("Benchmark failed"));
                 }
-                return result.map_err(|err| anyhow::anyhow!("{:?}", err)).context("An error occurred during the benchmark");
             }
         }
     }
