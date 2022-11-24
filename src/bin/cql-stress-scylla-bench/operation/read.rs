@@ -70,7 +70,7 @@ impl ReadOperationFactory {
 
         let statements = stream::iter(&args.select_order_by)
             .then(|order_by| {
-                prepare_statement(&*session, &*args, read_kind, &read_restriction, order_by)
+                prepare_statement(&session, &args, read_kind, &read_restriction, order_by)
             })
             .try_collect::<Vec<_>>()
             .await?;
