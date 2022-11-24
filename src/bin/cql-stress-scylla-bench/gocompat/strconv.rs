@@ -28,7 +28,7 @@ pub fn parse_int(mut s: &str, bit_size: u32) -> Result<i64> {
 
     // Detect the sign
     let negative = s.starts_with('-');
-    s = s.strip_prefix(&['-', '+']).unwrap_or(s);
+    s = s.strip_prefix(['-', '+']).unwrap_or(s);
 
     if negative {
         let max_value = 1u128 << (bit_size - 1);
