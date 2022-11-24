@@ -163,7 +163,7 @@ impl WorkerSession {
                     self.context.max_errors_in_total as u128 + 1,
                 )))
             }
-            Err(err) if self.context.should_stop() => Err(err),
+            Err(_) if self.context.should_stop() => Ok(ControlFlow::Break(())),
             Err(_) => {
                 self.consecutive_errors += 1;
                 Ok(ControlFlow::Continue(()))
@@ -546,7 +546,7 @@ mod tests {
 
         // Ask to stop and make sure that the workload finishes
         ctrl.ask_to_stop();
-        fut.await.unwrap_err();
+        fut.await.unwrap();
     }
 
     #[tokio::test]
