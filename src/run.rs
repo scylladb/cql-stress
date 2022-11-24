@@ -52,7 +52,7 @@ struct WorkerContext {
     operation_counter: AtomicU64,
 
     rate_limiter: Option<RateLimiter>,
-    max_retries_per_op: usize,
+    max_retries_per_op: u64,
 }
 
 impl WorkerContext {
@@ -89,7 +89,7 @@ impl WorkerContext {
 pub struct WorkerSession {
     context: Arc<WorkerContext>,
     op_id: u64,
-    trial_idx: usize,
+    trial_idx: u64,
 }
 
 // Not the most beautiful interface, but it works - unlike async callbacks,
@@ -491,7 +491,7 @@ mod tests {
         let sem_clone = Arc::clone(&sem);
 
         let mut cfg = make_test_cfg(move || AlwaysFailsOp(Some(sem_clone.clone())));
-        cfg.max_retries_per_op = usize::MAX;
+        cfg.max_retries_per_op = u64::MAX;
         let concurrency = cfg.concurrency as u32;
 
         let (ctrl, fut) = run(cfg);

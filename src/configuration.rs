@@ -35,7 +35,7 @@ pub struct Configuration {
 
     /// The maximum number of attempts an operation should be retried
     /// before giving up.
-    pub max_retries_per_op: usize,
+    pub max_retries_per_op: u64,
 }
 
 /// Contains all necessary context needed to execute an Operation.
