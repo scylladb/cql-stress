@@ -99,7 +99,7 @@ async fn main() -> Result<()> {
                     combined_stats.combine(&partial_stats);
                     printer.print_final(&combined_stats, &mut std::io::stdout())?;
                 }
-                return result.context("An error occurred during the benchmark");
+                return result.map_err(|err| anyhow::anyhow!("{:?}", err)).context("An error occurred during the benchmark");
             }
         }
     }

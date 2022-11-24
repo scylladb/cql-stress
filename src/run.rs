@@ -195,13 +195,19 @@ impl RunController {
     }
 }
 
+#[derive(Debug)]
+pub struct RunError {
+    /// All errors that occured during the test.
+    pub errors: Vec<anyhow::Error>,
+}
+
 /// Runs an operation multiple times in parallel, according to config.
 ///
 /// Returns a pair (controller, future), where:
 /// - `controller` is an object that can be used to control the state of the run,
 /// - `future` is a future which can be waited on in order to obtain the result
 ///   of the run. It does not need to be polled in order for the run to progress.
-pub fn run(config: Configuration) -> (RunController, impl Future<Output = Result<()>>) {
+pub fn run(config: Configuration) -> (RunController, impl Future<Output = Result<(), RunError>>) {
     let (stop_sender, stop_receiver) = oneshot::channel();
     let (result_sender, result_receiver) = oneshot::channel();
 
@@ -222,14 +228,21 @@ pub fn run(config: Configuration) -> (RunController, impl Future<Output = Result
     let result_fut = async move {
         // If the run was aborted before it completed, the result channel
         // will be closed without sending a result.
-        let result: Result<Result<()>, _> = result_receiver.await;
-        result.unwrap_or_else(|_| Err(anyhow::anyhow!("The run was aborted")))
+        let result: Result<Result<(), RunError>, _> = result_receiver.await;
+        result.unwrap_or_else(|_| {
+            Err(RunError {
+                errors: vec![anyhow::anyhow!("The run was aborted")],
+            })
+        })
     };
 
     (controller, result_fut)
 }
 
-async fn do_run(config: Configuration, stop_receiver: oneshot::Receiver<()>) -> Result<()> {
+async fn do_run(
+    config: Configuration,
+    stop_receiver: oneshot::Receiver<()>,
+) -> Result<(), RunError> {
     let start_time = Instant::now();
     let ctx = Arc::new(WorkerContext::new(&config, start_time));
 
@@ -262,17 +275,20 @@ async fn do_run(config: Configuration, stop_receiver: oneshot::Receiver<()>) -> 
         handle
     };
 
-    let mut result: Result<()> = Ok(());
+    let mut errors = Vec::new();
 
-    // TODO: Collect all errors and report them
     while let Some(worker_result) = worker_handles.next().await {
         if let Err(err) = worker_result {
-            result = Err(err);
             ctx.ask_to_stop();
+            errors.push(err);
         }
     }
 
-    result
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(RunError { errors })
+    }
 }
 
 #[cfg(test)]
