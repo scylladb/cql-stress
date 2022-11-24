@@ -54,6 +54,7 @@ struct WorkerContext {
 
     rate_limiter: Option<RateLimiter>,
     max_consecutive_errors_per_op: u64,
+    max_errors_in_total: u64, // For error reporting purposes only
 }
 
 impl WorkerContext {
@@ -66,6 +67,7 @@ impl WorkerContext {
                 .rate_limit_per_second
                 .map(|rate| RateLimiter::new(now, rate)),
             max_consecutive_errors_per_op: config.max_consecutive_errors_per_op,
+            max_errors_in_total: config.max_errors_in_total,
         }
     }
 
@@ -149,11 +151,17 @@ impl WorkerSession {
                 Ok(flow)
             }
             Err(err) if self.consecutive_errors >= self.context.max_consecutive_errors_per_op => {
-                Err(err)
+                Err(err.context(format!(
+                    "Maximum number of errors allowed per operation exceeded ({})",
+                    self.context.max_consecutive_errors_per_op as u128 + 1,
+                )))
             }
             Err(err) if self.context.decrement_global_retry_counter() == ControlFlow::Break(()) => {
                 // We have exhausted our global number of allowed retries.
-                Err(err)
+                Err(err.context(format!(
+                    "Maximum global number of total errors exceeded ({})",
+                    self.context.max_errors_in_total as u128 + 1,
+                )))
             }
             Err(err) if self.context.should_stop() => Err(err),
             Err(_) => {
