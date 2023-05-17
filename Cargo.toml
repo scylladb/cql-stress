@@ -18,7 +18,7 @@ parking_lot = "0.12.0"
 rand = "0.8"
 rand_distr = "0.4"
 rand_pcg = "0.3"
-scylla = {version = "0.5.0", features = ["ssl"]}
+scylla = {version = "0.8.1", features = ["ssl"]}
 sha2 = "0.10"
 thread_local = "1.1.4"
 tokio = {version = "1.15.0", features = ["full"]}# TODO: Include only necessary features
