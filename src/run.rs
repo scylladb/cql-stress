@@ -617,4 +617,33 @@ mod tests {
         test(21, 20, true).await;
         test(30, 20, true).await;
     }
+
+    #[tokio::test]
+    #[ntest::timeout(1000)]
+    async fn test_stops_after_one_fails() {
+        struct Op(bool);
+
+        make_runnable!(Op);
+        impl Op {
+            async fn execute(&mut self, _ctx: &OperationContext) -> Result<ControlFlow<()>> {
+                // Yield so that we don't get stuck in a loop and block the executor thread
+                tokio::task::yield_now().await;
+                if self.0 {
+                    Ok(ControlFlow::Continue(()))
+                } else {
+                    Err(anyhow::anyhow!("error"))
+                }
+            }
+        }
+
+        let counter = AtomicU64::new(0);
+        let mut cfg = make_test_cfg(move || {
+            let id = counter.fetch_add(1, Ordering::Relaxed);
+            Op(id > 0) // Operation with id==0 always fail, others always succeed
+        });
+        cfg.concurrency = 3;
+
+        let (_, fut) = run(cfg);
+        fut.await.unwrap_err(); // Error from one task should stop other tasks
+    }
 }
