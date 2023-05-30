@@ -145,7 +145,7 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
         concurrency: args.concurrency,
         rate_limit_per_second,
         operation_factory,
-        max_retries_per_op: args.max_retries_per_op,
+        max_consecutive_errors_per_op: args.max_consecutive_errors_per_op,
     })
 }
 

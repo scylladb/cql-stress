@@ -52,7 +52,7 @@ struct WorkerContext {
     operation_counter: AtomicU64,
 
     rate_limiter: Option<RateLimiter>,
-    max_retries_per_op: u64,
+    max_consecutive_errors_per_op: u64,
 }
 
 impl WorkerContext {
@@ -63,7 +63,7 @@ impl WorkerContext {
             rate_limiter: config
                 .rate_limit_per_second
                 .map(|rate| RateLimiter::new(now, rate)),
-            max_retries_per_op: config.max_retries_per_op,
+            max_consecutive_errors_per_op: config.max_consecutive_errors_per_op,
         }
     }
 
@@ -89,7 +89,7 @@ impl WorkerContext {
 pub struct WorkerSession {
     context: Arc<WorkerContext>,
     op_id: u64,
-    trial_idx: u64,
+    consecutive_errors: u64,
 }
 
 // Not the most beautiful interface, but it works - unlike async callbacks,
@@ -99,16 +99,13 @@ impl WorkerSession {
         Self {
             context,
             op_id: 0,
-            trial_idx: 0,
+            consecutive_errors: 0,
         }
     }
 
     // Should be called before starting an operation.
     pub async fn start_operation(&mut self) -> Option<OperationContext> {
-        if self.trial_idx == 0 {
-            let next_op_id = self.context.issue_operation_id()?;
-            self.op_id = next_op_id;
-        }
+        self.op_id = self.context.issue_operation_id()?;
 
         let scheduled_start_time = if let Some(rate_limiter) = &self.context.rate_limiter {
             let start_time = rate_limiter.issue_next_start_time();
@@ -130,13 +127,15 @@ impl WorkerSession {
     pub fn end_operation(&mut self, result: Result<ControlFlow<()>>) -> Result<ControlFlow<()>> {
         match result {
             Ok(flow) => {
-                self.trial_idx = 0;
+                self.consecutive_errors = 0;
                 Ok(flow)
             }
-            Err(err) if self.trial_idx >= self.context.max_retries_per_op => Err(err),
+            Err(err) if self.consecutive_errors >= self.context.max_consecutive_errors_per_op => {
+                Err(err)
+            }
             Err(err) if self.context.should_stop() => Err(err),
             Err(_) => {
-                self.trial_idx += 1;
+                self.consecutive_errors += 1;
                 Ok(ControlFlow::Continue(()))
             }
         }
@@ -256,10 +255,8 @@ async fn do_run(config: Configuration, stop_receiver: oneshot::Receiver<()>) -> 
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
     use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
-    use std::sync::Mutex;
 
     use tokio::sync::Semaphore;
     use tokio::time::Instant;
@@ -313,7 +310,7 @@ mod tests {
             concurrency: 10,
             rate_limit_per_second: None,
             operation_factory: Arc::new(FnOperationFactory(f)),
-            max_retries_per_op: 0,
+            max_consecutive_errors_per_op: 0,
         }
     }
 
@@ -430,30 +427,22 @@ mod tests {
         fut.await.unwrap_err();
     }
 
-    struct AlternatingSuccessFailOp {
-        tried_ops: Mutex<HashSet<u64>>,
-    }
+    struct AlternatingSuccessFailOp;
 
     make_runnable!(AlternatingSuccessFailOp);
     impl AlternatingSuccessFailOp {
         fn new() -> Self {
-            AlternatingSuccessFailOp {
-                tried_ops: Mutex::new(HashSet::new()),
-            }
+            AlternatingSuccessFailOp
         }
 
         async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
             if ctx.operation_id >= 100 {
-                return Ok(ControlFlow::Break(()));
-            }
-
-            let mut lock = self.tried_ops.lock().unwrap();
-            let was_missing = lock.insert(ctx.operation_id);
-            if was_missing {
-                // First visit, so fail
+                Ok(ControlFlow::Break(()))
+            } else if ctx.operation_id % 2 == 0 {
+                // Fail on even numbers
                 Err(anyhow::anyhow!("oops"))
             } else {
-                // Already tried and failed - return success this time
+                // Suceeed on odd numbers
                 Ok(ControlFlow::Continue(()))
             }
         }
@@ -466,7 +455,12 @@ mod tests {
         fut.await.unwrap_err(); // Expect error as there were no retries
 
         let mut cfg = make_test_cfg(AlternatingSuccessFailOp::new);
-        cfg.max_retries_per_op = 1;
+        // We can't use higher concurrency because we want to have alternating
+        // failures and successes. New operation IDs are issued for each operation,
+        // even after a failure, so we don't have a way to associate some context
+        // after a failed operation.
+        cfg.concurrency = 1;
+        cfg.max_consecutive_errors_per_op = 1;
         let (_, fut) = run(cfg);
         fut.await.unwrap(); // Expect success as each op was retried
     }
@@ -491,7 +485,7 @@ mod tests {
         let sem_clone = Arc::clone(&sem);
 
         let mut cfg = make_test_cfg(move || AlwaysFailsOp(Some(sem_clone.clone())));
-        cfg.max_retries_per_op = u64::MAX;
+        cfg.max_consecutive_errors_per_op = u64::MAX;
         let concurrency = cfg.concurrency as u32;
 
         let (ctrl, fut) = run(cfg);
