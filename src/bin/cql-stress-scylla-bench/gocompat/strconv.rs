@@ -388,7 +388,7 @@ mod tests {
         ];
 
         let it_32 = tests_32.iter().map(|(s, i)| (s, *i as u64, 32));
-        let it_64 = tests_64.iter().map(|(s, i)| (s, *i as u64, 64));
+        let it_64 = tests_64.iter().map(|(s, i)| (s, *i, 64));
 
         let mut succeeded = true;
         for (s, expected, bits) in it_32.chain(it_64) {
@@ -470,7 +470,7 @@ mod tests {
         ];
 
         let it_32 = tests_32.iter().map(|(s, i)| (s, *i as i64, 32));
-        let it_64 = tests_64.iter().map(|(s, i)| (s, *i as i64, 64));
+        let it_64 = tests_64.iter().map(|(s, i)| (s, *i, 64));
 
         let mut succeeded = true;
         for (s, expected, bits) in it_32.chain(it_64) {

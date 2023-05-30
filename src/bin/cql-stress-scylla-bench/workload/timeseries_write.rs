@@ -71,7 +71,7 @@ impl Workload for TimeseriesWrite {
         let pk_generation = ck_position / self.config.cks_per_pk;
 
         let pk = (pk_position << 32) | pk_generation;
-        let ck = -((self.config.start_nanos + self.period_nanos * ck_position as u64) as i64);
+        let ck = -((self.config.start_nanos + self.period_nanos * ck_position) as i64);
 
         Some((pk as i64, vec![ck]))
     }
