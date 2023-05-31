@@ -68,6 +68,9 @@ pub(crate) struct ScyllaBenchArgs {
     pub hdr_latency_resolution: u64,
     pub hdr_latency_sig_fig: u64,
     pub validate_data: bool,
+
+    pub noise_task_count: u64,
+    pub noise_task_hog_duration: Duration,
 }
 
 // Parses and validates scylla bench params.
@@ -270,6 +273,20 @@ where
         "write meaningful data and validate while reading",
     );
 
+    let noise_task_count = flag.u64_var(
+        "noise-task-count",
+        0,
+        "the number tasks that should be spawned which don't do anything useful \
+        but spin in a loop and yield after some duration; the purpose of those \
+        tasks is to simulate CPU load coming from other tasks scheduled on the \
+        same tokio executor in a real application",
+    );
+    let noise_task_hog_duration = flag.duration_var(
+        "noise-task-hog-duration",
+        Duration::from_millis(1),
+        "the duration for which a noise task should block the CPU when scheduled",
+    );
+
     let (parser, desc) = flag.build();
 
     let result = move || -> Result<ScyllaBenchArgs> {
@@ -396,6 +413,8 @@ where
             hdr_latency_sig_fig,
             hdr_latency_resolution,
             validate_data: validate_data.get(),
+            noise_task_count: noise_task_count.get(),
+            noise_task_hog_duration: noise_task_hog_duration.get(),
         })
     }();
 

@@ -25,6 +25,7 @@ use scylla::{transport::Compression, Session, SessionBuilder};
 use cql_stress::configuration::{Configuration, OperationFactory};
 use cql_stress::run::RunController;
 use cql_stress::sharded_stats::{Stats as _, StatsFactory as _};
+use tokio::time::Instant;
 
 use crate::args::{Mode, ScyllaBenchArgs, WorkloadType};
 use crate::operation::counter_update::CounterUpdateOperationFactory;
@@ -72,6 +73,12 @@ async fn main() -> Result<()> {
     // Don't care about the leaking task, it won't prevent the runtime
     // from being stopped.
     tokio::task::spawn(stop_on_signal(Arc::clone(&ctrl)));
+
+    // Start the CPU-hogging tasks. Again, don't care about joining with them
+    // or cancelling them.
+    for _ in 0..sb_config.noise_task_count {
+        tokio::task::spawn(noise_task(Arc::clone(&sb_config)));
+    }
 
     let mut printer = StatsPrinter::new(
         sb_config.measure_latency.then_some(sb_config.latency_type),
@@ -327,5 +334,22 @@ fn create_workload_factory(args: &ScyllaBenchArgs) -> Result<Box<dyn WorkloadFac
                 mode,
             ))
         }
+    }
+}
+
+// A task that does nothing useful but only uses up the CPU time.
+// Its purpose is to simulate the effects of other work being scheduled
+// on the same executor, which may affect how the driver tasks are being
+// scheduled.
+async fn noise_task(args: Arc<ScyllaBenchArgs>) {
+    loop {
+        // Hog the CPU for the specified duration
+        let hog_end = Instant::now() + args.noise_task_hog_duration;
+        while Instant::now() < hog_end {
+            std::hint::spin_loop();
+        }
+
+        // Yield to somebody else
+        tokio::task::yield_now().await;
     }
 }
