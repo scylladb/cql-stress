@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
-use scylla::load_balancing::{self, LoadBalancingPolicy};
+use scylla::load_balancing::{DefaultPolicy, LoadBalancingPolicy};
 use scylla::statement::Consistency;
 
 use crate::distribution::{parse_distribution, Distribution, Fixed};
@@ -634,16 +634,15 @@ fn show_consistency_level(cl: &Consistency) -> &'static str {
 fn parse_host_selection_policy(s: &str) -> Result<Arc<dyn LoadBalancingPolicy>> {
     // host-pool is unsupported
     let policy: Arc<dyn LoadBalancingPolicy> = match s {
-        "round-robin" => Arc::new(load_balancing::RoundRobinPolicy::new()),
-        "token-aware" => Arc::new(load_balancing::TokenAwarePolicy::new(Box::new(
-            load_balancing::RoundRobinPolicy::new(),
-        ))),
+        "round-robin" => DefaultPolicy::builder().token_aware(false).build(),
+        "token-aware" => DefaultPolicy::builder().token_aware(true).build(),
         // dc-aware is unimplemented in the original s-b, so here is
         // my interpretation of it
         _ => match s.strip_prefix("dc-aware:") {
-            Some(local_dc) => Arc::new(load_balancing::DcAwareRoundRobinPolicy::new(
-                local_dc.to_string(),
-            )),
+            Some(local_dc) => DefaultPolicy::builder()
+                .token_aware(false)
+                .prefer_datacenter(local_dc.to_owned())
+                .build(),
             None => return Err(anyhow::anyhow!("Unknown host selection policy: {}", s)),
         },
     };

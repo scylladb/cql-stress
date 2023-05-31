@@ -19,6 +19,7 @@ use anyhow::{Context, Result};
 use env_logger::Env;
 use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
+use scylla::ExecutionProfile;
 use scylla::{transport::Compression, Session, SessionBuilder};
 
 use cql_stress::configuration::{Configuration, OperationFactory};
@@ -129,7 +130,10 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
         builder = builder.compression(Some(Compression::Snappy));
     }
 
-    builder = builder.load_balancing(Arc::clone(&args.host_selection_policy));
+    let default_exec_profile = ExecutionProfile::builder()
+        .load_balancing_policy(Arc::clone(&args.host_selection_policy))
+        .build();
+    builder = builder.default_execution_profile_handle(default_exec_profile.into_handle());
 
     let session = builder.build().await?;
     let session = Arc::new(session);

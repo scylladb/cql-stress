@@ -874,11 +874,12 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "scylla"
-version = "0.5.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eed40c02a5c835d894044bbd6f454ef54b6937ec8af23efe3cdeaa57005bb00d"
+checksum = "530af73ae66ea56dcc2dd6a8900b442c31da0f068923ea41e0b0f3d0703b067c"
 dependencies = [
  "arc-swap",
+ "async-trait",
  "bigdecimal",
  "byteorder",
  "bytes",
@@ -892,6 +893,7 @@ dependencies = [
  "num_enum",
  "openssl",
  "rand",
+ "rand_pcg",
  "scylla-cql",
  "scylla-macros",
  "smallvec",
@@ -907,10 +909,11 @@ dependencies = [
 
 [[package]]
 name = "scylla-cql"
-version = "0.0.1"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2e0ac8202660385589dba16123cc5916cf4eb3078e2dac0ab6af6903d7f5467"
+checksum = "0fc8568c89b1d70547881610ad2423157267d57552edb4861e6bd4394e53f26c"
 dependencies = [
+ "async-trait",
  "bigdecimal",
  "byteorder",
  "bytes",
@@ -927,10 +930,11 @@ dependencies = [
 
 [[package]]
 name = "scylla-macros"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13dc0caffb1274feb3df615e3260cb71a5a7a5d579adc49ba5544c87950a701c"
+checksum = "32d777dadbf7163d1524ea4f5a095146298d263a686febb96d022cf46d06df32"
 dependencies = [
+ "proc-macro2",
  "quote",
  "syn",
 ]
@@ -1195,6 +1199,9 @@ name = "uuid"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
+dependencies = [
+ "getrandom",
+]
 
 [[package]]
 name = "vcpkg"
