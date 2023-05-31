@@ -107,10 +107,7 @@ impl Workload for Sequential {
 
         let pk = (self.current_pk % self.config.pks) as i64 + self.config.partition_offset;
         let ck_end = std::cmp::min(self.current_ck + ck_count as u64, self.config.cks_per_pk);
-        let cks = (self.current_ck..ck_end)
-            .into_iter()
-            .map(|x| x as i64)
-            .collect();
+        let cks = (self.current_ck..ck_end).map(|x| x as i64).collect();
         self.current_ck = ck_end;
 
         Some((pk, cks))
