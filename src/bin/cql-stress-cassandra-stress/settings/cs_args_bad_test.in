@@ -1,0 +1,10 @@
+cassandra-stress write cl=ONE n=10000 duration=10s
+cassandra-stress write n=10k err<0.2
+cassandra-stress write n=10000p
+cassandra-stress write cl=foo
+cassandra-stress write duration=1h n<10
+cassandra-stress write no-warmup=foo
+cassandra-stress counter_read duration=1hour
+cassandra-stress foo
+cassandra-stress help foo
+cassandra-stress write cl=local_one cl=quorum
