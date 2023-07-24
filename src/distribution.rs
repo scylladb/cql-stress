@@ -141,7 +141,7 @@ fn decompose_args(s: &str) -> Result<Vec<&str>> {
 // there is a TODO with a note to implement it.
 pub fn parse_long<I: ParsableNumber>(s: &str) -> Result<I> {
     let s = s.trim();
-    let last_char = s.chars().rev().next().map(|c| c.to_ascii_lowercase());
+    let last_char = s.chars().next_back().map(|c| c.to_ascii_lowercase());
 
     let mult: Option<I> = match last_char {
         Some('b') => Some(I::from_u32(1_000_000_000)),
