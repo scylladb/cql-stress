@@ -1,10 +1,12 @@
 mod node;
 mod rate;
+mod schema;
 
 use anyhow::Result;
 
 pub use node::NodeOption;
 pub use rate::RateOption;
+pub use schema::SchemaOption;
 
 pub struct Options;
 
@@ -13,6 +15,7 @@ impl Options {
         [
             (NodeOption::CLI_STRING, NodeOption::description()),
             (RateOption::CLI_STRING, RateOption::description()),
+            (SchemaOption::CLI_STRING, SchemaOption::description()),
         ]
         .into_iter()
     }
@@ -28,6 +31,7 @@ impl Options {
         match option_str {
             NodeOption::CLI_STRING => NodeOption::print_help(),
             RateOption::CLI_STRING => RateOption::print_help(),
+            SchemaOption::CLI_STRING => SchemaOption::print_help(),
             _ => return Err(anyhow::anyhow!("Invalid option provided to command help")),
         }
 

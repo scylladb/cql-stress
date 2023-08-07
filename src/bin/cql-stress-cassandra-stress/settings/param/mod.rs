@@ -7,6 +7,7 @@ pub mod types;
 
 use anyhow::Result;
 
+pub use multi_param::MultiParamAcceptsArbitraryHandle;
 pub use multi_param::MultiParamHandle;
 pub use parser::ParamsParser;
 pub use simple_param::SimpleParamHandle;
