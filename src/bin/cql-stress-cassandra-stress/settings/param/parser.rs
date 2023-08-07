@@ -2,9 +2,10 @@ use anyhow::Result;
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
+    multi_param::{ArbitraryParamsAcceptance, MultiParam},
     simple_param::{SimpleParam, SimpleParamHandle},
     types::Parsable,
-    ParamCell, ParamHandle, ParamMatchResult,
+    MultiParamHandle, ParamCell, ParamHandle, ParamMatchResult,
 };
 
 /// Some of the parameters are mutually exclusive. For example, we can't do
@@ -72,7 +73,7 @@ impl ParamsGroup {
     }
 }
 
-/// Parser lets the user define the parameters (see trait [`Param`]).
+/// Parser lets the user define the parameters (see trait [super::Param]).
 /// The parser registers such parameter internally and returns the handle to the user.
 /// Once the user calls `Parser::parse` (which consumes the parser), the values of
 /// the parsed parameters can be retrieved using previously created handles.
@@ -106,6 +107,44 @@ impl ParamsParser {
 
         self.params.push(Rc::clone(&param) as ParamCell);
         SimpleParamHandle::new(param)
+    }
+
+    /// A sub-parameter of some complex parameter e.g. `MultiParam`.
+    /// In contrast to [simple_param] - parser won't add the param to its vector.
+    /// This results in the owner of the subparameter
+    /// being responsible for displaying the subparameter's help message.
+    pub fn simple_subparam<T: Parsable + 'static>(
+        &mut self,
+        prefix: &'static str,
+        default: Option<&'static str>,
+        desc: &'static str,
+        required: bool,
+    ) -> SimpleParamHandle<T> {
+        let param = Rc::new(RefCell::new(SimpleParam::new(
+            prefix, default, desc, required,
+        )));
+
+        SimpleParamHandle::new(param)
+    }
+
+    /// Registers the multi parameter provided by the user and returns the handle.
+    /// `subparams` should be created via `*_subparam` parser's API.
+    pub fn multi_param<A: ArbitraryParamsAcceptance + 'static>(
+        &mut self,
+        prefix: &'static str,
+        subparams: &[&dyn ParamHandle],
+        desc: &'static str,
+        required: bool,
+    ) -> MultiParamHandle<A> {
+        let param = Rc::new(RefCell::new(MultiParam::new(
+            prefix,
+            subparams.iter().map(|handle| handle.cell()).collect(),
+            desc,
+            required,
+        )));
+
+        self.params.push(Rc::clone(&param) as ParamCell);
+        MultiParamHandle::new(param)
     }
 
     /// Creates a new group of the parameters.
