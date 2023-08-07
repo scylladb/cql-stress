@@ -10,3 +10,15 @@ cassandra-stress counter_read
 cassandra-stress counter_write
 cassandra-stress help
 cassandra-stress help read
+cassandra-stress read no-warmup cl=QUORUM duration=600m -rate threads=80 throttle=8000/s
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1) -rate threads=10
+cassandra-stress read cl=QUORUM n=10000 -schema replication(key=value) -rate threads=10
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10
+cassandra-stress read no-warmup cl=QUORUM n=10000 -schema keyspace=keyspace_new_dc compression=LZ4Compressor -rate threads=5
+cassandra-stress counter_write no-warmup cl=QUORUM duration=20m -schema replication(strategy=NetworkTopologyStrategy,replication_factor=3)
+cassandra-stress counter_write no-warmup cl=QUORUM duration=20m -schema replication(strategy=NetworkTopologyStrategy)
+cassandra-stress counter_write no-warmup cl=QUORUM duration=20m -schema replication(replication_factor=3)
+cassandra-stress counter_write no-warmup cl=LOCAL_ONE duration=20m -schema replication(strategy=NetworkTopologyStrategy,replication_factor=3) keyspace=keyspace2
+cassandra-stress counter_write no-warmup cl=THREE duration=20m -schema keyspace=keyspace2
+cassandra-stress counter_write no-warmup cl=ANY duration=20m -schema replication(strategy=NetworkTopologyStrategy) keyspace=keyspace2
+cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2

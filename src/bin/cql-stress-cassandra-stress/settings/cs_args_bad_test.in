@@ -8,3 +8,10 @@ cassandra-stress counter_read duration=1hour
 cassandra-stress foo
 cassandra-stress help foo
 cassandra-stress write cl=local_one cl=quorum
+cassandra-stress write cl=quorum no-warmup -node 127.0.0.1,192.168.0.1,
+cassandra-stress write -rate fixed=10/s threads>=10
+cassandra-stress read -schema replication(factor=abc)
+cassandra-stress read -schema replication(factor==123)
+cassandra-stress read -schema replication(factor=1,=)
+cassandra-stress counter_write cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' no-warmup
+cassandra-stress write -rate keyspace=keyspace2
