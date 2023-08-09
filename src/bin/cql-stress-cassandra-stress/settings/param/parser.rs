@@ -109,9 +109,9 @@ impl ParamsParser {
     }
 
     /// Creates a new group of the parameters.
-    pub fn group(&mut self, params: Vec<&dyn ParamHandle>) {
+    pub fn group(&mut self, params: &[&dyn ParamHandle]) {
         self.groups.push(ParamsGroup::new(
-            params.into_iter().map(|handle| handle.cell()).collect(),
+            params.iter().map(|handle| handle.cell()).collect(),
         ))
     }
 
@@ -201,8 +201,8 @@ mod tests {
 
         // Group the parameters. Meaning that if a user defined,
         // for example `count=` and `duration=` at the same time, the parsing should fail.
-        parser.group(vec![&count, &foo]);
-        parser.group(vec![&duration]);
+        parser.group(&[&count, &foo]);
+        parser.group(&[&duration]);
 
         (
             parser,

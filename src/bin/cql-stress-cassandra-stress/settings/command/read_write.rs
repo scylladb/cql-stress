@@ -279,11 +279,9 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
     // Usage: read n=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?]
     //  OR
     // Usage: read duration=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?]
-    parser.group(vec![
-        &err, &ngt, &nlt, &no_warmup, &truncate, &cl, &serial_cl,
-    ]);
-    parser.group(vec![&n, &no_warmup, &truncate, &cl, &serial_cl]);
-    parser.group(vec![&duration, &no_warmup, &truncate, &cl, &serial_cl]);
+    parser.group(&[&err, &ngt, &nlt, &no_warmup, &truncate, &cl, &serial_cl]);
+    parser.group(&[&n, &no_warmup, &truncate, &cl, &serial_cl]);
+    parser.group(&[&duration, &no_warmup, &truncate, &cl, &serial_cl]);
 
     (
         parser,
