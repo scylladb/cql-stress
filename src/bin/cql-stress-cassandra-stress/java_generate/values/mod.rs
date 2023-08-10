@@ -1,6 +1,8 @@
 use super::distribution::{uniform::UniformDistribution, Distribution};
 use scylla::transport::partitioner::{Murmur3Partitioner, Partitioner};
 
+pub mod blob;
+
 /// Generic generator of random values.
 /// Holds the distributions that the seeds and sizes are sampled from.
 /// Wraps the actual generator which makes use of the distributions.
@@ -87,4 +89,20 @@ pub trait ValueGenerator {
         identity_distribution: &mut dyn Distribution,
         size_distribution: &mut dyn Distribution,
     ) -> Self::Value;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{blob::Blob, Generator, GeneratorConfig};
+
+    #[test]
+    fn generator_config_salt_test() {
+        let blob_gen = Blob::default();
+        // "randomstr<column_name>" is the seed string passed to the generator.
+        // It used used to compute the salt which is applied to the seed when seeding underlying rng.
+        let config = GeneratorConfig::new("randomstrC0", None, None);
+        let gen = Generator::new(blob_gen, config);
+        // This value was computed using Java's implementation of Generator.
+        assert_eq!(gen.salt, 5919258029671157411);
+    }
 }
