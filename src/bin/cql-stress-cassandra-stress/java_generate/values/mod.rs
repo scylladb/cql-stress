@@ -2,6 +2,7 @@ use super::distribution::{uniform::UniformDistribution, Distribution};
 use scylla::transport::partitioner::{Murmur3Partitioner, Partitioner};
 
 pub mod blob;
+pub mod hex_blob;
 
 /// Generic generator of random values.
 /// Holds the distributions that the seeds and sizes are sampled from.
