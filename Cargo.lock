@@ -157,6 +157,7 @@ dependencies = [
  "chrono",
  "futures",
  "hdrhistogram",
+ "java_random",
  "lazy_static",
  "ntest",
  "openssl",
@@ -448,6 +449,12 @@ checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
 dependencies = [
  "either",
 ]
+
+[[package]]
+name = "java_random"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79d7bc77998e63629a8512d8c9a60da5a56c15c14fff24ca5b33000127cb8272"
 
 [[package]]
 name = "js-sys"
