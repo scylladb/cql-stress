@@ -1,3 +1,4 @@
+mod java_generate;
 mod settings;
 
 #[macro_use]
