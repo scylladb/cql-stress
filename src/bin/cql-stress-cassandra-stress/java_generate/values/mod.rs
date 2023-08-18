@@ -1,8 +1,14 @@
 use super::distribution::{uniform::UniformDistribution, Distribution};
-use scylla::transport::partitioner::{Murmur3Partitioner, Partitioner};
+use scylla::{
+    frame::response::result::CqlValue,
+    transport::partitioner::{Murmur3Partitioner, Partitioner},
+};
 
 pub mod blob;
 pub mod hex_blob;
+
+pub use blob::Blob;
+pub use hex_blob::HexBlob;
 
 /// Generic generator of random values.
 /// Holds the distributions that the seeds and sizes are sampled from.
@@ -38,7 +44,7 @@ impl<T: ValueGenerator> Generator<T> {
         self.identity_distribution.set_seed(seed ^ self.salt);
     }
 
-    pub fn generate(&mut self) -> T::Value {
+    pub fn generate(&mut self) -> CqlValue {
         self.gen.generate(
             self.identity_distribution.as_mut(),
             self.size_distribution.as_mut(),
@@ -83,13 +89,11 @@ impl GeneratorConfig {
 
 /// The actual value Generator trait.
 pub trait ValueGenerator {
-    type Value;
-
     fn generate(
         &mut self,
         identity_distribution: &mut dyn Distribution,
         size_distribution: &mut dyn Distribution,
-    ) -> Self::Value;
+    ) -> CqlValue;
 }
 
 #[cfg(test)]
