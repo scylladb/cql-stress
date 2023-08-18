@@ -70,6 +70,71 @@ impl SchemaOption {
             compression,
         }
     }
+
+    fn construct_replication_string(&self) -> String {
+        let mut result = format!(
+            "{{'class': '{}', 'replication_factor': {}",
+            self.replication_strategy, self.replication_factor
+        );
+        for (key, val) in &self.replication_opts {
+            result += &format!(", '{}': '{}'", key, val);
+        }
+        result += "}";
+
+        result
+    }
+
+    pub fn construct_keyspace_creation_query(&self) -> String {
+        format!(
+            "CREATE KEYSPACE IF NOT EXISTS \"{}\" WITH REPLICATION = {};",
+            self.keyspace,
+            self.construct_replication_string()
+        )
+    }
+
+    fn construct_compaction_string(&self) -> Option<String> {
+        self.compaction_strategy.as_ref().map(|strategy| {
+            let mut result = format!(" AND compaction = {{'class': '{}'", strategy);
+
+            for (key, val) in &self.compaction_opts {
+                result += &format!(", '{}': '{}'", key, val);
+            }
+
+            result += "}";
+
+            result
+        })
+    }
+
+    // For now the types can be either 'counter' or 'blob'. Once we introduce the USER command,
+    // we will allow the user to define some other types to use.
+    fn construct_table_creation_query_with(
+        &self,
+        table_name: &'static str,
+        column_type: &'static str,
+    ) -> String {
+        // Note that for now we hardcode the columns.
+        // In the future, `-col` option will be supported, that lets the user define column names as well as the number of columns.
+        let mut result = format!("CREATE TABLE IF NOT EXISTS {0} (key blob, \"C0\" {1}, \"C1\" {1}, \"C2\" {1}, \"C3\" {1}, \"C4\" {1}, PRIMARY KEY (key))", table_name, column_type);
+        result += " WITH compression = {";
+        if let Some(compression) = &self.compression {
+            result += &format!("'sstable_compression': '{}'", compression);
+        }
+        result += "}";
+        if let Some(compaction_str) = self.construct_compaction_string() {
+            result += &compaction_str;
+        }
+        result += ";";
+        result
+    }
+
+    pub fn construct_table_creation_query(&self) -> String {
+        self.construct_table_creation_query_with("standard1", "blob")
+    }
+
+    pub fn construct_counter_table_creation_query(&self) -> String {
+        self.construct_table_creation_query_with("counter1", "counter")
+    }
 }
 
 struct SchemaParamHandles {
