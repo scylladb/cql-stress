@@ -5,6 +5,9 @@ mod settings;
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
+extern crate async_trait;
+
 use crate::settings::parse_cassandra_stress_args;
 use anyhow::Result;
 use std::env;
