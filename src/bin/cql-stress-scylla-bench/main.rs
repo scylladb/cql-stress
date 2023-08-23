@@ -16,11 +16,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use env_logger::Env;
 use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::ExecutionProfile;
 use scylla::{transport::Compression, Session, SessionBuilder};
+use tracing_subscriber::EnvFilter;
 
 use cql_stress::configuration::{Configuration, OperationFactory};
 use cql_stress::run::RunController;
@@ -40,7 +40,9 @@ use crate::workload::{
 // TODO: Return exit code
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("warn")))
+        .init();
 
     #[cfg(debug_assertions)]
     {
