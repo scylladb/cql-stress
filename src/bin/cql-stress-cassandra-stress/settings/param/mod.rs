@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 mod parser;
 mod simple_param;
+pub mod types;
 use regex::Regex;
 
 pub use parser::ParamsParser;

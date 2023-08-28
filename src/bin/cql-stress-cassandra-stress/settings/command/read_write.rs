@@ -1,11 +1,12 @@
 use crate::settings::{
-    param::{ParamsParser, SimpleParamHandle},
+    param::{types::Parsable, ParamsParser, SimpleParamHandle},
     ParsePayload,
 };
 use anyhow::{Context, Result};
 use scylla::statement::{Consistency, SerialConsistency};
 use std::{str::FromStr, time::Duration};
-use strum_macros::{AsRefStr, EnumString};
+use strum::IntoEnumIterator;
+use strum_macros::{AsRefStr, EnumIter, EnumString};
 
 use super::{Command, CommandParams};
 
@@ -42,7 +43,7 @@ impl Uncertainty {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, AsRefStr, EnumString)]
+#[derive(Clone, Debug, PartialEq, Eq, AsRefStr, EnumString, EnumIter)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[strum(ascii_case_insensitive)]
 pub enum Truncate {
@@ -61,7 +62,27 @@ impl Truncate {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, AsRefStr, EnumString)]
+impl Parsable for Truncate {
+    type Parsed = Truncate;
+
+    fn parse(truncate: &str) -> Result<Self::Parsed> {
+        let create_err_msg = || {
+            let concat = Self::iter()
+                .map(|tr| tr.show().to_owned())
+                .collect::<Vec<String>>()
+                .join("|");
+
+            format!(
+                "Invalid truncate type: {}. Must be one of: {}",
+                truncate, concat,
+            )
+        };
+
+        Self::from_str(truncate).with_context(create_err_msg)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, AsRefStr, EnumString, EnumIter)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[strum(ascii_case_insensitive)]
 pub enum ConsistencyLevel {
@@ -102,7 +123,29 @@ impl ConsistencyLevel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, AsRefStr, EnumString)]
+impl Parsable for ConsistencyLevel {
+    type Parsed = Consistency;
+
+    fn parse(cl: &str) -> Result<Self::Parsed> {
+        let create_err_msg = || {
+            let concat = Self::iter()
+                .map(|cl| cl.show().to_owned())
+                .collect::<Vec<String>>()
+                .join("|");
+
+            format!(
+                "Invalid consistency level: {}. Must be one of: {}",
+                cl, concat
+            )
+        };
+
+        Self::from_str(cl)
+            .with_context(create_err_msg)
+            .map(|cl| cl.to_scylla_consistency())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, AsRefStr, EnumString, EnumIter)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 #[strum(ascii_case_insensitive)]
 pub enum SerialConsistencyLevel {
@@ -126,6 +169,28 @@ impl SerialConsistencyLevel {
             SerialConsistencyLevel::Serial => SerialConsistency::Serial,
             SerialConsistencyLevel::LocalSerial => SerialConsistency::LocalSerial,
         }
+    }
+}
+
+impl Parsable for SerialConsistencyLevel {
+    type Parsed = SerialConsistency;
+
+    fn parse(serial_cl: &str) -> Result<Self::Parsed> {
+        let create_err_msg = || {
+            let concat = Self::iter()
+                .map(|serial_cl| serial_cl.show().to_owned())
+                .collect::<Vec<String>>()
+                .join("|");
+
+            format!(
+                "Invalid serial consistency level: {}. Must be one of: {}",
+                serial_cl, concat
+            )
+        };
+
+        Self::from_str(serial_cl)
+            .with_context(create_err_msg)
+            .map(|serial_cl| serial_cl.to_scylla_serial_consistency())
     }
 }
 
