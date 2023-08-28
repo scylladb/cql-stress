@@ -8,6 +8,7 @@ use thread_local::ThreadLocal;
 
 pub mod fixed;
 pub mod sequence;
+pub mod uniform;
 
 /// A distribution that atomically performs the operations.
 /// It implies that the distribution can be safely used in a multi-threaded environment.
