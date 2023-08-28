@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::settings::command::Command;
+use crate::settings::{command::Command, option::Options};
 
 use super::{CommandParams, ParsePayload};
 
@@ -9,7 +9,8 @@ pub fn print_help() {
     println!("Help usage: cassandra-stress help <command|option>");
     println!();
     Command::print_generic_help();
-    // TODO: Add corresponding call for supported options once we introduce them.
+    println!();
+    Options::print_generic_help();
 }
 
 fn print_command_help(command_str: &str) -> Result<CommandParams> {
@@ -24,21 +25,34 @@ fn print_command_help(command_str: &str) -> Result<CommandParams> {
     }
 }
 
+fn print_option_help(option_str: &str) -> Result<CommandParams> {
+    Options::print_help(option_str)?;
+    Ok(CommandParams::Special)
+}
+
 pub fn parse_help_command(payload: &mut ParsePayload) -> Result<CommandParams> {
-    let params = payload.remove("help").unwrap();
-    if params.is_empty() && payload.is_empty() {
-        print_help();
-        return Ok(CommandParams::Special);
-    }
+    let params = payload.remove("help").unwrap_or_default();
+
+    let (help_param, remaining_help_params) = params.split_first().unzip();
+    let (option_payload, mut remaining_payload) = {
+        let mut iter = payload.iter();
+        let next = iter.next();
+        (next, iter)
+    };
 
     anyhow::ensure!(
-        params.len() + payload.len() == 1,
-        "Invalid command/option provided to help",
+        !remaining_help_params.is_some_and(|remaining| !remaining.is_empty())
+            && remaining_payload.next().is_none(),
+        "Invalid command/option provided to help"
     );
 
-    if !params.is_empty() {
-        return print_command_help(params[0]);
+    match (help_param, option_payload) {
+        (Some(_), Some(_)) => anyhow::bail!("Invalid command/option provided to help"),
+        (Some(command), None) => print_command_help(command),
+        (None, Some((option, _option_params))) => print_option_help(option),
+        (None, None) => {
+            print_help();
+            Ok(CommandParams::Special)
+        }
     }
-
-    todo!("Implement help for options.");
 }
