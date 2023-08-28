@@ -152,3 +152,14 @@ impl Parsable for Count {
         Ok(value * multiplier)
     }
 }
+
+pub struct CommaDelimitedList;
+
+impl Parsable for CommaDelimitedList {
+    type Parsed = Vec<String>;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        ensure_regex!(s, r"^[^=,]+(,[^=,]+)*$");
+        Ok(s.split(',').map(|e| e.to_owned()).collect())
+    }
+}
