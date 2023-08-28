@@ -3,7 +3,8 @@ use crate::settings::{
     ParsePayload,
 };
 use anyhow::{Context, Result};
-use std::str::FromStr;
+use scylla::statement::{Consistency, SerialConsistency};
+use std::{str::FromStr, time::Duration};
 use strum_macros::{AsRefStr, EnumString};
 
 use super::{Command, CommandParams};
@@ -73,17 +74,31 @@ pub enum ConsistencyLevel {
     Two,
     Three,
     LocalOne,
-    Serial,
-    LocalSerial,
 }
 
 impl ConsistencyLevel {
-    fn parse(cl: &str) -> Result<Self> {
-        Self::from_str(cl).with_context(|| format!("Invalid consistency level: {}", cl))
+    fn parse(cl: &str) -> Result<Consistency> {
+        Self::from_str(cl)
+            .with_context(|| format!("Invalid consistency level: {}", cl))
+            .map(|cl| cl.to_scylla_consistency())
     }
 
     fn show(&self) -> &str {
         self.as_ref()
+    }
+
+    fn to_scylla_consistency(&self) -> Consistency {
+        match self {
+            ConsistencyLevel::One => Consistency::One,
+            ConsistencyLevel::Quorum => Consistency::Quorum,
+            ConsistencyLevel::LocalQuorum => Consistency::LocalQuorum,
+            ConsistencyLevel::EachQuorum => Consistency::EachQuorum,
+            ConsistencyLevel::All => Consistency::All,
+            ConsistencyLevel::Any => Consistency::Any,
+            ConsistencyLevel::Two => Consistency::Two,
+            ConsistencyLevel::Three => Consistency::Three,
+            ConsistencyLevel::LocalOne => Consistency::LocalOne,
+        }
     }
 }
 
@@ -96,13 +111,21 @@ pub enum SerialConsistencyLevel {
 }
 
 impl SerialConsistencyLevel {
-    fn parse(serial_cl: &str) -> Result<Self> {
+    fn parse(serial_cl: &str) -> Result<SerialConsistency> {
         Self::from_str(serial_cl)
             .with_context(|| format!("Invalid serial consistency level: {}", serial_cl))
+            .map(|serial_cl| serial_cl.to_scylla_serial_consistency())
     }
 
     fn show(&self) -> &str {
         self.as_ref()
+    }
+
+    fn to_scylla_serial_consistency(&self) -> SerialConsistency {
+        match self {
+            SerialConsistencyLevel::Serial => SerialConsistency::Serial,
+            SerialConsistencyLevel::LocalSerial => SerialConsistency::LocalSerial,
+        }
     }
 }
 
@@ -110,10 +133,10 @@ pub struct ReadWriteParams {
     pub uncertainty: Option<Uncertainty>,
     pub no_warmup: bool,
     pub truncate: Truncate,
-    pub consistency_level: ConsistencyLevel,
-    pub serial_consistency_level: SerialConsistencyLevel,
+    pub consistency_level: Consistency,
+    pub serial_consistency_level: SerialConsistency,
     pub operation_count: Option<u64>,
-    pub duration: Option<u64>,
+    pub duration: Option<Duration>,
 }
 
 impl ReadWriteParams {
@@ -125,14 +148,14 @@ impl ReadWriteParams {
             Some(v) => println!("{v}"),
             None => println!("-1"),
         }
-        if self.duration.is_some() {
-            println!("  Duration: {} SECONDS", self.duration.unwrap());
+        if let Some(duration) = self.duration {
+            println!("  Duration: {} SECONDS", duration.as_secs());
         }
         println!("  No Warmup: {}", self.no_warmup);
-        println!("  Consistency Level: {}", self.consistency_level.show());
+        println!("  Consistency Level: {}", self.consistency_level);
         println!(
             "  Serial Consistency Level: {}",
-            self.serial_consistency_level.show()
+            self.serial_consistency_level
         );
         println!("  Truncate: {}", self.truncate.show());
         if self.uncertainty.is_none() {
@@ -184,9 +207,11 @@ fn parse_duration_unit(unit: char) -> Result<u64> {
     }
 }
 
-fn parse_duration(n: &str) -> Result<u64> {
+fn parse_duration(n: &str) -> Result<Duration> {
     let multiplier = parse_duration_unit(n.chars().last().unwrap())?;
-    Ok(n[0..n.len() - 1].parse::<u64>().unwrap() * multiplier)
+    Ok(Duration::from_secs(
+        n[0..n.len() - 1].parse::<u64>().unwrap() * multiplier,
+    ))
 }
 
 fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
@@ -322,10 +347,10 @@ pub fn print_help_read_write(command_str: &str) {
 
 #[cfg(test)]
 mod tests {
+    use scylla::statement::{Consistency, SerialConsistency};
+
     use crate::settings::command::{
-        read_write::{
-            parse_with_handles, prepare_parser, ConsistencyLevel, SerialConsistencyLevel, Truncate,
-        },
+        read_write::{parse_with_handles, prepare_parser, Truncate},
         Command,
     };
 
@@ -343,11 +368,8 @@ mod tests {
         assert_eq!(None, params.uncertainty);
         assert!(params.no_warmup);
         assert_eq!(Truncate::Never, params.truncate);
-        assert_eq!(ConsistencyLevel::Quorum, params.consistency_level);
-        assert_eq!(
-            SerialConsistencyLevel::Serial,
-            params.serial_consistency_level
-        );
+        assert_eq!(Consistency::Quorum, params.consistency_level);
+        assert_eq!(SerialConsistency::Serial, params.serial_consistency_level);
         assert_eq!(Some(10_000_000), params.operation_count);
         assert_eq!(None, params.duration);
     }
@@ -384,11 +406,8 @@ mod tests {
         );
         assert!(params.no_warmup);
         assert_eq!(Truncate::Never, params.truncate);
-        assert_eq!(ConsistencyLevel::LocalOne, params.consistency_level);
-        assert_eq!(
-            SerialConsistencyLevel::Serial,
-            params.serial_consistency_level
-        );
+        assert_eq!(Consistency::LocalOne, params.consistency_level);
+        assert_eq!(SerialConsistency::Serial, params.serial_consistency_level);
         assert_eq!(None, params.operation_count);
         assert_eq!(None, params.duration);
     }
