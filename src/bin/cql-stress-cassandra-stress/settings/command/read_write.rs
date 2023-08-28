@@ -1,5 +1,8 @@
 use crate::settings::{
-    param::{types::Parsable, ParamsParser, SimpleParamHandle},
+    param::{
+        types::{Count, Parsable, UnitInterval},
+        ParamsParser, SimpleParamHandle,
+    },
     ParsePayload,
 };
 use anyhow::{Context, Result};
@@ -12,14 +15,14 @@ use super::{Command, CommandParams};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Uncertainty {
-    pub target_uncertainty: f32,
+    pub target_uncertainty: f64,
     pub min_uncertainty_measurements: u64,
     pub max_uncertainty_measurements: u64,
 }
 
 impl Uncertainty {
     pub fn new(
-        target_uncertainty: f32,
+        target_uncertainty: f64,
         min_uncertainty_measurements: u64,
         max_uncertainty_measurements: u64,
     ) -> Self {
@@ -53,10 +56,6 @@ pub enum Truncate {
 }
 
 impl Truncate {
-    fn parse(truncate: &str) -> Result<Self> {
-        Self::from_str(truncate).with_context(|| format!("Invalid truncate type: {}", truncate))
-    }
-
     fn show(&self) -> &str {
         self.as_ref()
     }
@@ -98,12 +97,6 @@ pub enum ConsistencyLevel {
 }
 
 impl ConsistencyLevel {
-    fn parse(cl: &str) -> Result<Consistency> {
-        Self::from_str(cl)
-            .with_context(|| format!("Invalid consistency level: {}", cl))
-            .map(|cl| cl.to_scylla_consistency())
-    }
-
     fn show(&self) -> &str {
         self.as_ref()
     }
@@ -154,12 +147,6 @@ pub enum SerialConsistencyLevel {
 }
 
 impl SerialConsistencyLevel {
-    fn parse(serial_cl: &str) -> Result<SerialConsistency> {
-        Self::from_str(serial_cl)
-            .with_context(|| format!("Invalid serial consistency level: {}", serial_cl))
-            .map(|serial_cl| serial_cl.to_scylla_serial_consistency())
-    }
-
     fn show(&self) -> &str {
         self.as_ref()
     }
@@ -232,109 +219,54 @@ impl ReadWriteParams {
 }
 
 struct ReadWriteParamHandles {
-    err: SimpleParamHandle,
-    ngt: SimpleParamHandle,
-    nlt: SimpleParamHandle,
-    no_warmup: SimpleParamHandle,
-    truncate: SimpleParamHandle,
-    cl: SimpleParamHandle,
-    serial_cl: SimpleParamHandle,
-    n: SimpleParamHandle,
-    duration: SimpleParamHandle,
-}
-
-fn parse_operation_count_unit(unit: char) -> Result<u64> {
-    match unit {
-        'k' => Ok(1_000),
-        'm' => Ok(1_000_000),
-        'b' => Ok(1_000_000_000),
-        _ => Err(anyhow::anyhow!("Invalid operation count unit: {}", unit)),
-    }
-}
-
-fn parse_operation_count(n: &str) -> Result<u64> {
-    let last = n.chars().last().unwrap();
-    let mut multiplier = 1;
-    let mut number_slice = n;
-    if last.is_alphabetic() {
-        multiplier = parse_operation_count_unit(last)?;
-        number_slice = &n[0..n.len() - 1];
-    }
-    Ok(number_slice.parse::<u64>().unwrap() * multiplier)
-}
-
-fn parse_duration_unit(unit: char) -> Result<u64> {
-    match unit {
-        's' => Ok(1),
-        'm' => Ok(60),
-        'h' => Ok(60 * 60),
-        _ => Err(anyhow::anyhow!("Invalid duration unit: {}", unit)),
-    }
-}
-
-fn parse_duration(n: &str) -> Result<Duration> {
-    let multiplier = parse_duration_unit(n.chars().last().unwrap())?;
-    Ok(Duration::from_secs(
-        n[0..n.len() - 1].parse::<u64>().unwrap() * multiplier,
-    ))
+    err: SimpleParamHandle<UnitInterval>,
+    ngt: SimpleParamHandle<u64>,
+    nlt: SimpleParamHandle<u64>,
+    no_warmup: SimpleParamHandle<bool>,
+    truncate: SimpleParamHandle<Truncate>,
+    cl: SimpleParamHandle<ConsistencyLevel>,
+    serial_cl: SimpleParamHandle<SerialConsistencyLevel>,
+    n: SimpleParamHandle<Count>,
+    duration: SimpleParamHandle<Duration>,
 }
 
 fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
     let mut parser = ParamsParser::new(cmd);
     let err = parser.simple_param(
         "err<",
-        r"^0\.[0-9]+$",
         Some("0.02"),
         "Run until the standard error of the mean is below this fraction",
         false,
     );
     let ngt = parser.simple_param(
         "n>",
-        r"^[0-9]+$",
         Some("30"),
         "Run at least this many iterations before accepting uncertainty convergence",
         false,
     );
     let nlt = parser.simple_param(
         "n<",
-        r"^[0-9]+$",
         Some("200"),
         "Run at most this many iterations before accepting uncertainty convergence",
         false,
     );
-    let no_warmup =
-        parser.simple_param("no-warmup", r"^$", None, "Do not warmup the process", false);
+    let no_warmup = parser.simple_param("no-warmup", None, "Do not warmup the process", false);
     let truncate = parser.simple_param(
         "truncate=",
-        r"^(never|once|always)$",
         Some("never"),
         "Truncate the table: never, before performing any work, or before each iteration",
         false,
     );
-    let cl = parser.simple_param(
-        "cl=",
-        r"^(one|quorum|local_quorum|each_quorum|all|any|two|three|local_one|serial|local_serial)$",
-        Some("local_one"),
-        "Consistency level to use",
-        false,
-    );
+    let cl = parser.simple_param("cl=", Some("local_one"), "Consistency level to use", false);
     let serial_cl = parser.simple_param(
         "serial-cl=",
-        r"^(serial|local_serial)$",
         Some("serial"),
         "Serial consistency level to use",
         false,
     );
-    let n = parser.simple_param(
-        "n=",
-        r"^[0-9]+[bmk]?$",
-        None,
-        "Number of operations to perform",
-        true,
-    );
+    let n = parser.simple_param("n=", None, "Number of operations to perform", true);
     let duration = parser.simple_param(
         "duration=",
-        r"^[0-9]+[smh]$",
         None,
         "Time to run in (in seconds, minutes or hours)",
         true,
@@ -370,16 +302,15 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
 }
 
 fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
-    let err = handles.err.get_type::<f32>();
-    let ngt = handles.ngt.get_type::<u64>();
-    let nlt = handles.nlt.get_type::<u64>();
+    let err = handles.err.get();
+    let ngt = handles.ngt.get();
+    let nlt = handles.nlt.get();
     let no_warmup = handles.no_warmup.supplied_by_user();
-    let truncate = Truncate::parse(&handles.truncate.get().unwrap()).unwrap();
-    let consistency_level = ConsistencyLevel::parse(&handles.cl.get().unwrap()).unwrap();
-    let serial_consistency_level =
-        SerialConsistencyLevel::parse(&handles.serial_cl.get().unwrap()).unwrap();
-    let operation_count = handles.n.get().map(|n| parse_operation_count(&n).unwrap());
-    let duration = handles.duration.get().map(|d| parse_duration(&d).unwrap());
+    let truncate = handles.truncate.get().unwrap();
+    let consistency_level = handles.cl.get().unwrap();
+    let serial_consistency_level = handles.serial_cl.get().unwrap();
+    let operation_count = handles.n.get();
+    let duration = handles.duration.get();
 
     let uncertainty = match (err, ngt, nlt) {
         (Some(err), Some(ngt), Some(nlt)) => Some(Uncertainty::new(err, ngt, nlt)),
