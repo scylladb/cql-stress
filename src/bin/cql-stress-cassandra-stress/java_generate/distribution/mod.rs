@@ -1,3 +1,11 @@
+use std::{
+    cell::{RefCell, RefMut},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use java_random::Random;
+use thread_local::ThreadLocal;
+
 pub mod fixed;
 pub mod sequence;
 
@@ -7,6 +15,33 @@ pub trait Distribution: Send + Sync {
     fn next_i64(&self) -> i64;
     fn next_f64(&self) -> f64;
     fn set_seed(&self, seed: i64);
+}
+
+/// A thread_local wrapper for [java_random::Random].
+/// Used by distributions to implement `atomic` sampling.
+struct ThreadLocalRandom {
+    rng: ThreadLocal<RefCell<Random>>,
+}
+
+impl ThreadLocalRandom {
+    fn new() -> Self {
+        Self {
+            rng: ThreadLocal::new(),
+        }
+    }
+
+    fn get(&self) -> RefMut<'_, Random> {
+        self.rng
+            .get_or(|| {
+                RefCell::new(Random::with_seed(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|duration| duration.as_millis() as u64)
+                        .unwrap_or_default(),
+                ))
+            })
+            .borrow_mut()
+    }
 }
 
 pub trait DistributionFactory {
