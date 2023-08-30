@@ -134,10 +134,6 @@ impl<T: Parsable> SimpleParamHandle<T> {
             Err(_) => panic!("Something holds the reference to `{param_name}` param cell. Make sure the parser is consumed with Parser::parse before calling this method."),
         }
     }
-
-    pub fn supplied_by_user(&self) -> bool {
-        self.cell.borrow().supplied_by_user()
-    }
 }
 
 impl<T: Parsable + 'static> ParamHandle for SimpleParamHandle<T> {

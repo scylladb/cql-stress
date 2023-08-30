@@ -223,7 +223,7 @@ mod tests {
 
         // We can now retrieve the parsed values from the handles.
         assert_eq!(Some(100), handles.count.get());
-        assert!(handles.foo.supplied_by_user());
+        assert!(handles.foo.get().is_some());
 
         // Even though `duration` has some default value, it doesn't belong
         // to the same group as `count`. This is why we get `None`.
