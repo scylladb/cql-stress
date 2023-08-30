@@ -2,14 +2,12 @@ use std::{cell::RefCell, rc::Rc};
 
 mod parser;
 mod simple_param;
-use regex::Regex;
+pub mod types;
+
+use anyhow::Result;
 
 pub use parser::ParamsParser;
 pub use simple_param::SimpleParamHandle;
-
-fn regex_is_empty(regex: &Regex) -> bool {
-    regex.as_str() == "^$"
-}
 
 /// An 'interface' of parameter.
 ///
@@ -24,8 +22,8 @@ pub trait Param {
     /// - ParamMatchResult::Error if argument matches the prefix, but doesn't satisfy the value pattern
     /// - ParamMatchResult::Match if argument matches both prefix and value pattern.
     fn try_match(&self, arg: &str) -> ParamMatchResult;
-    /// Sets the parameter's value to `arg`. Will panic if `try_match` doesn't return ParamMatchResult::Match.
-    fn parse(&mut self, arg: &str);
+    /// Parses the `arg` value.
+    fn parse(&mut self, arg: &str) -> Result<()>;
     /// Tells whether the parameter was parsed with the user-provided argument.
     fn supplied_by_user(&self) -> bool;
     fn required(&self) -> bool;

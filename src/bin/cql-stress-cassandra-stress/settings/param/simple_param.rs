@@ -1,19 +1,22 @@
-use std::{cell::RefCell, fmt, rc::Rc, str::FromStr};
+use std::{cell::RefCell, rc::Rc};
 
-use regex::Regex;
+use anyhow::{Context, Result};
 
-use super::{regex_is_empty, Param, ParamCell, ParamHandle, ParamMatchResult};
+use super::{types::Parsable, Param, ParamCell, ParamHandle, ParamMatchResult};
 
 /// Abstraction of simple parameter which is of the following pattern:
 /// <prefix><value_pattern>
 ///
+/// Parameter is aware of the prefix, and holds it.
+/// However, parsing of the parameter's value is delegated to the type
+/// that implements [super::types::Parsable].
+///
 /// For example `n=` is a simple parameter where
 /// - prefix := "n="
-/// - value_pattern := r"^[0-9]+[bmk]?$"
-pub struct SimpleParam {
-    value: Option<String>,
+/// - value_pattern := r"^[0-9]+[bmk]?$". It's provided by [super::types::Count].
+pub struct SimpleParam<T: Parsable> {
+    value: Option<T::Parsed>,
     prefix: &'static str,
-    value_pattern: Regex,
     default: Option<&'static str>,
     desc: &'static str,
     required: bool,
@@ -21,18 +24,17 @@ pub struct SimpleParam {
     satisfied: bool,
 }
 
-impl SimpleParam {
+impl<T: Parsable> SimpleParam<T> {
     pub fn new(
         prefix: &'static str,
-        value_pattern: &'static str,
         default: Option<&'static str>,
         desc: &'static str,
         required: bool,
     ) -> Self {
         Self {
-            value: default.map(|d| d.to_string()),
+            // SAFETY: The default value must be successfully parsed.
+            value: default.map(|d| T::parse(d).unwrap()),
             prefix,
-            value_pattern: Regex::new(value_pattern).unwrap(),
             default,
             desc,
             required,
@@ -42,19 +44,15 @@ impl SimpleParam {
     }
 
     /// Retrieves the value (if parsed successfully) and consumes the parameter.
-    fn get(self) -> Option<String> {
+    fn get(self) -> Option<T::Parsed> {
         if !self.satisfied {
             return None;
         }
         self.value
     }
-
-    fn is_bool_flag(&self) -> bool {
-        regex_is_empty(&self.value_pattern)
-    }
 }
 
-impl Param for SimpleParam {
+impl<T: Parsable> Param for SimpleParam<T> {
     fn try_match(&self, arg: &str) -> ParamMatchResult {
         if !arg.starts_with(self.prefix) {
             return ParamMatchResult::NoMatch;
@@ -67,27 +65,18 @@ impl Param for SimpleParam {
             ));
         }
 
-        let arg_val = &arg[self.prefix.len()..];
-        if self.value_pattern.is_match(arg_val) {
-            return ParamMatchResult::Match;
-        }
-
-        ParamMatchResult::Error(anyhow::anyhow!(
-            "Invalid value {}; must patch pattern {}",
-            arg_val,
-            self.value_pattern.as_str()
-        ))
+        ParamMatchResult::Match
     }
 
-    fn parse(&mut self, arg: &str) {
-        match self.try_match(arg) {
-            ParamMatchResult::Match => {
-                let arg_val = &arg[self.prefix.len()..];
-                self.supplied_by_user = true;
-                self.value = Some(arg_val.to_string());
-            }
-            _ => panic!("Cannot parse the parameter: {} with argument: {}. Make sure that Param::is_match returns `Match` before calling this method.", self.prefix, arg),
-        }
+    fn parse(&mut self, arg: &str) -> Result<()> {
+        let arg_val = &arg[self.prefix.len()..];
+        self.supplied_by_user = true;
+        self.value = Some(
+            T::parse(arg_val)
+                .with_context(|| format!("Failed to parse parameter {}.", self.prefix))?,
+        );
+
+        Ok(())
     }
 
     fn supplied_by_user(&self) -> bool {
@@ -107,7 +96,7 @@ impl Param for SimpleParam {
             print!("[");
         }
         print!("{}", self.prefix);
-        if !self.is_bool_flag() {
+        if !T::is_bool() {
             print!("?");
         }
         if !self.required {
@@ -117,7 +106,7 @@ impl Param for SimpleParam {
 
     fn print_desc(&self) {
         let mut desc = String::from(self.prefix);
-        if !self.is_bool_flag() {
+        if !T::is_bool() {
             desc.push('?');
         }
         if let Some(default) = self.default {
@@ -127,18 +116,18 @@ impl Param for SimpleParam {
     }
 }
 
-pub struct SimpleParamHandle {
-    cell: Rc<RefCell<SimpleParam>>,
+pub struct SimpleParamHandle<T: Parsable> {
+    cell: Rc<RefCell<SimpleParam<T>>>,
 }
 
-impl SimpleParamHandle {
-    pub fn new(cell: Rc<RefCell<SimpleParam>>) -> Self {
+impl<T: Parsable> SimpleParamHandle<T> {
+    pub fn new(cell: Rc<RefCell<SimpleParam<T>>>) -> Self {
         Self { cell }
     }
 
     /// Retrieves the value from underlying parameter.
     /// Consumes both handle and underlying parameter.
-    pub fn get(self) -> Option<String> {
+    pub fn get(self) -> Option<T::Parsed> {
         let param_name = self.cell.borrow().prefix;
         match Rc::try_unwrap(self.cell) {
             Ok(cell) => cell.into_inner().get(),
@@ -146,22 +135,12 @@ impl SimpleParamHandle {
         }
     }
 
-    /// Parses the param's String value to type T.
-    /// Can cause panic.
-    pub fn get_type<T>(self) -> Option<T>
-    where
-        T: FromStr,
-        <T as FromStr>::Err: fmt::Debug,
-    {
-        self.get().map(|v| v.parse::<T>().unwrap())
-    }
-
     pub fn supplied_by_user(&self) -> bool {
         self.cell.borrow().supplied_by_user()
     }
 }
 
-impl ParamHandle for SimpleParamHandle {
+impl<T: Parsable + 'static> ParamHandle for SimpleParamHandle<T> {
     fn cell(&self) -> ParamCell {
         Rc::clone(&self.cell) as ParamCell
     }

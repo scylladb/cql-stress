@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
         Err(e) => {
             // For some reason cassandra-stress writes all parsing-related
             // error messages to stdout. We will follow the same approach.
-            println!("\n{e}");
+            println!("\n{:?}", e);
             return Err(anyhow::anyhow!("Failed to parse CLI arguments."));
         }
     };
