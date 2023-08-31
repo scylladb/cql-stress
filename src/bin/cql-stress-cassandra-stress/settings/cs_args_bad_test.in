@@ -16,3 +16,7 @@ cassandra-stress read -schema replication(factor=1,=)
 cassandra-stress counter_write cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' no-warmup
 cassandra-stress write -rate keyspace=keyspace2
 cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2 -node shard-connection-count=0
+cassandra-stress write -col size=FIXED(1..10)
+cassandra-stress write -col size=UNIFORM(50)
+cassandra-stress write -col size=SEQ(1..10,50)
+cassandra-stress write -col names=foo,bar,baz n=3

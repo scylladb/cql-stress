@@ -17,6 +17,7 @@ use regex::Regex;
 use crate::settings::command::print_help;
 
 use self::command::parse_command;
+use self::option::ColumnOption;
 use self::option::NodeOption;
 use self::option::RateOption;
 use self::option::SchemaOption;
@@ -27,6 +28,7 @@ pub struct CassandraStressSettings {
     pub node: NodeOption,
     pub rate: RateOption,
     pub schema: SchemaOption,
+    pub column: ColumnOption,
 }
 
 impl CassandraStressSettings {
@@ -36,6 +38,7 @@ impl CassandraStressSettings {
         self.rate.print_settings();
         self.node.print_settings();
         self.schema.print_settings();
+        self.column.print_settings();
         println!();
     }
 }
@@ -150,6 +153,7 @@ where
         let node = NodeOption::parse(&mut payload)?;
         let rate = RateOption::parse(&mut payload)?;
         let schema = SchemaOption::parse(&mut payload)?;
+        let column = ColumnOption::parse(&mut payload)?;
 
         // List the unknown options along with their parameters.
         let build_unknown_arguments_err_message = || -> String {
@@ -178,6 +182,7 @@ where
                 node,
                 rate,
                 schema,
+                column,
             },
         )))
     };
