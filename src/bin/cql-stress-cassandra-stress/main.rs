@@ -13,7 +13,10 @@ use crate::{
     settings::{parse_cassandra_stress_args, Command, ThreadsInfo},
 };
 use anyhow::{Context, Result};
-use cql_stress::configuration::{Configuration, OperationFactory};
+use cql_stress::{
+    configuration::{Configuration, OperationFactory},
+    run::RunController,
+};
 use operation::WriteOperationFactory;
 use scylla::{Session, SessionBuilder};
 use std::{env, sync::Arc};
@@ -45,9 +48,22 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to prepare benchmark")?;
 
-    let (_ctrl, run_finished) = cql_stress::run::run(run_config);
+    let (ctrl, run_finished) = cql_stress::run::run(run_config);
+
+    // Run a background task waiting for a stop-signal (Ctrl+C).
+    tokio::task::spawn(stop_on_signal(ctrl));
 
     run_finished.await
+}
+
+async fn stop_on_signal(runner: RunController) {
+    // Try stopping gracefully upon receiving first signal.
+    tokio::signal::ctrl_c().await.unwrap();
+    runner.ask_to_stop();
+
+    // Abort after second signal.
+    tokio::signal::ctrl_c().await.unwrap();
+    runner.abort();
 }
 
 async fn prepare_run(settings: Arc<CassandraStressSettings>) -> Result<Configuration> {
