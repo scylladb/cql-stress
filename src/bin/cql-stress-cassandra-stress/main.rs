@@ -74,6 +74,11 @@ async fn prepare_run(settings: Arc<CassandraStressSettings>) -> Result<Configura
         .build();
     builder = builder.default_execution_profile_handle(default_exec_profile.into_handle());
 
+    // TODO: Adjust port when `-port` option is supported.
+    if let Some(host_filter) = settings.node.host_filter(9042) {
+        builder = builder.host_filter(host_filter?)
+    }
+
     let session = builder.build().await?;
     let session = Arc::new(session);
 
