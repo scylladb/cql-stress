@@ -1,6 +1,9 @@
 use std::{num::NonZeroUsize, time::Duration};
 
 use anyhow::{Context, Result};
+use cql_stress::distribution::{parse_description, SyntaxFlavor};
+
+use crate::java_generate::distribution::DistributionFactory;
 
 pub trait Parsable: Sized {
     type Parsed;
@@ -186,5 +189,25 @@ impl Parsable for Rate {
             .parse::<u64>()
             .with_context(|| format!("Invalid u64 value: {value_slice}"))?;
         Ok(value)
+    }
+}
+
+impl Parsable for Box<dyn DistributionFactory> {
+    type Parsed = Self;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let description = parse_description(s, SyntaxFlavor::Classic)?;
+
+        anyhow::ensure!(
+            !description.inverted,
+            "Inverted distributions are not yet supported!"
+        );
+
+        match description.name {
+            _ => Err(anyhow::anyhow!(
+                "Invalid distribution name: {}",
+                description.name
+            )),
+        }
     }
 }
