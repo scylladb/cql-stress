@@ -22,7 +22,7 @@ pub struct SimpleParam<T: Parsable> {
 impl<T: Parsable> SimpleParam<T> {
     pub fn new_wrapped(
         prefix: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         desc: &'static str,
         additional_desc: Option<&str>,
         required: bool,
@@ -59,7 +59,7 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
         &self,
         param_name: &'static str,
         description: &'static str,
-        default_value: Option<&'static str>,
+        default_value: Option<&str>,
     ) {
         let mut usage = String::from(param_name);
         if !T::is_bool() {

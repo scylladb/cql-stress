@@ -102,7 +102,7 @@ impl ParamsParser {
     pub fn simple_param<T: Parsable + 'static>(
         &mut self,
         prefix: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
@@ -121,7 +121,7 @@ impl ParamsParser {
     pub fn simple_subparam<T: Parsable + 'static>(
         &mut self,
         prefix: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
@@ -155,7 +155,7 @@ impl ParamsParser {
     pub fn distribution_param(
         &mut self,
         prefix: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<Box<dyn DistributionFactory>> {

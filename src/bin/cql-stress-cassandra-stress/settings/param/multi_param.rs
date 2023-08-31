@@ -202,7 +202,7 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         &self,
         param_name: &'static str,
         description: &'static str,
-        _default_value: Option<&'static str>,
+        _default_value: Option<&str>,
     ) {
         print!("{}(", param_name);
         for param in self.subparams.iter() {
