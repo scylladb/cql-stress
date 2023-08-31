@@ -1,9 +1,11 @@
 use std::{
     fs::File,
     io::{self, BufRead},
+    sync::Arc,
 };
 
 use anyhow::{Context, Result};
+use scylla::load_balancing::{DefaultPolicy, LoadBalancingPolicy};
 
 use crate::settings::{
     param::{types::CommaDelimitedList, ParamsParser, SimpleParamHandle},
@@ -60,6 +62,15 @@ impl NodeOption {
             whitelist,
             datacenter,
         })
+    }
+
+    /// Define a token-aware load balancing policy with a preferred datacenter (if specified).
+    pub fn load_balancing_policy(&self) -> Arc<dyn LoadBalancingPolicy> {
+        let mut builder = DefaultPolicy::builder().token_aware(true);
+        if let Some(datacenter) = &self.datacenter {
+            builder = builder.prefer_datacenter(datacenter.to_owned());
+        };
+        builder.build()
     }
 }
 

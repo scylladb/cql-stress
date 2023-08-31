@@ -18,7 +18,7 @@ use cql_stress::{
     run::RunController,
 };
 use operation::WriteOperationFactory;
-use scylla::{Session, SessionBuilder};
+use scylla::{ExecutionProfile, Session, SessionBuilder};
 use std::{env, sync::Arc};
 use tracing_subscriber::EnvFilter;
 
@@ -67,7 +67,12 @@ async fn stop_on_signal(runner: RunController) {
 }
 
 async fn prepare_run(settings: Arc<CassandraStressSettings>) -> Result<Configuration> {
-    let builder = SessionBuilder::new().known_nodes(&settings.node.nodes);
+    let mut builder = SessionBuilder::new().known_nodes(&settings.node.nodes);
+
+    let default_exec_profile = ExecutionProfile::builder()
+        .load_balancing_policy(settings.node.load_balancing_policy())
+        .build();
+    builder = builder.default_execution_profile_handle(default_exec_profile.into_handle());
 
     let session = builder.build().await?;
     let session = Arc::new(session);
