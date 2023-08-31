@@ -152,3 +152,30 @@ impl Parsable for Count {
         Ok(value * multiplier)
     }
 }
+
+pub struct CommaDelimitedList;
+
+impl Parsable for CommaDelimitedList {
+    type Parsed = Vec<String>;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        ensure_regex!(s, r"^[^=,]+(,[^=,]+)*$");
+        Ok(s.split(',').map(|e| e.to_owned()).collect())
+    }
+}
+
+pub struct Rate;
+
+impl Parsable for Rate {
+    type Parsed = u64;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        ensure_regex!(s, r"^[0-9]+/s$");
+
+        let value_slice = &s[..s.len() - 2];
+        let value = value_slice
+            .parse::<u64>()
+            .with_context(|| format!("Invalid u64 value: {value_slice}"))?;
+        Ok(value)
+    }
+}

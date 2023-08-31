@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::iter::Iterator;
 
 mod command;
+mod option;
 mod param;
 use anyhow::Result;
 
@@ -15,20 +16,25 @@ use regex::Regex;
 use crate::settings::command::print_help;
 
 use self::command::parse_command;
+use self::option::NodeOption;
+use self::option::RateOption;
+use self::option::SchemaOption;
 
 pub struct CassandraStressSettings {
     pub command: Command,
     pub params: CommandParams,
+    pub node: NodeOption,
+    pub rate: RateOption,
+    pub schema: SchemaOption,
 }
 
 impl CassandraStressSettings {
-    fn new(command: Command, params: CommandParams) -> Self {
-        Self { command, params }
-    }
-
     pub fn print_settings(&self) {
         println!("******************** Stress Settings ********************");
         self.params.print_settings(&self.command);
+        self.rate.print_settings();
+        self.node.print_settings();
+        self.schema.print_settings();
         println!();
     }
 }
@@ -134,7 +140,7 @@ where
     let result = || {
         let (cmd, mut payload) = prepare_parse_payload(&args)?;
 
-        let (cmd, cmd_params) = match parse_command(cmd, &mut payload) {
+        let (command, params) = match parse_command(cmd, &mut payload) {
             Ok((_, CommandParams::Special)) => {
                 return Ok(CassandraStressParsingResult::SpecialCommand)
             }
@@ -142,10 +148,38 @@ where
             Err(e) => return Err(e),
         };
 
-        // TODO: parse options.
+        let node = NodeOption::parse(&mut payload)?;
+        let rate = RateOption::parse(&mut payload)?;
+        let schema = SchemaOption::parse(&mut payload)?;
+
+        // List the unknown options along with their parameters.
+        let build_unknown_arguments_err_message = || -> String {
+            let unknowns = payload
+                .iter()
+                .map(|(option, params)| {
+                    let params_str = params.join(" ");
+                    format!("{option} {params_str}")
+                })
+                .collect::<Vec<_>>();
+            unknowns.join("\n")
+        };
+
+        // Ensure that all of the CLI arguments were consumed.
+        // If not, then unknown arguments appeared so we return the error.
+        anyhow::ensure!(
+            payload.is_empty(),
+            "Error processing CLI arguments. The following were ignored:\n{}",
+            build_unknown_arguments_err_message()
+        );
 
         Ok(CassandraStressParsingResult::Workload(Box::new(
-            CassandraStressSettings::new(cmd, cmd_params),
+            CassandraStressSettings {
+                command,
+                params,
+                node,
+                rate,
+                schema,
+            },
         )))
     };
 

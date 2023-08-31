@@ -279,11 +279,9 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
     // Usage: read n=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?]
     //  OR
     // Usage: read duration=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?]
-    parser.group(vec![
-        &err, &ngt, &nlt, &no_warmup, &truncate, &cl, &serial_cl,
-    ]);
-    parser.group(vec![&n, &no_warmup, &truncate, &cl, &serial_cl]);
-    parser.group(vec![&duration, &no_warmup, &truncate, &cl, &serial_cl]);
+    parser.group(&[&err, &ngt, &nlt, &no_warmup, &truncate, &cl, &serial_cl]);
+    parser.group(&[&n, &no_warmup, &truncate, &cl, &serial_cl]);
+    parser.group(&[&duration, &no_warmup, &truncate, &cl, &serial_cl]);
 
     (
         parser,
@@ -305,7 +303,7 @@ fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
     let err = handles.err.get();
     let ngt = handles.ngt.get();
     let nlt = handles.nlt.get();
-    let no_warmup = handles.no_warmup.supplied_by_user();
+    let no_warmup = handles.no_warmup.get().is_some();
     let truncate = handles.truncate.get().unwrap();
     let consistency_level = handles.cl.get().unwrap();
     let serial_consistency_level = handles.serial_cl.get().unwrap();

@@ -1,11 +1,14 @@
 use std::{cell::RefCell, rc::Rc};
 
+mod multi_param;
 mod parser;
 mod simple_param;
 pub mod types;
 
 use anyhow::Result;
 
+pub use multi_param::MultiParamAcceptsArbitraryHandle;
+pub use multi_param::MultiParamHandle;
 pub use parser::ParamsParser;
 pub use simple_param::SimpleParamHandle;
 

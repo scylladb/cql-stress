@@ -1,3 +1,4 @@
+use anyhow::Context;
 use std::convert::AsRef;
 use std::str::FromStr;
 use strum::IntoEnumIterator;
@@ -101,7 +102,7 @@ pub fn parse_command(
     command_str: &str,
     cl_args: &mut ParsePayload,
 ) -> Result<(Command, CommandParams)> {
-    let command = Command::parse(command_str)?;
+    let command = Command::parse(command_str).context("No command specified")?;
     let params = command.parse_params(cl_args)?;
     Ok((command, params))
 }
