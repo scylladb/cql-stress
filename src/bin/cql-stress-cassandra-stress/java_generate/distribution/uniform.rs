@@ -106,6 +106,12 @@ impl UniformDistributionFactory {
     }
 }
 
+impl std::fmt::Display for UniformDistributionFactory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UNIFORM({}..{})", self.min as i64, self.max as i64)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::UniformDistribution;

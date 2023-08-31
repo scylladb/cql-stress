@@ -105,6 +105,12 @@ impl SeqDistributionFactory {
     }
 }
 
+impl std::fmt::Display for SeqDistributionFactory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SEQ({}..{})", self.min, self.max)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::SeqDistribution;

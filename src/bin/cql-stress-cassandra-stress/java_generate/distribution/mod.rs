@@ -45,6 +45,6 @@ impl ThreadLocalRandom {
     }
 }
 
-pub trait DistributionFactory: Send + Sync {
+pub trait DistributionFactory: Send + Sync + std::fmt::Display {
     fn create(&self) -> Box<dyn Distribution>;
 }
