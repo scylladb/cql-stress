@@ -19,6 +19,7 @@ use crate::settings::command::print_help;
 use self::command::parse_command;
 use self::option::ColumnOption;
 use self::option::NodeOption;
+use self::option::PopulationOption;
 use self::option::RateOption;
 use self::option::SchemaOption;
 
@@ -29,6 +30,7 @@ pub struct CassandraStressSettings {
     pub rate: RateOption,
     pub schema: SchemaOption,
     pub column: ColumnOption,
+    pub population: PopulationOption,
 }
 
 impl CassandraStressSettings {
@@ -39,6 +41,7 @@ impl CassandraStressSettings {
         self.node.print_settings();
         self.schema.print_settings();
         self.column.print_settings();
+        self.population.print_settings();
         println!();
     }
 }
@@ -155,6 +158,14 @@ where
         let schema = SchemaOption::parse(&mut payload)?;
         let column = ColumnOption::parse(&mut payload)?;
 
+        // The default distribution (if not specified) is SEQ(1..operation_count).
+        // If operation_count is not specified, then the default is 1M.
+        let operation_count = command_params
+            .basic_params
+            .operation_count
+            .map_or(String::from("1000000"), |op| format!("{op}"));
+        let population = PopulationOption::parse(&mut payload, &operation_count)?;
+
         // List the unknown options along with their parameters.
         let build_unknown_arguments_err_message = || -> String {
             let unknowns = payload
@@ -183,6 +194,7 @@ where
                 rate,
                 schema,
                 column,
+                population,
             },
         )))
     };

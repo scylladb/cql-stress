@@ -26,3 +26,5 @@ cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1) -rate threads=10 -col n=10 size=UNIFORM(1..20)
 cassandra-stress read cl=QUORUM n=10000 -schema replication(key=value) -rate threads=10 -col names=foo,bar,baz
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50)
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50) -pop dist=SEQ(1..10)
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50) -pop dist=UNIFORM(1..10)
