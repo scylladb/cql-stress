@@ -3,7 +3,7 @@ use std::{num::NonZeroUsize, time::Duration};
 use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
 
-use crate::java_generate::distribution::DistributionFactory;
+use crate::java_generate::distribution::{fixed::FixedDistributionFactory, DistributionFactory};
 
 pub trait Parsable: Sized {
     type Parsed;
@@ -204,10 +204,41 @@ impl Parsable for Box<dyn DistributionFactory> {
         );
 
         match description.name {
+            "fixed" => FixedDistributionFactory::parse_from_description(description),
             _ => Err(anyhow::anyhow!(
                 "Invalid distribution name: {}",
                 description.name
             )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::java_generate::distribution::DistributionFactory;
+
+    use super::Parsable;
+
+    type DistributionTestType = Box<dyn DistributionFactory>;
+
+    #[test]
+    fn distribution_param_fixed_test() {
+        let good_test_cases = &["fixed(45)", "fixed(100000)"];
+        for input in good_test_cases {
+            assert!(DistributionTestType::parse(input).is_ok());
+        }
+
+        let bad_test_cases = &[
+            "fixed(45,50)",
+            "fixed(45",
+            "fixed45",
+            "fixed(45..50)",
+            "fixed(100.1234)",
+            "fixed40)",
+        ];
+
+        for input in bad_test_cases {
+            assert!(DistributionTestType::parse(input).is_err());
         }
     }
 }
