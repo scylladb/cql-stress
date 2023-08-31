@@ -4,7 +4,8 @@ use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
 
 use crate::java_generate::distribution::{
-    fixed::FixedDistributionFactory, sequence::SeqDistributionFactory, DistributionFactory,
+    fixed::FixedDistributionFactory, sequence::SeqDistributionFactory,
+    uniform::UniformDistributionFactory, DistributionFactory,
 };
 
 pub trait Parsable: Sized {
@@ -208,6 +209,7 @@ impl Parsable for Box<dyn DistributionFactory> {
         match description.name {
             "fixed" => FixedDistributionFactory::parse_from_description(description),
             "seq" => SeqDistributionFactory::parse_from_description(description),
+            "uniform" => UniformDistributionFactory::parse_from_description(description),
             _ => Err(anyhow::anyhow!(
                 "Invalid distribution name: {}",
                 description.name
@@ -260,6 +262,28 @@ mod tests {
             "seq(45)",
             "seq(100.1234)",
             "seq40)",
+        ];
+
+        for input in bad_test_cases {
+            assert!(DistributionTestType::parse(input).is_err());
+        }
+    }
+
+    #[test]
+    fn distribution_param_uniform_test() {
+        let good_test_cases = &["uniform(45..50)", "uniform(1..100000)", "uniform(2..2)"];
+        for input in good_test_cases {
+            assert!(DistributionTestType::parse(input).is_ok());
+        }
+
+        let bad_test_cases = &[
+            "uniform(2..1)",
+            "uniform(1..20,50)",
+            "uniform(45",
+            "uniform45..50",
+            "uniform(45)",
+            "uniform(100.1234)",
+            "uniform40)",
         ];
 
         for input in bad_test_cases {
