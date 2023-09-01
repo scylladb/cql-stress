@@ -11,6 +11,7 @@ mod test;
 
 pub use command::Command;
 pub use command::CommandParams;
+pub use option::ThreadsInfo;
 use regex::Regex;
 
 use crate::settings::command::print_help;
