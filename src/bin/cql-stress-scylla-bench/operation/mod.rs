@@ -13,7 +13,7 @@ use tracing::error;
 const GENERATED_DATA_HEADER_SIZE: usize = 24;
 const GENERATED_DATA_MIN_SIZE: usize = GENERATED_DATA_HEADER_SIZE + 33;
 
-pub(self) fn generate_row_data(pk: i64, ck: i64, size: usize) -> Vec<u8> {
+fn generate_row_data(pk: i64, ck: i64, size: usize) -> Vec<u8> {
     if size == 0 {
         Vec::new()
     } else if size < GENERATED_DATA_HEADER_SIZE {
@@ -49,7 +49,7 @@ pub(self) fn generate_row_data(pk: i64, ck: i64, size: usize) -> Vec<u8> {
     }
 }
 
-pub(self) fn validate_row_data(pk: i64, ck: i64, data: &[u8]) -> Result<()> {
+fn validate_row_data(pk: i64, ck: i64, data: &[u8]) -> Result<()> {
     let size = data.len();
     let original_data = data;
 
@@ -120,7 +120,7 @@ pub(self) fn validate_row_data(pk: i64, ck: i64, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub(self) fn validate_counter_row_data(
+fn validate_counter_row_data(
     pk: i64,
     ck: i64,
     c1: i64,
