@@ -9,8 +9,8 @@ use anyhow::Result;
 #[cfg(test)]
 mod test;
 
-use command::Command;
-use command::CommandParams;
+pub use command::Command;
+pub use command::CommandParams;
 use regex::Regex;
 
 use crate::settings::command::print_help;
@@ -141,10 +141,8 @@ where
         let (cmd, mut payload) = prepare_parse_payload(&args)?;
 
         let (command, params) = match parse_command(cmd, &mut payload) {
-            Ok((_, CommandParams::Special)) => {
-                return Ok(CassandraStressParsingResult::SpecialCommand)
-            }
-            Ok((cmd, params)) => (cmd, params),
+            Ok((_, None)) => return Ok(CassandraStressParsingResult::SpecialCommand),
+            Ok((cmd, Some(params))) => (cmd, params),
             Err(e) => return Err(e),
         };
 

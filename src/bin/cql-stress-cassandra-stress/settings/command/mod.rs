@@ -35,12 +35,15 @@ impl Command {
         Self::from_str(cmd)
     }
 
-    fn parse_params(&self, payload: &mut ParsePayload) -> Result<CommandParams> {
+    fn parse_params(&self, payload: &mut ParsePayload) -> Result<Option<CommandParams>> {
         match self {
             Command::Read | Command::Write | Command::CounterRead | Command::CounterWrite => {
-                parse_read_write_params(self, payload)
+                Ok(Some(parse_read_write_params(self, payload)?))
             }
-            Command::Help => parse_help_command(payload),
+            Command::Help => {
+                parse_help_command(payload)?;
+                Ok(None)
+            }
         }
     }
 
@@ -77,31 +80,24 @@ impl Command {
     }
 }
 
-pub enum CommandParams {
-    // HELP, PRINT, VERSION
-    Special,
-
-    // READ, WRITE, COUNTER_READ, COUNTER_WRITE
-    BasicParams(ReadWriteParams),
-    // MIXED
-    // TODO: MixedParams,
-
-    // USER
-    // TODO: UserParams,
+pub struct CommandParams {
+    // Parameters shared across all of the commands
+    pub basic_params: ReadWriteParams,
+    // TODO:
+    // mixed_params: Option<MixedParams>
+    // user_params: Option<UserParams>
 }
 
 impl CommandParams {
     pub fn print_settings(&self, cmd: &Command) {
-        if let Self::BasicParams(params) = self {
-            params.print_settings(cmd);
-        }
+        self.basic_params.print_settings(cmd);
     }
 }
 
 pub fn parse_command(
     command_str: &str,
     cl_args: &mut ParsePayload,
-) -> Result<(Command, CommandParams)> {
+) -> Result<(Command, Option<CommandParams>)> {
     let command = Command::parse(command_str).context("No command specified")?;
     let params = command.parse_params(cl_args)?;
     Ok((command, params))

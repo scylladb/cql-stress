@@ -331,7 +331,9 @@ pub fn parse_read_write_params(cmd: &Command, payload: &mut ParsePayload) -> Res
     let args = payload.remove(cmd.show()).unwrap();
     let (parser, handles) = prepare_parser(cmd.show());
     parser.parse(args)?;
-    Ok(CommandParams::BasicParams(parse_with_handles(handles)))
+    Ok(CommandParams {
+        basic_params: parse_with_handles(handles),
+    })
 }
 
 pub fn print_help_read_write(command_str: &str) {
