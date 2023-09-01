@@ -20,11 +20,7 @@ pub use simple_param::SimpleParamHandle;
 /// which cql-stress should support in the future as well.
 pub trait Param {
     /// Checks whether `arg` matches parameter's prefix.
-    /// Returns:
-    /// - ParamMatchResult::NoMatch if argument doesn't match the prefix
-    /// - ParamMatchResult::Error if argument matches the prefix, but doesn't satisfy the value pattern
-    /// - ParamMatchResult::Match if argument matches both prefix and value pattern.
-    fn try_match(&self, arg: &str) -> ParamMatchResult;
+    fn try_match(&self, arg: &str) -> bool;
     /// Parses the `arg` value.
     fn parse(&mut self, arg: &str) -> Result<()>;
     /// Tells whether the parameter was parsed with the user-provided argument.
@@ -48,9 +44,4 @@ type ParamCell = Rc<RefCell<dyn Param>>;
 
 pub trait ParamHandle {
     fn cell(&self) -> ParamCell;
-}
-pub enum ParamMatchResult {
-    Match,
-    NoMatch,
-    Error(anyhow::Error),
 }

@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 
-use super::{types::Parsable, Param, ParamCell, ParamHandle, ParamMatchResult};
+use super::{types::Parsable, Param, ParamCell, ParamHandle};
 
 /// Abstraction of simple parameter which is of the following pattern:
 /// <prefix><value_pattern>
@@ -53,22 +53,17 @@ impl<T: Parsable> SimpleParam<T> {
 }
 
 impl<T: Parsable> Param for SimpleParam<T> {
-    fn try_match(&self, arg: &str) -> ParamMatchResult {
-        if !arg.starts_with(self.prefix) {
-            return ParamMatchResult::NoMatch;
-        }
-
-        if self.supplied_by_user {
-            return ParamMatchResult::Error(anyhow::anyhow!(
-                "{} suboption has been specified more than once",
-                self.prefix
-            ));
-        }
-
-        ParamMatchResult::Match
+    fn try_match(&self, arg: &str) -> bool {
+        arg.starts_with(self.prefix)
     }
 
     fn parse(&mut self, arg: &str) -> Result<()> {
+        anyhow::ensure!(
+            !self.supplied_by_user,
+            "{} suboption has been specified more than once",
+            self.prefix
+        );
+
         let arg_val = &arg[self.prefix.len()..];
         self.supplied_by_user = true;
         self.value = Some(

@@ -5,7 +5,7 @@ use super::{
     multi_param::{ArbitraryParamsAcceptance, MultiParam},
     simple_param::{SimpleParam, SimpleParamHandle},
     types::Parsable,
-    MultiParamHandle, ParamCell, ParamHandle, ParamMatchResult,
+    MultiParamHandle, ParamCell, ParamHandle,
 };
 
 /// Some of the parameters are mutually exclusive. For example, we can't do
@@ -166,14 +166,10 @@ impl ParamsParser {
             let mut consumed = false;
             for param in self.params.iter() {
                 let mut borrowed = param.borrow_mut();
-                match borrowed.try_match(arg) {
-                    ParamMatchResult::Error(e) => return Err(e),
-                    ParamMatchResult::NoMatch => (),
-                    ParamMatchResult::Match => {
-                        borrowed.parse(arg)?;
-                        consumed = true;
-                        break;
-                    }
+                if borrowed.try_match(arg) {
+                    borrowed.parse(arg)?;
+                    consumed = true;
+                    break;
                 }
             }
 

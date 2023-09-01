@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use anyhow::Result;
 use regex::Regex;
 
-use super::{Param, ParamCell, ParamHandle, ParamMatchResult};
+use super::{Param, ParamCell, ParamHandle};
 
 lazy_static! {
     // The arbitrary parameters should match pattern `key=value`.
@@ -139,33 +139,41 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
         self.arbitrary_params.accepts_arbitrary()
     }
 
-    fn try_parse_predefined(&self, arg: &str) -> ParamMatchResult {
+    /// Tries to parse one of the predefined multiparameters.
+    /// Returns Some(parsing_result) if one of the parameters matched the argument,
+    /// and None otherwise.
+    fn try_parse_predefined(&self, arg: &str) -> Option<Result<()>> {
         for param in self.subparams.iter() {
             let mut borrowed = param.borrow_mut();
-            match borrowed.try_match(arg) {
-                ParamMatchResult::NoMatch => (),
-                e @ ParamMatchResult::Error(_) => return e,
-                ParamMatchResult::Match => match borrowed.parse(arg) {
-                    Ok(()) => return ParamMatchResult::Match,
-                    Err(e) => return ParamMatchResult::Error(e),
-                },
+            if borrowed.try_match(arg) {
+                return Some(borrowed.parse(arg));
             }
         }
 
-        ParamMatchResult::NoMatch
+        None
     }
 }
 
 impl<A: ArbitraryParamsAcceptance> Param for MultiParam<A> {
     fn parse(&mut self, arg: &str) -> Result<()> {
+        anyhow::ensure!(
+            !self.supplied_by_user,
+            "{} suboption has been specified more than once",
+            self.prefix
+        );
+
         self.supplied_by_user = true;
         let arg_val = &arg[self.prefix.len()..];
 
         // Remove wrapping parenthesis.
         let arg_val = {
             let mut chars = arg_val.chars();
-            chars.next();
-            chars.next_back();
+            anyhow::ensure!(
+                chars.next() == Some('(') && chars.next_back() == Some(')'),
+                "Invalid '{}' specification: {}",
+                self.prefix,
+                arg
+            );
             chars.as_str()
         };
 
@@ -173,9 +181,12 @@ impl<A: ArbitraryParamsAcceptance> Param for MultiParam<A> {
         for subparam in arg_val.split(',') {
             // Check if the argument matches on of the predefined subparameters.
             match self.try_parse_predefined(subparam) {
-                ParamMatchResult::Error(e) => return Err(e),
-                ParamMatchResult::Match => continue,
-                _ => (),
+                // Parsing error - return it.
+                Some(e @ Err(_)) => return e,
+                // Parsing successful, move on to the next parameter.
+                Some(Ok(())) => continue,
+                // None of the predefined parameters matched, try parsing as arbitrary.
+                None => (),
             }
 
             // If the argument didn't match any of the prefefined sub-parameters,
@@ -228,27 +239,8 @@ impl<A: ArbitraryParamsAcceptance> Param for MultiParam<A> {
         }
     }
 
-    fn try_match(&self, arg: &str) -> ParamMatchResult {
-        if !arg.starts_with(self.prefix) {
-            return ParamMatchResult::NoMatch;
-        }
-
-        if self.supplied_by_user {
-            return ParamMatchResult::Error(anyhow::anyhow!(
-                "{} suboption has been specified more than once",
-                self.prefix
-            ));
-        }
-
-        let arg_val = &arg[self.prefix.len()..];
-        if !arg_val.starts_with('(') || !arg_val.ends_with(')') {
-            return ParamMatchResult::Error(anyhow::anyhow!(
-                "Invalid {} specification: {}",
-                self.prefix,
-                arg
-            ));
-        }
-        ParamMatchResult::Match
+    fn try_match(&self, arg: &str) -> bool {
+        arg.starts_with(self.prefix)
     }
 }
 
