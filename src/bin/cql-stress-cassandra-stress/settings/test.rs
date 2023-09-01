@@ -51,7 +51,7 @@ fn cs_args_bad_test() {
 
 #[test]
 fn repair_params_test() {
-    let args = vec![
+    let args = [
         "write",
         "-schema replication ( factor = 3 , foo = bar )\t \tkeyspace=k ",
         " compression = someCompressionAlgorithm",
