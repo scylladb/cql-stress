@@ -22,7 +22,7 @@ use self::option::SchemaOption;
 
 pub struct CassandraStressSettings {
     pub command: Command,
-    pub params: CommandParams,
+    pub command_params: CommandParams,
     pub node: NodeOption,
     pub rate: RateOption,
     pub schema: SchemaOption,
@@ -31,7 +31,7 @@ pub struct CassandraStressSettings {
 impl CassandraStressSettings {
     pub fn print_settings(&self) {
         println!("******************** Stress Settings ********************");
-        self.params.print_settings(&self.command);
+        self.command_params.print_settings(&self.command);
         self.rate.print_settings();
         self.node.print_settings();
         self.schema.print_settings();
@@ -140,7 +140,7 @@ where
     let result = || {
         let (cmd, mut payload) = prepare_parse_payload(&args)?;
 
-        let (command, params) = match parse_command(cmd, &mut payload) {
+        let (command, command_params) = match parse_command(cmd, &mut payload) {
             Ok((_, None)) => return Ok(CassandraStressParsingResult::SpecialCommand),
             Ok((cmd, Some(params))) => (cmd, params),
             Err(e) => return Err(e),
@@ -173,7 +173,7 @@ where
         Ok(CassandraStressParsingResult::Workload(Box::new(
             CassandraStressSettings {
                 command,
-                params,
+                command_params,
                 node,
                 rate,
                 schema,
