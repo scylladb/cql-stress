@@ -35,6 +35,77 @@ pub trait ParamImpl {
     fn print_desc(&self);
 }
 
+/// A simple wrapper for specific parameters implementations.
+///
+/// Represents the state and implements the logic that is shared
+/// across all types of the parameters. It's introduced to prevent
+/// copying boilerplate code such as getters for `required`.
+///
+/// It allows us to achieve two things which are really important to complex c-s parsing logic:
+/// - composition -> traits cannot contain any member variables.
+///   For example - `required` flag should be shared by all of the types of parameters -
+///   - that's why we extract it to the type wrapping the specific parameter.
+/// - accessing type specific methods by the user.
+pub struct TypedParam<P: ParamImpl> {
+    param: P,
+    prefix: &'static str,
+    desc: &'static str,
+    default: Option<&'static str>,
+    required: bool,
+    supplied_by_user: bool,
+    satisfied: bool,
+}
+
+impl<P: ParamImpl> TypedParam<P> {
+    fn new(
+        param: P,
+        prefix: &'static str,
+        desc: &'static str,
+        default: Option<&'static str>,
+        required: bool,
+    ) -> Self {
+        Self {
+            param,
+            prefix,
+            desc,
+            default,
+            required,
+            supplied_by_user: false,
+            satisfied: false,
+        }
+    }
+}
+
+impl<P: ParamImpl> TypedParam<P> {
+    fn supplied_by_user(&self) -> bool {
+        self.param.supplied_by_user()
+    }
+
+    fn required(&self) -> bool {
+        self.param.required()
+    }
+
+    fn try_match(&self, arg: &str) -> bool {
+        self.param.try_match(arg)
+    }
+
+    fn set_satisfied(&mut self) {
+        self.param.set_satisfied()
+    }
+
+    fn print_usage(&self) {
+        self.param.print_usage()
+    }
+
+    fn print_desc(&self) {
+        self.param.print_desc()
+    }
+
+    fn parse(&mut self, arg: &str) -> Result<()> {
+        self.param.parse(arg)
+    }
+}
+
 type ParamCell = Rc<RefCell<dyn ParamImpl>>;
 
 pub trait ParamHandle {
