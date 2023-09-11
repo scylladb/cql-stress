@@ -106,7 +106,6 @@ pub struct MultiParam<A: ArbitraryParamsAcceptance> {
     required: bool,
     // Arbitrary parameters of the `key=value` form.
     arbitrary_params: A,
-    supplied_by_user: bool,
     satisfied: bool,
 }
 
@@ -130,7 +129,6 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
             desc,
             required,
             arbitrary_params: Default::default(),
-            supplied_by_user: false,
             satisfied: false,
         };
 
@@ -158,13 +156,6 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
 
 impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
     fn parse(&mut self, arg: &str) -> Result<()> {
-        anyhow::ensure!(
-            !self.supplied_by_user,
-            "{} suboption has been specified more than once",
-            self.prefix
-        );
-
-        self.supplied_by_user = true;
         let arg_val = &arg[self.prefix.len()..];
 
         // Remove wrapping parenthesis.
@@ -198,10 +189,6 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         }
 
         Ok(())
-    }
-
-    fn supplied_by_user(&self) -> bool {
-        self.supplied_by_user
     }
 
     fn required(&self) -> bool {

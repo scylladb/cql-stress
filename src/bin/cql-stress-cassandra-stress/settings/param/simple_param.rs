@@ -20,7 +20,6 @@ pub struct SimpleParam<T: Parsable> {
     default: Option<&'static str>,
     desc: &'static str,
     required: bool,
-    supplied_by_user: bool,
     satisfied: bool,
 }
 
@@ -38,7 +37,6 @@ impl<T: Parsable> SimpleParam<T> {
             default,
             desc,
             required,
-            supplied_by_user: false,
             satisfied: false,
         };
 
@@ -56,24 +54,13 @@ impl<T: Parsable> SimpleParam<T> {
 
 impl<T: Parsable> ParamImpl for SimpleParam<T> {
     fn parse(&mut self, arg: &str) -> Result<()> {
-        anyhow::ensure!(
-            !self.supplied_by_user,
-            "{} suboption has been specified more than once",
-            self.prefix
-        );
-
         let arg_val = &arg[self.prefix.len()..];
-        self.supplied_by_user = true;
         self.value = Some(
             T::parse(arg_val)
                 .with_context(|| format!("Failed to parse parameter {}.", self.prefix))?,
         );
 
         Ok(())
-    }
-
-    fn supplied_by_user(&self) -> bool {
-        self.supplied_by_user
     }
 
     fn required(&self) -> bool {

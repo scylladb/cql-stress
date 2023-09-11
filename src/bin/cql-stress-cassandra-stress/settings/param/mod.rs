@@ -16,8 +16,6 @@ pub use simple_param::SimpleParamHandle;
 pub trait ParamImpl {
     /// Parses the `arg` value.
     fn parse(&mut self, arg: &str) -> Result<()>;
-    /// Tells whether the parameter was parsed with the user-provided argument.
-    fn supplied_by_user(&self) -> bool;
     fn required(&self) -> bool;
     /// Ref: check `ParamsGroup`.
     /// Checking whether the group is satisfied happens right after all of the
@@ -97,7 +95,7 @@ pub trait GenericParam {
 
 impl<P: ParamImpl> GenericParam for TypedParam<P> {
     fn supplied_by_user(&self) -> bool {
-        self.param.supplied_by_user()
+        self.supplied_by_user
     }
 
     fn required(&self) -> bool {
@@ -122,6 +120,12 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
     }
 
     fn parse(&mut self, arg: &str) -> Result<()> {
+        anyhow::ensure!(
+            !self.supplied_by_user,
+            "{} suboption has been specified more than once",
+            self.prefix
+        );
+        self.supplied_by_user = true;
         self.param.parse(arg)
     }
 }
