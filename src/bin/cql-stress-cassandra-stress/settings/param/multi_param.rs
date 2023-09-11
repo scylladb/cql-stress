@@ -103,7 +103,6 @@ pub struct MultiParam<A: ArbitraryParamsAcceptance> {
     // User can access them via their corresponding handles.
     subparams: Vec<ParamCell>,
     desc: &'static str,
-    required: bool,
     // Arbitrary parameters of the `key=value` form.
     arbitrary_params: A,
     satisfied: bool,
@@ -127,7 +126,6 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
             prefix,
             subparams,
             desc,
-            required,
             arbitrary_params: Default::default(),
             satisfied: false,
         };
@@ -189,10 +187,6 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         }
 
         Ok(())
-    }
-
-    fn required(&self) -> bool {
-        self.required
     }
 
     fn set_satisfied(&mut self) {

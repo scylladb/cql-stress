@@ -19,7 +19,6 @@ pub struct SimpleParam<T: Parsable> {
     prefix: &'static str,
     default: Option<&'static str>,
     desc: &'static str,
-    required: bool,
     satisfied: bool,
 }
 
@@ -36,7 +35,6 @@ impl<T: Parsable> SimpleParam<T> {
             prefix,
             default,
             desc,
-            required,
             satisfied: false,
         };
 
@@ -63,24 +61,14 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
         Ok(())
     }
 
-    fn required(&self) -> bool {
-        self.required
-    }
-
     fn set_satisfied(&mut self) {
         self.satisfied = true;
     }
 
     fn print_usage(&self) {
-        if !self.required {
-            print!("[");
-        }
         print!("{}", self.prefix);
         if !T::is_bool() {
             print!("?");
-        }
-        if !self.required {
-            print!("]");
         }
     }
 

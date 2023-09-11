@@ -16,7 +16,6 @@ pub use simple_param::SimpleParamHandle;
 pub trait ParamImpl {
     /// Parses the `arg` value.
     fn parse(&mut self, arg: &str) -> Result<()>;
-    fn required(&self) -> bool;
     /// Ref: check `ParamsGroup`.
     /// Checking whether the group is satisfied happens right after all of the
     /// CLI arguments were successfully consumed. If the group is satisfied,
@@ -99,7 +98,7 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
     }
 
     fn required(&self) -> bool {
-        self.param.required()
+        self.required
     }
 
     fn try_match(&self, arg: &str) -> bool {
@@ -112,7 +111,13 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
     }
 
     fn print_usage(&self) {
-        self.param.print_usage()
+        if !self.required {
+            print!("[");
+        }
+        self.param.print_usage();
+        if !self.required {
+            print!("]");
+        }
     }
 
     fn print_desc(&self) {
