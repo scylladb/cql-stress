@@ -201,7 +201,12 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         print!("{}(?)", param_name)
     }
 
-    fn print_desc(&self, param_name: &'static str, description: &'static str) {
+    fn print_desc(
+        &self,
+        param_name: &'static str,
+        description: &'static str,
+        _default_value: Option<&'static str>,
+    ) {
         print!("{}(", param_name);
         for param in self.subparams.iter() {
             param.borrow().print_usage();

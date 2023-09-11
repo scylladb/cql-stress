@@ -29,7 +29,12 @@ pub trait ParamImpl {
     /// Prints the usage format of the parameter.
     fn print_usage(&self, param_name: &'static str);
     /// Prints short description of the parameter.
-    fn print_desc(&self, param_name: &'static str, description: &'static str);
+    fn print_desc(
+        &self,
+        param_name: &'static str,
+        description: &'static str,
+        default_value: Option<&'static str>,
+    );
 }
 
 /// A simple wrapper for specific parameters implementations.
@@ -123,7 +128,7 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
     }
 
     fn print_desc(&self) {
-        self.param.print_desc(self.prefix, self.desc)
+        self.param.print_desc(self.prefix, self.desc, self.default)
     }
 
     fn parse(&mut self, arg: &str) -> Result<()> {
