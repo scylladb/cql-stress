@@ -98,7 +98,6 @@ impl ArbitraryParamsAcceptance for RejectsArbitraryParams {
 /// The multiparameter will delegate parsing of `factor=3` part to its predefined subparameter.
 /// `foo=bar` and `key=value` will be stored in the map of arbitrary parameters.
 pub struct MultiParam<A: ArbitraryParamsAcceptance> {
-    prefix: &'static str,
     // Pre-defined parameters.
     // User can access them via their corresponding handles.
     subparams: Vec<ParamCell>,
@@ -123,7 +122,6 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
         required: bool,
     ) -> TypedParam<Self> {
         let param = Self {
-            prefix,
             subparams,
             desc,
             arbitrary_params: Default::default(),
@@ -153,23 +151,21 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
 }
 
 impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
-    fn parse(&mut self, arg: &str) -> Result<()> {
-        let arg_val = &arg[self.prefix.len()..];
-
+    fn parse(&mut self, param_name: &'static str, arg_value: &str) -> Result<()> {
         // Remove wrapping parenthesis.
-        let arg_val = {
-            let mut chars = arg_val.chars();
+        let arg = {
+            let mut chars = arg_value.chars();
             anyhow::ensure!(
                 chars.next() == Some('(') && chars.next_back() == Some(')'),
                 "Invalid '{}' specification: {}",
-                self.prefix,
-                arg
+                param_name,
+                arg_value
             );
             chars.as_str()
         };
 
         // Iterate over comma-delimited sub-parameters.
-        for subparam in arg_val.split(',') {
+        for subparam in arg.split(',') {
             // Check if the argument matches on of the predefined subparameters.
             match self.try_parse_predefined(subparam) {
                 // Parsing error - return it.
@@ -183,7 +179,7 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
             // If the argument didn't match any of the prefefined sub-parameters,
             // try to parse it as an arbitrary parameter (if applicable).
             self.arbitrary_params
-                .try_parse_arbitrary(self.prefix, subparam)?;
+                .try_parse_arbitrary(param_name, subparam)?;
         }
 
         Ok(())
@@ -203,12 +199,12 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         self.subparams.clear();
     }
 
-    fn print_usage(&self) {
-        print!("[{}(?)]", self.prefix)
+    fn print_usage(&self, param_name: &'static str) {
+        print!("{}(?)", param_name)
     }
 
-    fn print_desc(&self) {
-        print!("{}(", self.prefix);
+    fn print_desc(&self, param_name: &'static str) {
+        print!("{}(", param_name);
         for param in self.subparams.iter() {
             param.borrow().print_usage();
         }

@@ -5,6 +5,7 @@ mod parser;
 mod simple_param;
 pub mod types;
 
+use anyhow::Context;
 use anyhow::Result;
 
 pub use multi_param::MultiParamAcceptsArbitraryHandle;
@@ -14,8 +15,9 @@ pub use simple_param::SimpleParamHandle;
 
 /// A specific implementation of the parameter.
 pub trait ParamImpl {
-    /// Parses the `arg` value.
-    fn parse(&mut self, arg: &str) -> Result<()>;
+    /// Parses the `arg_value'.
+    /// Includes `param_name` for building error messages based on the context.
+    fn parse(&mut self, param_name: &'static str, arg_value: &str) -> Result<()>;
     /// Ref: check `ParamsGroup`.
     /// Checking whether the group is satisfied happens right after all of the
     /// CLI arguments were successfully consumed. If the group is satisfied,
@@ -25,9 +27,9 @@ pub trait ParamImpl {
     /// with default values that don't belong to the satisfied group - otherwise, they would return `Some(_)`.
     fn set_satisfied(&mut self);
     /// Prints the usage format of the parameter.
-    fn print_usage(&self);
+    fn print_usage(&self, param_name: &'static str);
     /// Prints short description of the parameter.
-    fn print_desc(&self);
+    fn print_desc(&self, param_name: &'static str);
 }
 
 /// A simple wrapper for specific parameters implementations.
@@ -114,14 +116,14 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
         if !self.required {
             print!("[");
         }
-        self.param.print_usage();
+        self.param.print_usage(self.prefix);
         if !self.required {
             print!("]");
         }
     }
 
     fn print_desc(&self) {
-        self.param.print_desc()
+        self.param.print_desc(self.prefix)
     }
 
     fn parse(&mut self, arg: &str) -> Result<()> {
@@ -131,7 +133,10 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
             self.prefix
         );
         self.supplied_by_user = true;
-        self.param.parse(arg)
+        let arg_val = &arg[self.prefix.len()..];
+        self.param
+            .parse(self.prefix, arg_val)
+            .with_context(|| format!("Failed to parse parameter {}.", self.prefix))
     }
 }
 

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl, TypedParam};
 
@@ -16,7 +16,6 @@ use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl, TypedParam};
 /// - value_pattern := r"^[0-9]+[bmk]?$". It's provided by [super::types::Count].
 pub struct SimpleParam<T: Parsable> {
     value: Option<T::Parsed>,
-    prefix: &'static str,
     default: Option<&'static str>,
     desc: &'static str,
     satisfied: bool,
@@ -32,7 +31,6 @@ impl<T: Parsable> SimpleParam<T> {
         let param = Self {
             // SAFETY: The default value must be successfully parsed.
             value: default.map(|d| T::parse(d).unwrap()),
-            prefix,
             default,
             desc,
             satisfied: false,
@@ -51,13 +49,8 @@ impl<T: Parsable> SimpleParam<T> {
 }
 
 impl<T: Parsable> ParamImpl for SimpleParam<T> {
-    fn parse(&mut self, arg: &str) -> Result<()> {
-        let arg_val = &arg[self.prefix.len()..];
-        self.value = Some(
-            T::parse(arg_val)
-                .with_context(|| format!("Failed to parse parameter {}.", self.prefix))?,
-        );
-
+    fn parse(&mut self, _param_name: &'static str, arg_value: &str) -> Result<()> {
+        self.value = Some(T::parse(arg_value)?);
         Ok(())
     }
 
@@ -65,15 +58,15 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
         self.satisfied = true;
     }
 
-    fn print_usage(&self) {
-        print!("{}", self.prefix);
+    fn print_usage(&self, param_name: &'static str) {
+        print!("{}", param_name);
         if !T::is_bool() {
             print!("?");
         }
     }
 
-    fn print_desc(&self) {
-        let mut desc = String::from(self.prefix);
+    fn print_desc(&self, param_name: &'static str) {
+        let mut desc = String::from(param_name);
         if !T::is_bool() {
             desc.push('?');
         }
