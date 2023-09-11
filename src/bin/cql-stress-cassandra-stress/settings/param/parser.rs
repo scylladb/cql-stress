@@ -101,7 +101,7 @@ impl ParamsParser {
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
-        let param = Rc::new(RefCell::new(SimpleParam::new(
+        let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
             prefix, default, desc, required,
         )));
 
@@ -120,7 +120,7 @@ impl ParamsParser {
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
-        let param = Rc::new(RefCell::new(SimpleParam::new(
+        let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
             prefix, default, desc, required,
         )));
 
@@ -136,7 +136,7 @@ impl ParamsParser {
         desc: &'static str,
         required: bool,
     ) -> MultiParamHandle<A> {
-        let param = Rc::new(RefCell::new(MultiParam::new(
+        let param = Rc::new(RefCell::new(MultiParam::new_wrapped(
             prefix,
             subparams.iter().map(|handle| handle.cell()).collect(),
             desc,

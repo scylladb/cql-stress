@@ -76,7 +76,28 @@ impl<P: ParamImpl> TypedParam<P> {
     }
 }
 
-impl<P: ParamImpl> TypedParam<P> {
+/// A trait representing logic of the generic parameter.
+///
+/// It is implemented by [TypedParam] generic types.
+/// Introduced, so the [TypedParam]s can be used as trait objects (dyn GenericParam).
+pub trait GenericParam {
+    fn supplied_by_user(&self) -> bool;
+    fn required(&self) -> bool;
+    fn try_match(&self, arg: &str) -> bool;
+    /// Ref: check [parser::ParamsGroup].
+    /// Checking whether the group is satisfied happens right after all of the
+    /// CLI arguments were successfully consumed. If the group is satisfied,
+    /// it will mark all of its parameters as satisfied as well.
+    /// Then, before returning any value, the parameter will check if its satisfied.
+    /// If it's not, it will return `None`. Note that it's needed in case of parameters
+    /// with default values that don't belong to the satisfied group - otherwise, they would return `Some(_)`.
+    fn set_satisfied(&mut self);
+    fn print_usage(&self);
+    fn print_desc(&self);
+    fn parse(&mut self, arg: &str) -> Result<()>;
+}
+
+impl<P: ParamImpl> GenericParam for TypedParam<P> {
     fn supplied_by_user(&self) -> bool {
         self.param.supplied_by_user()
     }
@@ -106,7 +127,7 @@ impl<P: ParamImpl> TypedParam<P> {
     }
 }
 
-type ParamCell = Rc<RefCell<dyn ParamImpl>>;
+type ParamCell = Rc<RefCell<dyn GenericParam>>;
 
 pub trait ParamHandle {
     fn cell(&self) -> ParamCell;

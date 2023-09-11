@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 
-use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl};
+use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl, TypedParam};
 
 /// Abstraction of simple parameter which is of the following pattern:
 /// <prefix><value_pattern>
@@ -25,13 +25,13 @@ pub struct SimpleParam<T: Parsable> {
 }
 
 impl<T: Parsable> SimpleParam<T> {
-    pub fn new(
+    pub fn new_wrapped(
         prefix: &'static str,
         default: Option<&'static str>,
         desc: &'static str,
         required: bool,
-    ) -> Self {
-        Self {
+    ) -> TypedParam<Self> {
+        let param = Self {
             // SAFETY: The default value must be successfully parsed.
             value: default.map(|d| T::parse(d).unwrap()),
             prefix,
@@ -40,7 +40,9 @@ impl<T: Parsable> SimpleParam<T> {
             required,
             supplied_by_user: false,
             satisfied: false,
-        }
+        };
+
+        TypedParam::new(param, prefix, desc, default, required)
     }
 
     /// Retrieves the value (if parsed successfully) and consumes the parameter.
@@ -111,12 +113,18 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
     }
 }
 
+impl<T: Parsable> TypedParam<SimpleParam<T>> {
+    fn get(self) -> Option<T::Parsed> {
+        self.param.get()
+    }
+}
+
 pub struct SimpleParamHandle<T: Parsable> {
-    cell: Rc<RefCell<SimpleParam<T>>>,
+    cell: Rc<RefCell<TypedParam<SimpleParam<T>>>>,
 }
 
 impl<T: Parsable> SimpleParamHandle<T> {
-    pub fn new(cell: Rc<RefCell<SimpleParam<T>>>) -> Self {
+    pub fn new(cell: Rc<RefCell<TypedParam<SimpleParam<T>>>>) -> Self {
         Self { cell }
     }
 

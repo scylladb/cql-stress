@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use anyhow::Result;
 use regex::Regex;
 
-use super::{ParamCell, ParamHandle, ParamImpl};
+use super::{ParamCell, ParamHandle, ParamImpl, TypedParam};
 
 lazy_static! {
     // The arbitrary parameters should match pattern `key=value`.
@@ -118,13 +118,13 @@ impl MultiParam<AcceptsArbitraryParams> {
 }
 
 impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
-    pub fn new(
+    pub fn new_wrapped(
         prefix: &'static str,
         subparams: Vec<ParamCell>,
         desc: &'static str,
         required: bool,
-    ) -> Self {
-        Self {
+    ) -> TypedParam<Self> {
+        let param = Self {
             prefix,
             subparams,
             desc,
@@ -132,7 +132,9 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
             arbitrary_params: Default::default(),
             supplied_by_user: false,
             satisfied: false,
-        }
+        };
+
+        TypedParam::new(param, prefix, desc, None, required)
     }
 
     fn accepts_arbitrary(&self) -> bool {
@@ -244,10 +246,14 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
     }
 }
 
-type MultiParamCell<A> = Rc<RefCell<MultiParam<A>>>;
+impl TypedParam<MultiParam<AcceptsArbitraryParams>> {
+    fn get_arbitrary(self) -> Option<HashMap<String, String>> {
+        self.param.get_arbitrary()
+    }
+}
 
 pub struct MultiParamHandle<A: ArbitraryParamsAcceptance> {
-    cell: MultiParamCell<A>,
+    cell: Rc<RefCell<TypedParam<MultiParam<A>>>>,
 }
 
 pub type MultiParamAcceptsArbitraryHandle = MultiParamHandle<AcceptsArbitraryParams>;
@@ -263,7 +269,7 @@ impl MultiParamAcceptsArbitraryHandle {
 }
 
 impl<A: ArbitraryParamsAcceptance> MultiParamHandle<A> {
-    pub fn new(cell: MultiParamCell<A>) -> Self {
+    pub fn new(cell: Rc<RefCell<TypedParam<MultiParam<A>>>>) -> Self {
         Self { cell }
     }
 }
@@ -276,13 +282,14 @@ impl<A: ArbitraryParamsAcceptance + 'static> ParamHandle for MultiParamHandle<A>
 
 #[cfg(test)]
 mod tests {
-    use crate::settings::param::ParamImpl;
+    use crate::settings::param::GenericParam;
 
     use super::MultiParam;
 
     #[test]
     fn multi_param_arbitrary_test() {
-        let mut multi_param = MultiParam::new("replication", Vec::new(), "description", false);
+        let mut multi_param =
+            MultiParam::new_wrapped("replication", Vec::new(), "description", false);
 
         assert!(multi_param
             .parse("replication(foo=bar,key=value,gear=five)")
