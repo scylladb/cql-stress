@@ -4,6 +4,7 @@ extern crate async_trait;
 mod java_generate;
 mod operation;
 mod settings;
+mod stats;
 
 #[macro_use]
 extern crate lazy_static;
