@@ -17,7 +17,6 @@ use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl, TypedParam};
 pub struct SimpleParam<T: Parsable> {
     value: Option<T::Parsed>,
     default: Option<&'static str>,
-    desc: &'static str,
     satisfied: bool,
 }
 
@@ -32,7 +31,6 @@ impl<T: Parsable> SimpleParam<T> {
             // SAFETY: The default value must be successfully parsed.
             value: default.map(|d| T::parse(d).unwrap()),
             default,
-            desc,
             satisfied: false,
         };
 
@@ -65,15 +63,15 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
         }
     }
 
-    fn print_desc(&self, param_name: &'static str) {
-        let mut desc = String::from(param_name);
+    fn print_desc(&self, param_name: &'static str, description: &'static str) {
+        let mut usage = String::from(param_name);
         if !T::is_bool() {
-            desc.push('?');
+            usage.push('?');
         }
         if let Some(default) = self.default {
-            desc += &format!(" (default={default})");
+            usage += &format!(" (default={default})");
         }
-        println!("{:<40} {}", desc, self.desc);
+        println!("{:<40} {}", usage, description);
     }
 }
 

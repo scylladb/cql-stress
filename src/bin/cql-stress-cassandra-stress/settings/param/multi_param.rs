@@ -101,7 +101,6 @@ pub struct MultiParam<A: ArbitraryParamsAcceptance> {
     // Pre-defined parameters.
     // User can access them via their corresponding handles.
     subparams: Vec<ParamCell>,
-    desc: &'static str,
     // Arbitrary parameters of the `key=value` form.
     arbitrary_params: A,
     satisfied: bool,
@@ -123,7 +122,6 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
     ) -> TypedParam<Self> {
         let param = Self {
             subparams,
-            desc,
             arbitrary_params: Default::default(),
             satisfied: false,
         };
@@ -203,7 +201,7 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         print!("{}(?)", param_name)
     }
 
-    fn print_desc(&self, param_name: &'static str) {
+    fn print_desc(&self, param_name: &'static str, description: &'static str) {
         print!("{}(", param_name);
         for param in self.subparams.iter() {
             param.borrow().print_usage();
@@ -211,7 +209,7 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         if self.accepts_arbitrary() {
             print!("[<option 1..N>=?]");
         }
-        println!("): {}", self.desc);
+        println!("): {}", description);
         for param in self.subparams.iter() {
             print!("      ");
             param.borrow().print_desc();
