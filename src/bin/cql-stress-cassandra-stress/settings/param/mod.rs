@@ -14,8 +14,6 @@ pub use simple_param::SimpleParamHandle;
 
 /// A specific implementation of the parameter.
 pub trait ParamImpl {
-    /// Checks whether `arg` matches parameter's prefix.
-    fn try_match(&self, arg: &str) -> bool;
     /// Parses the `arg` value.
     fn parse(&mut self, arg: &str) -> Result<()>;
     /// Tells whether the parameter was parsed with the user-provided argument.
@@ -107,7 +105,8 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
     }
 
     fn try_match(&self, arg: &str) -> bool {
-        self.param.try_match(arg)
+        // Common logic for all types of parameters.
+        arg.starts_with(self.prefix)
     }
 
     fn set_satisfied(&mut self) {

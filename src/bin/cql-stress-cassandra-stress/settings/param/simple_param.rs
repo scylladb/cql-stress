@@ -55,10 +55,6 @@ impl<T: Parsable> SimpleParam<T> {
 }
 
 impl<T: Parsable> ParamImpl for SimpleParam<T> {
-    fn try_match(&self, arg: &str) -> bool {
-        arg.starts_with(self.prefix)
-    }
-
     fn parse(&mut self, arg: &str) -> Result<()> {
         anyhow::ensure!(
             !self.supplied_by_user,

@@ -240,10 +240,6 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
             param.borrow().print_desc();
         }
     }
-
-    fn try_match(&self, arg: &str) -> bool {
-        arg.starts_with(self.prefix)
-    }
 }
 
 impl TypedParam<MultiParam<AcceptsArbitraryParams>> {
