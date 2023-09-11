@@ -103,13 +103,12 @@ pub struct MultiParam<A: ArbitraryParamsAcceptance> {
     subparams: Vec<ParamCell>,
     // Arbitrary parameters of the `key=value` form.
     arbitrary_params: A,
-    satisfied: bool,
 }
 
 impl MultiParam<AcceptsArbitraryParams> {
     /// Retrieves arbitrary subparameters (if parsed successfully) and consumes the parameter.
-    pub fn get_arbitrary(self) -> Option<HashMap<String, String>> {
-        self.satisfied.then_some(self.arbitrary_params.map)
+    pub fn get_arbitrary(self) -> HashMap<String, String> {
+        self.arbitrary_params.map
     }
 }
 
@@ -123,7 +122,6 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
         let param = Self {
             subparams,
             arbitrary_params: Default::default(),
-            satisfied: false,
         };
 
         TypedParam::new(param, prefix, desc, None, required)
@@ -183,8 +181,7 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
         Ok(())
     }
 
-    fn set_satisfied(&mut self) {
-        self.satisfied = true;
+    fn set_subparams_satisfied(&mut self) {
         for param in self.subparams.iter() {
             param.borrow_mut().set_satisfied();
         }
@@ -224,7 +221,7 @@ impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
 
 impl TypedParam<MultiParam<AcceptsArbitraryParams>> {
     fn get_arbitrary(self) -> Option<HashMap<String, String>> {
-        self.param.get_arbitrary()
+        self.satisfied.then_some(self.param.get_arbitrary())
     }
 }
 

@@ -18,14 +18,9 @@ pub trait ParamImpl {
     /// Parses the `arg_value'.
     /// Includes `param_name` for building error messages based on the context.
     fn parse(&mut self, param_name: &'static str, arg_value: &str) -> Result<()>;
-    /// Ref: check `ParamsGroup`.
-    /// Checking whether the group is satisfied happens right after all of the
-    /// CLI arguments were successfully consumed. If the group is satisfied,
-    /// it will mark all of its parameters as satisfied as well.
-    /// Then, before returning any value, the parameter will check if its satisfied.
-    /// If it's not, it will return `None`. Note that it's needed in case of parameters
-    /// with default values that don't belong to the satisfied group - otherwise, they would return `Some(_)`.
-    fn set_satisfied(&mut self);
+    /// For some types (i.e. [multi_param::MultiParam]) it's necessary to mark subparameters
+    /// as satisfied. Default implementation does nothing.
+    fn set_subparams_satisfied(&mut self) {}
     /// Prints the usage format of the parameter.
     fn print_usage(&self, param_name: &'static str);
     /// Prints short description of the parameter.
@@ -114,7 +109,8 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
     }
 
     fn set_satisfied(&mut self) {
-        self.param.set_satisfied()
+        self.satisfied = true;
+        self.param.set_subparams_satisfied()
     }
 
     fn print_usage(&self) {

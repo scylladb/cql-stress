@@ -16,7 +16,6 @@ use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl, TypedParam};
 /// - value_pattern := r"^[0-9]+[bmk]?$". It's provided by [super::types::Count].
 pub struct SimpleParam<T: Parsable> {
     value: Option<T::Parsed>,
-    satisfied: bool,
 }
 
 impl<T: Parsable> SimpleParam<T> {
@@ -29,7 +28,6 @@ impl<T: Parsable> SimpleParam<T> {
         let param = Self {
             // SAFETY: The default value must be successfully parsed.
             value: default.map(|d| T::parse(d).unwrap()),
-            satisfied: false,
         };
 
         TypedParam::new(param, prefix, desc, default, required)
@@ -37,9 +35,6 @@ impl<T: Parsable> SimpleParam<T> {
 
     /// Retrieves the value (if parsed successfully) and consumes the parameter.
     fn get(self) -> Option<T::Parsed> {
-        if !self.satisfied {
-            return None;
-        }
         self.value
     }
 }
@@ -48,10 +43,6 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
     fn parse(&mut self, _param_name: &'static str, arg_value: &str) -> Result<()> {
         self.value = Some(T::parse(arg_value)?);
         Ok(())
-    }
-
-    fn set_satisfied(&mut self) {
-        self.satisfied = true;
     }
 
     fn print_usage(&self, param_name: &'static str) {
@@ -80,7 +71,7 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
 
 impl<T: Parsable> TypedParam<SimpleParam<T>> {
     fn get(self) -> Option<T::Parsed> {
-        self.param.get()
+        self.satisfied.then_some(self.param.get()?)
     }
 }
 
