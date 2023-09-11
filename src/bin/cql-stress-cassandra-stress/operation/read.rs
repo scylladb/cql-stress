@@ -6,9 +6,9 @@ use cql_stress::{
 };
 
 use anyhow::{Context, Result};
-use scylla::{prepared_statement::PreparedStatement, Session};
+use scylla::{frame::response::result::CqlValue, prepared_statement::PreparedStatement, Session};
 
-use crate::settings::CassandraStressSettings;
+use crate::{settings::CassandraStressSettings, stats::ShardedStats};
 
 use super::{
     row_generator::{RowGenerator, RowGeneratorFactory},
@@ -20,6 +20,7 @@ pub struct ReadOperation {
     statement: PreparedStatement,
     workload: RowGenerator,
     max_operations: Option<u64>,
+    stats: Arc<ShardedStats>,
 }
 
 pub struct ReadOperationFactory {
@@ -27,6 +28,7 @@ pub struct ReadOperationFactory {
     statement: PreparedStatement,
     workload_factory: RowGeneratorFactory,
     max_operations: Option<u64>,
+    stats: Arc<ShardedStats>,
 }
 
 impl OperationFactory for ReadOperationFactory {
@@ -36,6 +38,7 @@ impl OperationFactory for ReadOperationFactory {
             statement: self.statement.clone(),
             workload: self.workload_factory.create(),
             max_operations: self.max_operations,
+            stats: Arc::clone(&self.stats),
         })
     }
 }
@@ -45,6 +48,7 @@ impl ReadOperationFactory {
         settings: Arc<CassandraStressSettings>,
         session: Arc<Session>,
         workload_factory: RowGeneratorFactory,
+        stats: Arc<ShardedStats>,
     ) -> Result<Self> {
         let statement_str = "SELECT * FROM standard1 WHERE KEY=?";
         let mut statement = session
@@ -66,6 +70,7 @@ impl ReadOperationFactory {
             statement,
             workload_factory,
             max_operations: settings.command_params.basic_params.operation_count,
+            stats,
         })
     }
 }
@@ -81,6 +86,14 @@ impl ReadOperation {
         }
 
         let row = self.workload.generate_row();
+        let result = self.do_execute(&row).await;
+
+        self.stats.get_shard_mut().account_operation(ctx, &result);
+
+        result
+    }
+
+    async fn do_execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
         let pk = &row[0];
 
         let result = self.session.execute(&self.statement, (pk,)).await;
@@ -92,7 +105,7 @@ impl ReadOperation {
             );
         }
 
-        let validation_result = validate_row(&row, result?);
+        let validation_result = validate_row(row, result?);
         if let Err(err) = validation_result.as_ref() {
             tracing::error!(
                 error = %err,

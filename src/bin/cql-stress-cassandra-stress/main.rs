@@ -144,7 +144,7 @@ async fn create_operation_factory(
             WriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::Read => Ok(Arc::new(
-            ReadOperationFactory::new(settings, session, workload_factory).await?,
+            ReadOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         cmd => Err(anyhow::anyhow!(
             "Runtime for command '{}' not implemented yet.",
