@@ -17,11 +17,13 @@ use anyhow::{Context, Result};
 use cql_stress::{
     configuration::{Configuration, OperationFactory},
     run::RunController,
+    sharded_stats::Stats as _,
+    sharded_stats::StatsFactory as _,
 };
 use operation::WriteOperationFactory;
 use scylla::{ExecutionProfile, Session, SessionBuilder};
-use stats::{ShardedStats, StatsFactory};
-use std::{env, sync::Arc};
+use stats::{ShardedStats, StatsFactory, StatsPrinter};
+use std::{env, sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;
 
 use settings::{CassandraStressParsingResult, CassandraStressSettings};
@@ -54,12 +56,44 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to prepare benchmark")?;
 
+    let mut combined_stats = stats_factory.create();
+
     let (ctrl, run_finished) = cql_stress::run::run(run_config);
 
     // Run a background task waiting for a stop-signal (Ctrl+C).
     tokio::task::spawn(stop_on_signal(ctrl));
 
-    run_finished.await
+    let mut printer = StatsPrinter::new();
+
+    // TODO: change the interval based on -log option (when supported).
+    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+
+    // Pin the future so it can be polled in tokio::select.
+    tokio::pin!(run_finished);
+
+    // Skip the immediate tick.
+    ticker.tick().await;
+
+    printer.print_header();
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                let partial_stats = sharded_stats.get_combined_and_clear();
+                combined_stats.combine(&partial_stats);
+                printer.print_partial(&partial_stats);
+            }
+            result = &mut run_finished => {
+                if result.is_ok() {
+                    // Combine stats for the last time
+                    let partial_stats = sharded_stats.get_combined_and_clear();
+                    combined_stats.combine(&partial_stats);
+                    printer.print_summary(&combined_stats);
+                }
+                return result.context("An error occurred during the benchmark");
+            }
+        }
+    }
 }
 
 async fn stop_on_signal(runner: RunController) {
