@@ -1,5 +1,7 @@
 use std::cmp::min;
 
+use scylla::frame::response::result::CqlValue;
+
 use super::ValueGenerator;
 use crate::java_generate::distribution::Distribution;
 use crate::java_generate::faster_random::FasterRandom;
@@ -12,13 +14,11 @@ pub struct Blob {
 }
 
 impl ValueGenerator for Blob {
-    type Value = Vec<u8>;
-
     fn generate(
         &mut self,
         identity_distribution: &mut dyn Distribution,
         size_distribution: &mut dyn Distribution,
-    ) -> Self::Value {
+    ) -> CqlValue {
         let seed = identity_distribution.next_i64();
         size_distribution.set_seed(seed);
         self.rng.set_seed(!seed);
@@ -33,7 +33,7 @@ impl ValueGenerator for Blob {
             i += n;
         }
 
-        result
+        CqlValue::Blob(result)
     }
 }
 
@@ -43,12 +43,17 @@ mod tests {
         distribution::fixed::FixedDistribution,
         values::{Generator, GeneratorConfig},
     };
+    use scylla::frame::response::result::CqlValue;
 
     use super::Blob;
 
     /// Utility function that maps u8 vector values to i8 values.
-    fn to_vec_i8(v: Vec<u8>) -> Vec<i8> {
-        v.into_iter().map(|x| x as i8).collect::<Vec<i8>>()
+    fn to_vec_i8(v: CqlValue) -> Vec<i8> {
+        v.as_blob()
+            .unwrap()
+            .iter()
+            .map(|x| *x as i8)
+            .collect::<Vec<i8>>()
     }
 
     #[test]

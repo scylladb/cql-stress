@@ -1,9 +1,14 @@
 use std::{
     fs::File,
     io::{self, BufRead},
+    sync::Arc,
 };
 
 use anyhow::{Context, Result};
+use scylla::{
+    host_filter::{AllowListHostFilter, HostFilter},
+    load_balancing::{DefaultPolicy, LoadBalancingPolicy},
+};
 
 use crate::settings::{
     param::{types::CommaDelimitedList, ParamsParser, SimpleParamHandle},
@@ -59,6 +64,25 @@ impl NodeOption {
             nodes,
             whitelist,
             datacenter,
+        })
+    }
+
+    /// Define a token-aware load balancing policy with a preferred datacenter (if specified).
+    pub fn load_balancing_policy(&self) -> Arc<dyn LoadBalancingPolicy> {
+        let mut builder = DefaultPolicy::builder().token_aware(true);
+        if let Some(datacenter) = &self.datacenter {
+            builder = builder.prefer_datacenter(datacenter.to_owned());
+        };
+        builder.build()
+    }
+
+    /// Limit the communication to the specified nodes (if `whitelist` is set).
+    pub fn host_filter(&self, port: u16) -> Option<Result<Arc<dyn HostFilter>>> {
+        self.whitelist.then(|| -> Result<Arc<dyn HostFilter>> {
+            let addrs = self.nodes.iter().map(|ip| (ip.as_ref(), port));
+            Ok(Arc::new(
+                AllowListHostFilter::new(addrs).context("Failed to prepare host filter")?,
+            ))
         })
     }
 }

@@ -6,6 +6,7 @@ use anyhow::Result;
 
 pub use node::NodeOption;
 pub use rate::RateOption;
+pub use rate::ThreadsInfo;
 pub use schema::SchemaOption;
 
 pub struct Options;

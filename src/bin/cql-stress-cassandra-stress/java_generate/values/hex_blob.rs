@@ -1,3 +1,5 @@
+use scylla::frame::response::result::CqlValue;
+
 use super::ValueGenerator;
 use crate::java_generate::distribution::Distribution;
 
@@ -7,13 +9,11 @@ use crate::java_generate::distribution::Distribution;
 pub struct HexBlob;
 
 impl ValueGenerator for HexBlob {
-    type Value = Vec<u8>;
-
     fn generate(
         &mut self,
         identity_distribution: &mut dyn Distribution,
         size_distribution: &mut dyn Distribution,
-    ) -> Self::Value {
+    ) -> CqlValue {
         let seed = identity_distribution.next_i64();
         size_distribution.set_seed(seed);
         let size = size_distribution.next_i64() as usize;
@@ -38,7 +38,7 @@ impl ValueGenerator for HexBlob {
             i += 16;
         }
 
-        result
+        CqlValue::Blob(result)
     }
 }
 
@@ -48,11 +48,16 @@ mod tests {
         distribution::{fixed::FixedDistribution, sequence::SeqDistribution, Distribution},
         values::{Generator, GeneratorConfig},
     };
+    use scylla::frame::response::result::CqlValue;
 
     use super::HexBlob;
 
-    fn to_vec_i8(v: Vec<u8>) -> Vec<i8> {
-        v.into_iter().map(|x| x as i8).collect::<Vec<i8>>()
+    fn to_vec_i8(v: CqlValue) -> Vec<i8> {
+        v.as_blob()
+            .unwrap()
+            .iter()
+            .map(|x| *x as i8)
+            .collect::<Vec<i8>>()
     }
 
     #[test]

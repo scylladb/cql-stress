@@ -5,7 +5,7 @@ use crate::settings::{
 use anyhow::Result;
 
 pub struct RateOption {
-    threads_info: ThreadsInfo,
+    pub threads_info: ThreadsInfo,
 }
 
 #[derive(PartialEq, Debug)]
