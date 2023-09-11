@@ -20,6 +20,7 @@ use cql_stress::{
 };
 use operation::WriteOperationFactory;
 use scylla::{ExecutionProfile, Session, SessionBuilder};
+use stats::{ShardedStats, StatsFactory};
 use std::{env, sync::Arc};
 use tracing_subscriber::EnvFilter;
 
@@ -45,7 +46,11 @@ async fn main() -> Result<()> {
     };
 
     settings.print_settings();
-    let run_config = prepare_run(Arc::clone(&settings))
+
+    let stats_factory = Arc::new(StatsFactory::new(&settings));
+    let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
+
+    let run_config = prepare_run(Arc::clone(&settings), Arc::clone(&sharded_stats))
         .await
         .context("Failed to prepare benchmark")?;
 
@@ -67,7 +72,10 @@ async fn stop_on_signal(runner: RunController) {
     runner.abort();
 }
 
-async fn prepare_run(settings: Arc<CassandraStressSettings>) -> Result<Configuration> {
+async fn prepare_run(
+    settings: Arc<CassandraStressSettings>,
+    stats: Arc<ShardedStats>,
+) -> Result<Configuration> {
     let mut builder = SessionBuilder::new().known_nodes(&settings.node.nodes);
 
     let default_exec_profile = ExecutionProfile::builder()
@@ -96,7 +104,7 @@ async fn prepare_run(settings: Arc<CassandraStressSettings>) -> Result<Configura
         }
     };
 
-    let operation_factory = create_operation_factory(session, settings).await?;
+    let operation_factory = create_operation_factory(session, settings, stats).await?;
 
     Ok(Configuration {
         max_duration: duration,
@@ -128,11 +136,12 @@ async fn create_schema(session: &Session, settings: &CassandraStressSettings) ->
 async fn create_operation_factory(
     session: Arc<Session>,
     settings: Arc<CassandraStressSettings>,
+    stats: Arc<ShardedStats>,
 ) -> Result<Arc<dyn OperationFactory>> {
     let workload_factory = RowGeneratorFactory::new(Arc::clone(&settings));
     match &settings.command {
         Command::Write => Ok(Arc::new(
-            WriteOperationFactory::new(settings, session, workload_factory).await?,
+            WriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::Read => Ok(Arc::new(
             ReadOperationFactory::new(settings, session, workload_factory).await?,

@@ -8,7 +8,7 @@ use cql_stress::{
 use anyhow::{Context, Result};
 use scylla::{prepared_statement::PreparedStatement, Session};
 
-use crate::settings::CassandraStressSettings;
+use crate::{settings::CassandraStressSettings, stats::ShardedStats};
 
 use super::row_generator::{RowGenerator, RowGeneratorFactory};
 
@@ -17,6 +17,7 @@ pub struct WriteOperation {
     statement: PreparedStatement,
     workload: RowGenerator,
     max_operations: Option<u64>,
+    stats: Arc<ShardedStats>,
 }
 
 pub struct WriteOperationFactory {
@@ -24,6 +25,7 @@ pub struct WriteOperationFactory {
     statement: PreparedStatement,
     workload_factory: RowGeneratorFactory,
     max_operations: Option<u64>,
+    stats: Arc<ShardedStats>,
 }
 
 impl OperationFactory for WriteOperationFactory {
@@ -33,6 +35,7 @@ impl OperationFactory for WriteOperationFactory {
             statement: self.statement.clone(),
             workload: self.workload_factory.create(),
             max_operations: self.max_operations,
+            stats: Arc::clone(&self.stats),
         })
     }
 }
@@ -42,6 +45,7 @@ impl WriteOperationFactory {
         settings: Arc<CassandraStressSettings>,
         session: Arc<Session>,
         workload_factory: RowGeneratorFactory,
+        stats: Arc<ShardedStats>,
     ) -> Result<Self> {
         let statement_str =
             "INSERT INTO standard1 (key, \"C0\", \"C1\", \"C2\", \"C3\", \"C4\") VALUES (?, ?, ?, ?, ?, ?)";
@@ -64,6 +68,7 @@ impl WriteOperationFactory {
             statement,
             workload_factory,
             max_operations: settings.command_params.basic_params.operation_count,
+            stats,
         })
     }
 }
@@ -88,6 +93,9 @@ impl WriteOperation {
                 "write error",
             );
         }
+
+        self.stats.get_shard_mut().account_operation(ctx, &result);
+        result?;
 
         Ok(ControlFlow::Continue(()))
     }
