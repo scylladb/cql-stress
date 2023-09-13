@@ -2,7 +2,7 @@ use scylla::_macro_internal::CqlValue;
 
 use crate::{
     java_generate::{
-        distribution::{fixed::FixedDistribution, sequence::SeqDistribution, Distribution},
+        distribution::{fixed::FixedDistribution, Distribution},
         values::{Blob, Generator, GeneratorConfig, HexBlob},
     },
     settings::CassandraStressSettings,
@@ -113,14 +113,7 @@ impl RowGenerator {
 
 impl RowGeneratorFactory {
     pub fn new(settings: Arc<CassandraStressSettings>) -> Self {
-        // TODO: adjust when `-pop` option is supported.
-        let default_seq_range_end = settings
-            .command_params
-            .basic_params
-            .operation_count
-            .unwrap_or(1000000);
-        let pk_seed_distribution =
-            Arc::new(SeqDistribution::new(1, default_seq_range_end as i64).unwrap());
+        let pk_seed_distribution = settings.population.pk_seed_distribution.create().into();
 
         Self {
             pk_seed_distribution,
