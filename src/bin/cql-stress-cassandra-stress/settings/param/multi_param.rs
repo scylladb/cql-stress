@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use anyhow::Result;
 use regex::Regex;
 
-use super::{Param, ParamCell, ParamHandle};
+use super::{ParamCell, ParamHandle, ParamImpl};
 
 lazy_static! {
     // The arbitrary parameters should match pattern `key=value`.
@@ -154,7 +154,7 @@ impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
     }
 }
 
-impl<A: ArbitraryParamsAcceptance> Param for MultiParam<A> {
+impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
     fn parse(&mut self, arg: &str) -> Result<()> {
         anyhow::ensure!(
             !self.supplied_by_user,
@@ -276,7 +276,7 @@ impl<A: ArbitraryParamsAcceptance + 'static> ParamHandle for MultiParamHandle<A>
 
 #[cfg(test)]
 mod tests {
-    use crate::settings::param::Param;
+    use crate::settings::param::ParamImpl;
 
     use super::MultiParam;
 

@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 
-use super::{types::Parsable, Param, ParamCell, ParamHandle};
+use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl};
 
 /// Abstraction of simple parameter which is of the following pattern:
 /// <prefix><value_pattern>
@@ -52,7 +52,7 @@ impl<T: Parsable> SimpleParam<T> {
     }
 }
 
-impl<T: Parsable> Param for SimpleParam<T> {
+impl<T: Parsable> ParamImpl for SimpleParam<T> {
     fn try_match(&self, arg: &str) -> bool {
         arg.starts_with(self.prefix)
     }

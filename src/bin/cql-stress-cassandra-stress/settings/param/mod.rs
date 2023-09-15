@@ -12,13 +12,8 @@ pub use multi_param::MultiParamHandle;
 pub use parser::ParamsParser;
 pub use simple_param::SimpleParamHandle;
 
-/// An 'interface' of parameter.
-///
-/// Note that the parser uses trait objects.
-/// For now, it may seem to be unnecessary since we only support `SimpleParam`s.
-/// However, cassandra-stress supports more complex parameters (see help -schema)
-/// which cql-stress should support in the future as well.
-pub trait Param {
+/// A specific implementation of the parameter.
+pub trait ParamImpl {
     /// Checks whether `arg` matches parameter's prefix.
     fn try_match(&self, arg: &str) -> bool;
     /// Parses the `arg` value.
@@ -40,7 +35,7 @@ pub trait Param {
     fn print_desc(&self);
 }
 
-type ParamCell = Rc<RefCell<dyn Param>>;
+type ParamCell = Rc<RefCell<dyn ParamImpl>>;
 
 pub trait ParamHandle {
     fn cell(&self) -> ParamCell;
