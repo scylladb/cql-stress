@@ -4,6 +4,7 @@ extern crate async_trait;
 mod java_generate;
 mod operation;
 mod settings;
+mod stats;
 
 #[macro_use]
 extern crate lazy_static;
@@ -16,10 +17,13 @@ use anyhow::{Context, Result};
 use cql_stress::{
     configuration::{Configuration, OperationFactory},
     run::RunController,
+    sharded_stats::Stats as _,
+    sharded_stats::StatsFactory as _,
 };
 use operation::WriteOperationFactory;
 use scylla::{ExecutionProfile, Session, SessionBuilder};
-use std::{env, sync::Arc};
+use stats::{ShardedStats, StatsFactory, StatsPrinter};
+use std::{env, sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;
 
 use settings::{CassandraStressParsingResult, CassandraStressSettings};
@@ -44,16 +48,52 @@ async fn main() -> Result<()> {
     };
 
     settings.print_settings();
-    let run_config = prepare_run(Arc::clone(&settings))
+
+    let stats_factory = Arc::new(StatsFactory::new(&settings));
+    let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
+
+    let run_config = prepare_run(Arc::clone(&settings), Arc::clone(&sharded_stats))
         .await
         .context("Failed to prepare benchmark")?;
+
+    let mut combined_stats = stats_factory.create();
 
     let (ctrl, run_finished) = cql_stress::run::run(run_config);
 
     // Run a background task waiting for a stop-signal (Ctrl+C).
     tokio::task::spawn(stop_on_signal(ctrl));
 
-    run_finished.await
+    let mut printer = StatsPrinter::new();
+
+    // TODO: change the interval based on -log option (when supported).
+    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+
+    // Pin the future so it can be polled in tokio::select.
+    tokio::pin!(run_finished);
+
+    // Skip the immediate tick.
+    ticker.tick().await;
+
+    printer.print_header();
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                let partial_stats = sharded_stats.get_combined_and_clear();
+                combined_stats.combine(&partial_stats);
+                printer.print_partial(&partial_stats);
+            }
+            result = &mut run_finished => {
+                if result.is_ok() {
+                    // Combine stats for the last time
+                    let partial_stats = sharded_stats.get_combined_and_clear();
+                    combined_stats.combine(&partial_stats);
+                    printer.print_summary(&combined_stats);
+                }
+                return result.context("An error occurred during the benchmark");
+            }
+        }
+    }
 }
 
 async fn stop_on_signal(runner: RunController) {
@@ -66,7 +106,10 @@ async fn stop_on_signal(runner: RunController) {
     runner.abort();
 }
 
-async fn prepare_run(settings: Arc<CassandraStressSettings>) -> Result<Configuration> {
+async fn prepare_run(
+    settings: Arc<CassandraStressSettings>,
+    stats: Arc<ShardedStats>,
+) -> Result<Configuration> {
     let mut builder = SessionBuilder::new().known_nodes(&settings.node.nodes);
 
     let default_exec_profile = ExecutionProfile::builder()
@@ -95,7 +138,7 @@ async fn prepare_run(settings: Arc<CassandraStressSettings>) -> Result<Configura
         }
     };
 
-    let operation_factory = create_operation_factory(session, settings).await?;
+    let operation_factory = create_operation_factory(session, settings, stats).await?;
 
     Ok(Configuration {
         max_duration: duration,
@@ -127,14 +170,15 @@ async fn create_schema(session: &Session, settings: &CassandraStressSettings) ->
 async fn create_operation_factory(
     session: Arc<Session>,
     settings: Arc<CassandraStressSettings>,
+    stats: Arc<ShardedStats>,
 ) -> Result<Arc<dyn OperationFactory>> {
     let workload_factory = RowGeneratorFactory::new(Arc::clone(&settings));
     match &settings.command {
         Command::Write => Ok(Arc::new(
-            WriteOperationFactory::new(settings, session, workload_factory).await?,
+            WriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::Read => Ok(Arc::new(
-            ReadOperationFactory::new(settings, session, workload_factory).await?,
+            ReadOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         cmd => Err(anyhow::anyhow!(
             "Runtime for command '{}' not implemented yet.",
