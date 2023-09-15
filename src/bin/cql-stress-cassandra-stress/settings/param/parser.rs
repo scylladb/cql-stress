@@ -5,7 +5,7 @@ use super::{
     multi_param::{ArbitraryParamsAcceptance, MultiParam},
     simple_param::{SimpleParam, SimpleParamHandle},
     types::Parsable,
-    MultiParamHandle, ParamCell, ParamHandle, ParamMatchResult,
+    MultiParamHandle, ParamCell, ParamHandle,
 };
 
 /// Some of the parameters are mutually exclusive. For example, we can't do
@@ -101,7 +101,7 @@ impl ParamsParser {
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
-        let param = Rc::new(RefCell::new(SimpleParam::new(
+        let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
             prefix, default, desc, required,
         )));
 
@@ -120,7 +120,7 @@ impl ParamsParser {
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
-        let param = Rc::new(RefCell::new(SimpleParam::new(
+        let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
             prefix, default, desc, required,
         )));
 
@@ -136,7 +136,7 @@ impl ParamsParser {
         desc: &'static str,
         required: bool,
     ) -> MultiParamHandle<A> {
-        let param = Rc::new(RefCell::new(MultiParam::new(
+        let param = Rc::new(RefCell::new(MultiParam::new_wrapped(
             prefix,
             subparams.iter().map(|handle| handle.cell()).collect(),
             desc,
@@ -166,14 +166,10 @@ impl ParamsParser {
             let mut consumed = false;
             for param in self.params.iter() {
                 let mut borrowed = param.borrow_mut();
-                match borrowed.try_match(arg) {
-                    ParamMatchResult::Error(e) => return Err(e),
-                    ParamMatchResult::NoMatch => (),
-                    ParamMatchResult::Match => {
-                        borrowed.parse(arg)?;
-                        consumed = true;
-                        break;
-                    }
+                if borrowed.try_match(arg) {
+                    borrowed.parse(arg)?;
+                    consumed = true;
+                    break;
                 }
             }
 

@@ -1,8 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
-use super::{types::Parsable, Param, ParamCell, ParamHandle, ParamMatchResult};
+use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl, TypedParam};
 
 /// Abstraction of simple parameter which is of the following pattern:
 /// <prefix><value_pattern>
@@ -16,112 +16,71 @@ use super::{types::Parsable, Param, ParamCell, ParamHandle, ParamMatchResult};
 /// - value_pattern := r"^[0-9]+[bmk]?$". It's provided by [super::types::Count].
 pub struct SimpleParam<T: Parsable> {
     value: Option<T::Parsed>,
-    prefix: &'static str,
-    default: Option<&'static str>,
-    desc: &'static str,
-    required: bool,
-    supplied_by_user: bool,
-    satisfied: bool,
 }
 
 impl<T: Parsable> SimpleParam<T> {
-    pub fn new(
+    pub fn new_wrapped(
         prefix: &'static str,
         default: Option<&'static str>,
         desc: &'static str,
         required: bool,
-    ) -> Self {
-        Self {
+    ) -> TypedParam<Self> {
+        let param = Self {
             // SAFETY: The default value must be successfully parsed.
             value: default.map(|d| T::parse(d).unwrap()),
-            prefix,
-            default,
-            desc,
-            required,
-            supplied_by_user: false,
-            satisfied: false,
-        }
+        };
+
+        TypedParam::new(param, prefix, desc, default, required)
     }
 
     /// Retrieves the value (if parsed successfully) and consumes the parameter.
     fn get(self) -> Option<T::Parsed> {
-        if !self.satisfied {
-            return None;
-        }
         self.value
     }
 }
 
-impl<T: Parsable> Param for SimpleParam<T> {
-    fn try_match(&self, arg: &str) -> ParamMatchResult {
-        if !arg.starts_with(self.prefix) {
-            return ParamMatchResult::NoMatch;
-        }
-
-        if self.supplied_by_user {
-            return ParamMatchResult::Error(anyhow::anyhow!(
-                "{} suboption has been specified more than once",
-                self.prefix
-            ));
-        }
-
-        ParamMatchResult::Match
-    }
-
-    fn parse(&mut self, arg: &str) -> Result<()> {
-        let arg_val = &arg[self.prefix.len()..];
-        self.supplied_by_user = true;
-        self.value = Some(
-            T::parse(arg_val)
-                .with_context(|| format!("Failed to parse parameter {}.", self.prefix))?,
-        );
-
+impl<T: Parsable> ParamImpl for SimpleParam<T> {
+    fn parse(&mut self, _param_name: &'static str, arg_value: &str) -> Result<()> {
+        self.value = Some(T::parse(arg_value)?);
         Ok(())
     }
 
-    fn supplied_by_user(&self) -> bool {
-        self.supplied_by_user
-    }
-
-    fn required(&self) -> bool {
-        self.required
-    }
-
-    fn set_satisfied(&mut self) {
-        self.satisfied = true;
-    }
-
-    fn print_usage(&self) {
-        if !self.required {
-            print!("[");
-        }
-        print!("{}", self.prefix);
+    fn print_usage(&self, param_name: &'static str) {
+        print!("{}", param_name);
         if !T::is_bool() {
             print!("?");
         }
-        if !self.required {
-            print!("]");
-        }
     }
 
-    fn print_desc(&self) {
-        let mut desc = String::from(self.prefix);
+    fn print_desc(
+        &self,
+        param_name: &'static str,
+        description: &'static str,
+        default_value: Option<&'static str>,
+    ) {
+        let mut usage = String::from(param_name);
         if !T::is_bool() {
-            desc.push('?');
+            usage.push('?');
         }
-        if let Some(default) = self.default {
-            desc += &format!(" (default={default})");
+        if let Some(default) = default_value {
+            usage += &format!(" (default={default})");
         }
-        println!("{:<40} {}", desc, self.desc);
+        println!("{:<40} {}", usage, description);
+    }
+}
+
+impl<T: Parsable> TypedParam<SimpleParam<T>> {
+    fn get(self) -> Option<T::Parsed> {
+        self.satisfied.then_some(self.param.get()?)
     }
 }
 
 pub struct SimpleParamHandle<T: Parsable> {
-    cell: Rc<RefCell<SimpleParam<T>>>,
+    cell: Rc<RefCell<TypedParam<SimpleParam<T>>>>,
 }
 
 impl<T: Parsable> SimpleParamHandle<T> {
-    pub fn new(cell: Rc<RefCell<SimpleParam<T>>>) -> Self {
+    pub fn new(cell: Rc<RefCell<TypedParam<SimpleParam<T>>>>) -> Self {
         Self { cell }
     }
 

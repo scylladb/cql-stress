@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use anyhow::Result;
 use regex::Regex;
 
-use super::{Param, ParamCell, ParamHandle, ParamMatchResult};
+use super::{ParamCell, ParamHandle, ParamImpl, TypedParam};
 
 lazy_static! {
     // The arbitrary parameters should match pattern `key=value`.
@@ -98,105 +98,90 @@ impl ArbitraryParamsAcceptance for RejectsArbitraryParams {
 /// The multiparameter will delegate parsing of `factor=3` part to its predefined subparameter.
 /// `foo=bar` and `key=value` will be stored in the map of arbitrary parameters.
 pub struct MultiParam<A: ArbitraryParamsAcceptance> {
-    prefix: &'static str,
     // Pre-defined parameters.
     // User can access them via their corresponding handles.
     subparams: Vec<ParamCell>,
-    desc: &'static str,
-    required: bool,
     // Arbitrary parameters of the `key=value` form.
     arbitrary_params: A,
-    supplied_by_user: bool,
-    satisfied: bool,
 }
 
 impl MultiParam<AcceptsArbitraryParams> {
     /// Retrieves arbitrary subparameters (if parsed successfully) and consumes the parameter.
-    pub fn get_arbitrary(self) -> Option<HashMap<String, String>> {
-        self.satisfied.then_some(self.arbitrary_params.map)
+    pub fn get_arbitrary(self) -> HashMap<String, String> {
+        self.arbitrary_params.map
     }
 }
 
 impl<A: ArbitraryParamsAcceptance> MultiParam<A> {
-    pub fn new(
+    pub fn new_wrapped(
         prefix: &'static str,
         subparams: Vec<ParamCell>,
         desc: &'static str,
         required: bool,
-    ) -> Self {
-        Self {
-            prefix,
+    ) -> TypedParam<Self> {
+        let param = Self {
             subparams,
-            desc,
-            required,
             arbitrary_params: Default::default(),
-            supplied_by_user: false,
-            satisfied: false,
-        }
+        };
+
+        TypedParam::new(param, prefix, desc, None, required)
     }
 
     fn accepts_arbitrary(&self) -> bool {
         self.arbitrary_params.accepts_arbitrary()
     }
 
-    fn try_parse_predefined(&self, arg: &str) -> ParamMatchResult {
+    /// Tries to parse one of the predefined multiparameters.
+    /// Returns Some(parsing_result) if one of the parameters matched the argument,
+    /// and None otherwise.
+    fn try_parse_predefined(&self, arg: &str) -> Option<Result<()>> {
         for param in self.subparams.iter() {
             let mut borrowed = param.borrow_mut();
-            match borrowed.try_match(arg) {
-                ParamMatchResult::NoMatch => (),
-                e @ ParamMatchResult::Error(_) => return e,
-                ParamMatchResult::Match => match borrowed.parse(arg) {
-                    Ok(()) => return ParamMatchResult::Match,
-                    Err(e) => return ParamMatchResult::Error(e),
-                },
+            if borrowed.try_match(arg) {
+                return Some(borrowed.parse(arg));
             }
         }
 
-        ParamMatchResult::NoMatch
+        None
     }
 }
 
-impl<A: ArbitraryParamsAcceptance> Param for MultiParam<A> {
-    fn parse(&mut self, arg: &str) -> Result<()> {
-        self.supplied_by_user = true;
-        let arg_val = &arg[self.prefix.len()..];
-
+impl<A: ArbitraryParamsAcceptance> ParamImpl for MultiParam<A> {
+    fn parse(&mut self, param_name: &'static str, arg_value: &str) -> Result<()> {
         // Remove wrapping parenthesis.
-        let arg_val = {
-            let mut chars = arg_val.chars();
-            chars.next();
-            chars.next_back();
+        let arg = {
+            let mut chars = arg_value.chars();
+            anyhow::ensure!(
+                chars.next() == Some('(') && chars.next_back() == Some(')'),
+                "Invalid '{}' specification: {}",
+                param_name,
+                arg_value
+            );
             chars.as_str()
         };
 
         // Iterate over comma-delimited sub-parameters.
-        for subparam in arg_val.split(',') {
+        for subparam in arg.split(',') {
             // Check if the argument matches on of the predefined subparameters.
             match self.try_parse_predefined(subparam) {
-                ParamMatchResult::Error(e) => return Err(e),
-                ParamMatchResult::Match => continue,
-                _ => (),
+                // Parsing error - return it.
+                Some(e @ Err(_)) => return e,
+                // Parsing successful, move on to the next parameter.
+                Some(Ok(())) => continue,
+                // None of the predefined parameters matched, try parsing as arbitrary.
+                None => (),
             }
 
             // If the argument didn't match any of the prefefined sub-parameters,
             // try to parse it as an arbitrary parameter (if applicable).
             self.arbitrary_params
-                .try_parse_arbitrary(self.prefix, subparam)?;
+                .try_parse_arbitrary(param_name, subparam)?;
         }
 
         Ok(())
     }
 
-    fn supplied_by_user(&self) -> bool {
-        self.supplied_by_user
-    }
-
-    fn required(&self) -> bool {
-        self.required
-    }
-
-    fn set_satisfied(&mut self) {
-        self.satisfied = true;
+    fn set_subparams_satisfied(&mut self) {
         for param in self.subparams.iter() {
             param.borrow_mut().set_satisfied();
         }
@@ -209,53 +194,39 @@ impl<A: ArbitraryParamsAcceptance> Param for MultiParam<A> {
         self.subparams.clear();
     }
 
-    fn print_usage(&self) {
-        print!("[{}(?)]", self.prefix)
+    fn print_usage(&self, param_name: &'static str) {
+        print!("{}(?)", param_name)
     }
 
-    fn print_desc(&self) {
-        print!("{}(", self.prefix);
+    fn print_desc(
+        &self,
+        param_name: &'static str,
+        description: &'static str,
+        _default_value: Option<&'static str>,
+    ) {
+        print!("{}(", param_name);
         for param in self.subparams.iter() {
             param.borrow().print_usage();
         }
         if self.accepts_arbitrary() {
             print!("[<option 1..N>=?]");
         }
-        println!("): {}", self.desc);
+        println!("): {}", description);
         for param in self.subparams.iter() {
             print!("      ");
             param.borrow().print_desc();
         }
     }
+}
 
-    fn try_match(&self, arg: &str) -> ParamMatchResult {
-        if !arg.starts_with(self.prefix) {
-            return ParamMatchResult::NoMatch;
-        }
-
-        if self.supplied_by_user {
-            return ParamMatchResult::Error(anyhow::anyhow!(
-                "{} suboption has been specified more than once",
-                self.prefix
-            ));
-        }
-
-        let arg_val = &arg[self.prefix.len()..];
-        if !arg_val.starts_with('(') || !arg_val.ends_with(')') {
-            return ParamMatchResult::Error(anyhow::anyhow!(
-                "Invalid {} specification: {}",
-                self.prefix,
-                arg
-            ));
-        }
-        ParamMatchResult::Match
+impl TypedParam<MultiParam<AcceptsArbitraryParams>> {
+    fn get_arbitrary(self) -> Option<HashMap<String, String>> {
+        self.satisfied.then_some(self.param.get_arbitrary())
     }
 }
 
-type MultiParamCell<A> = Rc<RefCell<MultiParam<A>>>;
-
 pub struct MultiParamHandle<A: ArbitraryParamsAcceptance> {
-    cell: MultiParamCell<A>,
+    cell: Rc<RefCell<TypedParam<MultiParam<A>>>>,
 }
 
 pub type MultiParamAcceptsArbitraryHandle = MultiParamHandle<AcceptsArbitraryParams>;
@@ -271,7 +242,7 @@ impl MultiParamAcceptsArbitraryHandle {
 }
 
 impl<A: ArbitraryParamsAcceptance> MultiParamHandle<A> {
-    pub fn new(cell: MultiParamCell<A>) -> Self {
+    pub fn new(cell: Rc<RefCell<TypedParam<MultiParam<A>>>>) -> Self {
         Self { cell }
     }
 }
@@ -284,13 +255,14 @@ impl<A: ArbitraryParamsAcceptance + 'static> ParamHandle for MultiParamHandle<A>
 
 #[cfg(test)]
 mod tests {
-    use crate::settings::param::Param;
+    use crate::settings::param::GenericParam;
 
     use super::MultiParam;
 
     #[test]
     fn multi_param_arbitrary_test() {
-        let mut multi_param = MultiParam::new("replication", Vec::new(), "description", false);
+        let mut multi_param =
+            MultiParam::new_wrapped("replication", Vec::new(), "description", false);
 
         assert!(multi_param
             .parse("replication(foo=bar,key=value,gear=five)")
