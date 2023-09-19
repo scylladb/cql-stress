@@ -1,0 +1,12 @@
+services:
+  scylla-test:
+    image: scylladb/scylla
+    container_name: scylla_test
+    ports:
+      - 9042:9042
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "select * from system.local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    command: --smp 1
