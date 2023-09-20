@@ -46,7 +46,7 @@ cargo run --release --bin cql-stress-cassandra-stress -- <arguments>
 ### Running tests
 
 The easiest way to set up the necessary environment and run the tests is to use the `tools/test_with_scylla.py` script.
-The script requires Python 3 and Docker in order to work.
+The script requires Python 3, Docker and Docker Compose V2 in order to work.
 It will run a Docker container with Scylla and will automatically remove after the tests have completed.
 
 Alternatively, you can set up Scylla yourself and keep it up between test runs. The easiest way to do it is by using Docker:
@@ -66,4 +66,14 @@ If you are using a non-standard IP address or port for your Scylla instance, you
 
 ```bash
 SCYLLA_URI=172.16.0.1:9042 cargo test -- --test-threads=1
+```
+
+#### cassandra-stress frontend python tests
+To run the test cases used during CI (defined in `./tools/cassandra_stress_ci.py`), you can make use of [pytest](https://pytest.org).
+Before running the tests, make sure you have scylla up and running.
+If you use some non-standard scylla URI, you can specify it via `SCYLLA_URI` env variable.
+```bash
+docker compose -f docker/scylla_test/compose.yml up -d --wait
+export SCYLLA_URI="127.0.0.1:9042"
+pytest -s ./tools/cassandra_stress_ci.py
 ```
