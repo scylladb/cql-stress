@@ -1,4 +1,5 @@
 use std::iter::Iterator;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -24,7 +25,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub server_name: String,
     pub host_verification: bool,
     pub client_compression: bool,
-    // connectionCount   int // the driver will automatically choose this
+    pub shard_connection_count: NonZeroUsize,
     pub page_size: i64,
     pub partition_offset: i64,
 
@@ -99,6 +100,11 @@ where
         "client-compression",
         true,
         "use compression for client-coordinator communication",
+    );
+    let shard_connection_count = flag.u64_var(
+        "shard-connection-count",
+        1,
+        "number of connections per shard",
     );
     let ca_cert_file = flag.string_var(
         "tls-ca-cert-file",
@@ -287,6 +293,8 @@ where
             parse_workload(&workload.get())?
         };
         let consistency_level = parse_consistency_level(&consistency_level.get())?;
+        let shard_connection_count = NonZeroUsize::new(shard_connection_count.get() as usize)
+            .context("shard connection count cannot be 0")?;
         let distribution = parse_timeseries_distribution(&distribution.get())?;
         let mut start_timestamp = start_timestamp.get();
         if start_timestamp == 0 {
@@ -361,6 +369,7 @@ where
             server_name: server_name.get(),
             host_verification: host_verification.get(),
             client_compression: client_compression.get(),
+            shard_connection_count,
             page_size: page_size.get(),
             partition_offset: partition_offset.get(),
             write_rate,
@@ -450,6 +459,7 @@ impl ScyllaBenchArgs {
             println!("Maximum rate:\t\t unlimited");
         }
         println!("Client compression:\t {}", self.client_compression);
+        println!("Shard connection count:\t {}", self.shard_connection_count);
         if self.workload == WorkloadType::Timeseries {
             println!("Start timestamp:\t {}", self.start_timestamp);
             println!(
