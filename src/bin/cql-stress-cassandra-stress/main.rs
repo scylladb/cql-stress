@@ -21,7 +21,7 @@ use cql_stress::{
     sharded_stats::StatsFactory as _,
 };
 use operation::WriteOperationFactory;
-use scylla::{ExecutionProfile, Session, SessionBuilder};
+use scylla::{transport::session::PoolSize, ExecutionProfile, Session, SessionBuilder};
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
 use std::{env, sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;
@@ -121,6 +121,8 @@ async fn prepare_run(
     if let Some(host_filter) = settings.node.host_filter(9042) {
         builder = builder.host_filter(host_filter?)
     }
+
+    builder = builder.pool_size(PoolSize::PerShard(settings.node.shard_connection_count));
 
     let session = builder.build().await?;
     let session = Arc::new(session);
