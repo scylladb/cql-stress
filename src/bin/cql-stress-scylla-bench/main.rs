@@ -18,6 +18,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
+use scylla::transport::session::PoolSize;
 use scylla::ExecutionProfile;
 use scylla::{transport::Compression, Session, SessionBuilder};
 use tracing_subscriber::EnvFilter;
@@ -118,6 +119,8 @@ async fn stop_on_signal(runner: Arc<RunController>) {
 
 async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result<Configuration> {
     let mut builder = SessionBuilder::new().known_nodes(&args.nodes);
+
+    builder = builder.pool_size(PoolSize::PerShard(args.shard_connection_count));
 
     if !args.username.is_empty() && !args.password.is_empty() {
         builder = builder.user(&args.username, &args.password);

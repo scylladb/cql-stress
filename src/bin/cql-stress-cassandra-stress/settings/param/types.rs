@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{num::NonZeroUsize, time::Duration};
 
 use anyhow::{Context, Result};
 
@@ -38,6 +38,15 @@ impl Parsable for u64 {
         ensure_regex!(s, r"^[0-9]+$");
         s.parse::<u64>()
             .with_context(|| format!("Invalid u64 value: {s}"))
+    }
+}
+
+impl Parsable for NonZeroUsize {
+    type Parsed = NonZeroUsize;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        s.parse::<NonZeroUsize>()
+            .with_context(|| format!("Invalid non-zero usize value: {s}"))
     }
 }
 

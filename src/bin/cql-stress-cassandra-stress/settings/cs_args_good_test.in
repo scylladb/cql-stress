@@ -22,3 +22,4 @@ cassandra-stress counter_write no-warmup cl=LOCAL_ONE duration=20m -schema repli
 cassandra-stress counter_write no-warmup cl=THREE duration=20m -schema keyspace=keyspace2
 cassandra-stress counter_write no-warmup cl=ANY duration=20m -schema replication(strategy=NetworkTopologyStrategy) keyspace=keyspace2
 cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2
+cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2 -node shard-connection-count=5
