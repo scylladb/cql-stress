@@ -102,7 +102,7 @@ impl ParamsParser {
         required: bool,
     ) -> SimpleParamHandle<T> {
         let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
-            prefix, default, desc, required,
+            prefix, default, desc, None, required,
         )));
 
         self.params.push(Rc::clone(&param) as ParamCell);
@@ -121,7 +121,7 @@ impl ParamsParser {
         required: bool,
     ) -> SimpleParamHandle<T> {
         let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
-            prefix, default, desc, required,
+            prefix, default, desc, None, required,
         )));
 
         SimpleParamHandle::new(param)
