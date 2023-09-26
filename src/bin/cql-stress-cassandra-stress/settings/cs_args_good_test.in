@@ -23,3 +23,8 @@ cassandra-stress counter_write no-warmup cl=THREE duration=20m -schema keyspace=
 cassandra-stress counter_write no-warmup cl=ANY duration=20m -schema replication(strategy=NetworkTopologyStrategy) keyspace=keyspace2
 cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2
 cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2 -node shard-connection-count=5
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1) -rate threads=10 -col n=10 size=UNIFORM(1..20)
+cassandra-stress read cl=QUORUM n=10000 -schema replication(key=value) -rate threads=10 -col names=foo,bar,baz
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50)
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50) -pop dist=SEQ(1..10)
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50) -pop dist=UNIFORM(1..10)

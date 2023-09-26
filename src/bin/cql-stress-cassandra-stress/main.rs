@@ -159,11 +159,21 @@ async fn create_schema(session: &Session, settings: &CassandraStressSettings) ->
         .use_keyspace(&settings.schema.keyspace, true)
         .await?;
     session
-        .query(settings.schema.construct_table_creation_query(), ())
+        .query(
+            settings
+                .schema
+                .construct_table_creation_query(&settings.column.columns),
+            (),
+        )
         .await
         .context("Failed to create standard table")?;
     session
-        .query(settings.schema.construct_counter_table_creation_query(), ())
+        .query(
+            settings
+                .schema
+                .construct_counter_table_creation_query(&settings.column.columns),
+            (),
+        )
         .await
         .context("Failed to create counter table")?;
     Ok(())

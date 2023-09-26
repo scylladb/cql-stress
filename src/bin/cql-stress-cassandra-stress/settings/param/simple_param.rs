@@ -16,18 +16,21 @@ use super::{types::Parsable, ParamCell, ParamHandle, ParamImpl, TypedParam};
 /// - value_pattern := r"^[0-9]+[bmk]?$". It's provided by [super::types::Count].
 pub struct SimpleParam<T: Parsable> {
     value: Option<T::Parsed>,
+    additional_desc: Option<String>,
 }
 
 impl<T: Parsable> SimpleParam<T> {
     pub fn new_wrapped(
         prefix: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         desc: &'static str,
+        additional_desc: Option<&str>,
         required: bool,
     ) -> TypedParam<Self> {
         let param = Self {
             // SAFETY: The default value must be successfully parsed.
             value: default.map(|d| T::parse(d).unwrap()),
+            additional_desc: additional_desc.map(|desc| desc.to_owned()),
         };
 
         TypedParam::new(param, prefix, desc, default, required)
@@ -56,7 +59,7 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
         &self,
         param_name: &'static str,
         description: &'static str,
-        default_value: Option<&'static str>,
+        default_value: Option<&str>,
     ) {
         let mut usage = String::from(param_name);
         if !T::is_bool() {
@@ -66,6 +69,9 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
             usage += &format!(" (default={default})");
         }
         println!("{:<40} {}", usage, description);
+        if let Some(additional_description) = &self.additional_desc {
+            println!("{additional_description}")
+        }
     }
 }
 

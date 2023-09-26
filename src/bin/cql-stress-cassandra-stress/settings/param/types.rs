@@ -1,6 +1,12 @@
 use std::{num::NonZeroUsize, time::Duration};
 
 use anyhow::{Context, Result};
+use cql_stress::distribution::{parse_description, SyntaxFlavor};
+
+use crate::java_generate::distribution::{
+    fixed::FixedDistributionFactory, sequence::SeqDistributionFactory,
+    uniform::UniformDistributionFactory, DistributionFactory,
+};
 
 pub trait Parsable: Sized {
     type Parsed;
@@ -186,5 +192,102 @@ impl Parsable for Rate {
             .parse::<u64>()
             .with_context(|| format!("Invalid u64 value: {value_slice}"))?;
         Ok(value)
+    }
+}
+
+impl Parsable for Box<dyn DistributionFactory> {
+    type Parsed = Self;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let description = parse_description(s, SyntaxFlavor::Classic)?;
+
+        anyhow::ensure!(
+            !description.inverted,
+            "Inverted distributions are not yet supported!"
+        );
+
+        match description.name {
+            "fixed" => FixedDistributionFactory::parse_from_description(description),
+            "seq" => SeqDistributionFactory::parse_from_description(description),
+            "uniform" => UniformDistributionFactory::parse_from_description(description),
+            _ => Err(anyhow::anyhow!(
+                "Invalid distribution name: {}",
+                description.name
+            )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::java_generate::distribution::DistributionFactory;
+
+    use super::Parsable;
+
+    type DistributionTestType = Box<dyn DistributionFactory>;
+
+    #[test]
+    fn distribution_param_fixed_test() {
+        let good_test_cases = &["fixed(45)", "fixed(100000)"];
+        for input in good_test_cases {
+            assert!(DistributionTestType::parse(input).is_ok());
+        }
+
+        let bad_test_cases = &[
+            "fixed(45,50)",
+            "fixed(45",
+            "fixed45",
+            "fixed(45..50)",
+            "fixed(100.1234)",
+            "fixed40)",
+        ];
+
+        for input in bad_test_cases {
+            assert!(DistributionTestType::parse(input).is_err());
+        }
+    }
+
+    #[test]
+    fn distribution_param_seq_test() {
+        let good_test_cases = &["seq(45..50)", "seq(1..100000)"];
+        for input in good_test_cases {
+            assert!(DistributionTestType::parse(input).is_ok());
+        }
+
+        let bad_test_cases = &[
+            "seq(2..1)",
+            "seq(2..2)",
+            "seq(45",
+            "seq45..50",
+            "seq(45)",
+            "seq(100.1234)",
+            "seq40)",
+        ];
+
+        for input in bad_test_cases {
+            assert!(DistributionTestType::parse(input).is_err());
+        }
+    }
+
+    #[test]
+    fn distribution_param_uniform_test() {
+        let good_test_cases = &["uniform(45..50)", "uniform(1..100000)", "uniform(2..2)"];
+        for input in good_test_cases {
+            assert!(DistributionTestType::parse(input).is_ok());
+        }
+
+        let bad_test_cases = &[
+            "uniform(2..1)",
+            "uniform(1..20,50)",
+            "uniform(45",
+            "uniform45..50",
+            "uniform(45)",
+            "uniform(100.1234)",
+            "uniform40)",
+        ];
+
+        for input in bad_test_cases {
+            assert!(DistributionTestType::parse(input).is_err());
+        }
     }
 }

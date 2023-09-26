@@ -112,10 +112,15 @@ impl SchemaOption {
         &self,
         table_name: &'static str,
         column_type: &'static str,
+        column_names: &[String],
     ) -> String {
         // Note that for now we hardcode the columns.
         // In the future, `-col` option will be supported, that lets the user define column names as well as the number of columns.
-        let mut result = format!("CREATE TABLE IF NOT EXISTS {0} (key blob, \"C0\" {1}, \"C1\" {1}, \"C2\" {1}, \"C3\" {1}, \"C4\" {1}, PRIMARY KEY (key))", table_name, column_type);
+        let mut result = format!("CREATE TABLE IF NOT EXISTS {0} (key blob", table_name);
+        for column in column_names {
+            result += &format!(", \"{}\" {}", column, column_type);
+        }
+        result += ", PRIMARY KEY (key))";
         result += " WITH compression = {";
         if let Some(compression) = &self.compression {
             result += &format!("'sstable_compression': '{}'", compression);
@@ -128,12 +133,12 @@ impl SchemaOption {
         result
     }
 
-    pub fn construct_table_creation_query(&self) -> String {
-        self.construct_table_creation_query_with("standard1", "blob")
+    pub fn construct_table_creation_query(&self, column_names: &[String]) -> String {
+        self.construct_table_creation_query_with("standard1", "blob", column_names)
     }
 
-    pub fn construct_counter_table_creation_query(&self) -> String {
-        self.construct_table_creation_query_with("counter1", "counter")
+    pub fn construct_counter_table_creation_query(&self, column_names: &[String]) -> String {
+        self.construct_table_creation_query_with("counter1", "counter", column_names)
     }
 }
 

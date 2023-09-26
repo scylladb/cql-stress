@@ -28,7 +28,7 @@ pub trait ParamImpl {
         &self,
         param_name: &'static str,
         description: &'static str,
-        default_value: Option<&'static str>,
+        default_value: Option<&str>,
     );
 }
 
@@ -47,7 +47,7 @@ pub struct TypedParam<P: ParamImpl> {
     param: P,
     prefix: &'static str,
     desc: &'static str,
-    default: Option<&'static str>,
+    default: Option<String>,
     required: bool,
     supplied_by_user: bool,
     satisfied: bool,
@@ -58,14 +58,14 @@ impl<P: ParamImpl> TypedParam<P> {
         param: P,
         prefix: &'static str,
         desc: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         required: bool,
     ) -> Self {
         Self {
             param,
             prefix,
             desc,
-            default,
+            default: default.map(|d| d.to_owned()),
             required,
             supplied_by_user: false,
             satisfied: false,
@@ -124,7 +124,8 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
     }
 
     fn print_desc(&self) {
-        self.param.print_desc(self.prefix, self.desc, self.default)
+        self.param
+            .print_desc(self.prefix, self.desc, self.default.as_deref())
     }
 
     fn parse(&mut self, arg: &str) -> Result<()> {

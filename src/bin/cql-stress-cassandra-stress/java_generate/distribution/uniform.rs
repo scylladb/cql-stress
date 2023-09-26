@@ -1,6 +1,9 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use cql_stress::distribution::Description;
 
-use super::{Distribution, ThreadLocalRandom};
+use super::{
+    fixed::FixedDistributionFactory, Distribution, DistributionFactory, ThreadLocalRandom,
+};
 
 /// Uniform real distribution that uses java.util.Random generator.
 /// The distribution samples real numbers from [lower, upper + 1)
@@ -45,6 +48,67 @@ impl Distribution for UniformDistribution {
 
     fn set_seed(&self, seed: i64) {
         self.rng.get().set_seed(seed as u64)
+    }
+}
+
+pub struct UniformDistributionFactory {
+    min: f64,
+    max: f64,
+}
+
+impl UniformDistributionFactory {
+    pub fn new(min: f64, max: f64) -> Result<Self> {
+        anyhow::ensure!(
+            min < max,
+            "Upper bound ({}) for real uniform distribution is not higher than the lower bound ({}).",
+            max,
+            min
+        );
+
+        Ok(Self { min, max })
+    }
+}
+
+impl DistributionFactory for UniformDistributionFactory {
+    fn create(&self) -> Box<dyn Distribution> {
+        Box::new(UniformDistribution::new(self.min, self.max).unwrap())
+    }
+}
+
+impl UniformDistributionFactory {
+    pub fn parse_from_description(desc: Description<'_>) -> Result<Box<dyn DistributionFactory>> {
+        let result = || -> Result<Box<dyn DistributionFactory>> {
+            desc.check_argument_count(2)?;
+            let (min, max) = (desc.args[0].parse::<i64>()?, desc.args[1].parse::<i64>()?);
+
+            if min == max {
+                Ok(Box::new(FixedDistributionFactory(min)))
+            } else {
+                Ok(Box::new(UniformDistributionFactory::new(
+                    min as f64, max as f64,
+                )?))
+            }
+        }();
+
+        result.with_context(|| {
+            format!(
+                "Invalid parameter list for uniform distribution: {:?}",
+                desc.args
+            )
+        })
+    }
+
+    pub fn help_description() -> String {
+        format!(
+            "      {:<36} A uniform distribution over the range [min, max]",
+            "UNIFORM(min..max)"
+        )
+    }
+}
+
+impl std::fmt::Display for UniformDistributionFactory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "UNIFORM({}..{})", self.min as i64, self.max as i64)
     }
 }
 

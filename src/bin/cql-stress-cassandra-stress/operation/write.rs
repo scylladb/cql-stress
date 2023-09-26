@@ -47,8 +47,16 @@ impl WriteOperationFactory {
         workload_factory: RowGeneratorFactory,
         stats: Arc<ShardedStats>,
     ) -> Result<Self> {
-        let statement_str =
-            "INSERT INTO standard1 (key, \"C0\", \"C1\", \"C2\", \"C3\", \"C4\") VALUES (?, ?, ?, ?, ?, ?)";
+        let mut statement_str = String::from("INSERT INTO standard1 (key");
+        for column in settings.column.columns.iter() {
+            statement_str += &format!(", \"{}\"", column);
+        }
+        statement_str += ") VALUES (?";
+        for _ in settings.column.columns.iter() {
+            statement_str += ", ?";
+        }
+        statement_str.push(')');
+
         let mut statement = session
             .prepare(statement_str)
             .await

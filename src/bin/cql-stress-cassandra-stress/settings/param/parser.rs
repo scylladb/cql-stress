@@ -1,6 +1,11 @@
 use anyhow::Result;
 use std::{cell::RefCell, rc::Rc};
 
+use crate::java_generate::distribution::{
+    fixed::FixedDistributionFactory, sequence::SeqDistributionFactory,
+    uniform::UniformDistributionFactory, DistributionFactory,
+};
+
 use super::{
     multi_param::{ArbitraryParamsAcceptance, MultiParam},
     simple_param::{SimpleParam, SimpleParamHandle},
@@ -97,12 +102,12 @@ impl ParamsParser {
     pub fn simple_param<T: Parsable + 'static>(
         &mut self,
         prefix: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
         let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
-            prefix, default, desc, required,
+            prefix, default, desc, None, required,
         )));
 
         self.params.push(Rc::clone(&param) as ParamCell);
@@ -116,12 +121,12 @@ impl ParamsParser {
     pub fn simple_subparam<T: Parsable + 'static>(
         &mut self,
         prefix: &'static str,
-        default: Option<&'static str>,
+        default: Option<&str>,
         desc: &'static str,
         required: bool,
     ) -> SimpleParamHandle<T> {
         let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
-            prefix, default, desc, required,
+            prefix, default, desc, None, required,
         )));
 
         SimpleParamHandle::new(param)
@@ -145,6 +150,41 @@ impl ParamsParser {
 
         self.params.push(Rc::clone(&param) as ParamCell);
         MultiParamHandle::new(param)
+    }
+
+    pub fn distribution_param(
+        &mut self,
+        prefix: &'static str,
+        default: Option<&str>,
+        desc: &'static str,
+        required: bool,
+    ) -> SimpleParamHandle<Box<dyn DistributionFactory>> {
+        lazy_static! {
+            static ref DISTRIBUTION_ADDITIONAL_DESCRIPTION: String = {
+                // List available distributions.
+                let lines = [
+                    "    Available distributions:",
+                    &FixedDistributionFactory::help_description(),
+                    &SeqDistributionFactory::help_description(),
+                    &UniformDistributionFactory::help_description(),
+                    "",
+                    "    Preceding the name with ~ will invert the distribution.",
+                ];
+
+                lines.join("\n")
+            };
+        }
+
+        let param = Rc::new(RefCell::new(SimpleParam::new_wrapped(
+            prefix,
+            default,
+            desc,
+            Some(&DISTRIBUTION_ADDITIONAL_DESCRIPTION),
+            required,
+        )));
+
+        self.params.push(Rc::clone(&param) as ParamCell);
+        SimpleParamHandle::new(param)
     }
 
     /// Creates a new group of the parameters.
