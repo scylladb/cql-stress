@@ -17,7 +17,7 @@ jobs:
         image: scylladb/scylla
         ports:
           - 9042:9042
-        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
+        options: --name scylla-ci --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
         volumes:
           - ${{ github.workspace }}:/workspace
     steps:
@@ -31,3 +31,5 @@ jobs:
     - name: Run tests
       # test threads must be one because else database tests will run in parallel and will result in flaky tests
       run: cargo test --verbose -- --test-threads=1
+    - name: Install python driver
+      run: pip install scylla-driver
