@@ -13,7 +13,7 @@ fn cs_args_good_test() {
         if input.is_empty() || input.starts_with('#') {
             continue;
         }
-        match parse_cassandra_stress_args(input.to_lowercase().split_ascii_whitespace()) {
+        match parse_cassandra_stress_args(input.split_ascii_whitespace()) {
             Err(_) => {
                 eprintln!("Error on line {}: {}", i + 1, input);
                 failure += 1;
@@ -36,7 +36,7 @@ fn cs_args_bad_test() {
         if input.is_empty() || input.starts_with('#') {
             continue;
         }
-        match parse_cassandra_stress_args(input.to_lowercase().split_ascii_whitespace()) {
+        match parse_cassandra_stress_args(input.split_ascii_whitespace()) {
             Err(_) => failure += 1,
             _ => {
                 eprintln!("Should have failed on line {}: {}", i + 1, input);
