@@ -107,6 +107,7 @@ impl Parsable for Duration {
     type Parsed = Duration;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
+        let s = &s.to_lowercase();
         ensure_regex!(s, r"^[0-9]+[smh]$");
 
         let parse_duration_unit = |unit: char| -> Result<u64> {
@@ -140,6 +141,7 @@ impl Parsable for Count {
     type Parsed = u64;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
+        let s: &str = &s.to_lowercase();
         ensure_regex!(s, r"^[0-9]+[bmk]?$");
 
         let parse_operation_count_unit = |unit: char| -> Result<u64> {
@@ -185,6 +187,7 @@ impl Parsable for Rate {
     type Parsed = u64;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
+        let s = &s.to_lowercase();
         ensure_regex!(s, r"^[0-9]+/s$");
 
         let value_slice = &s[..s.len() - 2];
@@ -199,6 +202,7 @@ impl Parsable for Box<dyn DistributionFactory> {
     type Parsed = Self;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
+        let s = &s.to_lowercase();
         let description = parse_description(s, SyntaxFlavor::Classic)?;
 
         anyhow::ensure!(
