@@ -6,11 +6,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 pub struct SchemaOption {
-    pub replication_factor: u64,
-    pub replication_strategy: String,
     pub replication_opts: HashMap<String, String>,
     pub keyspace: String,
-    pub compaction_strategy: Option<String>,
     pub compaction_opts: HashMap<String, String>,
     pub compression: Option<String>,
 }
@@ -37,51 +34,53 @@ impl SchemaOption {
     pub fn print_settings(&self) {
         println!("Schema:");
         println!("  Keyspace: {}", self.keyspace);
-        println!("  Replication Factor: {}", self.replication_factor);
-        println!("  Replication Strategy: {}", self.replication_strategy);
         println!(
             "  Replication Strategy Options: {:?}",
             self.replication_opts
         );
         println!("  Table Compression: {:?}", self.compression);
-        println!(
-            "  Table Compaction Strategy: {:?}",
-            self.compaction_strategy
-        );
         println!("  Table Compaction Options: {:?}", self.compaction_opts);
     }
 
     fn from_handles(handles: SchemaParamHandles) -> Self {
         let replication_strategy = handles.replication_strategy.get().unwrap();
         let replication_factor = handles.replication_factor.get().unwrap();
-        let replication_opts = handles.replication_opts.get_arbitrary().unwrap();
+        let mut replication_opts = handles.replication_opts.get_arbitrary().unwrap();
         let keyspace = handles.keyspace.get().unwrap();
         let compaction_strategy = handles.compaction_strategy.get();
-        let compaction_opts = handles.compaction_opts.get_arbitrary().unwrap();
+        let mut compaction_opts = handles.compaction_opts.get_arbitrary().unwrap();
         let compression = handles.compression.get();
 
+        replication_opts
+            .entry(String::from("replication_factor"))
+            .or_insert_with(|| replication_factor.to_string());
+        replication_opts
+            .entry(String::from("class"))
+            .or_insert(replication_strategy);
+
+        if let Some(compaction_strategy) = compaction_strategy {
+            compaction_opts
+                .entry(String::from("class"))
+                .or_insert(compaction_strategy);
+        }
+
         Self {
-            replication_factor,
-            replication_strategy,
             replication_opts,
             keyspace,
-            compaction_strategy,
             compaction_opts,
             compression,
         }
     }
 
     fn construct_replication_string(&self) -> String {
-        let mut result = format!(
-            "{{'class': '{}', 'replication_factor': {}",
-            self.replication_strategy, self.replication_factor
-        );
-        for (key, val) in &self.replication_opts {
-            result += &format!(", '{}': '{}'", key, val);
-        }
-        result += "}";
+        let options_str = self
+            .replication_opts
+            .iter()
+            .map(|(key, value)| format!("'{}': '{}'", key, value))
+            .collect::<Vec<_>>()
+            .join(", ");
 
-        result
+        format!("{{{}}}", options_str)
     }
 
     pub fn construct_keyspace_creation_query(&self) -> String {
@@ -93,16 +92,15 @@ impl SchemaOption {
     }
 
     fn construct_compaction_string(&self) -> Option<String> {
-        self.compaction_strategy.as_ref().map(|strategy| {
-            let mut result = format!(" AND compaction = {{'class': '{}'", strategy);
+        (!self.compaction_opts.is_empty()).then(|| {
+            let options_str = self
+                .compaction_opts
+                .iter()
+                .map(|(key, value)| format!("'{}': '{}'", key, value))
+                .collect::<Vec<_>>()
+                .join(", ");
 
-            for (key, val) in &self.compaction_opts {
-                result += &format!(", '{}': '{}'", key, val);
-            }
-
-            result += "}";
-
-            result
+            format!(" AND compaction = {{{}}}", options_str)
         })
     }
 
@@ -226,9 +224,18 @@ mod tests {
 
         let params = SchemaOption::from_handles(handles);
 
-        assert_eq!(3, params.replication_factor);
-        assert_eq!("MyStrategy", params.replication_strategy);
-        assert_eq!(2, params.replication_opts.len());
+        assert_eq!(4, params.replication_opts.len());
+        assert_eq!(
+            Some("3"),
+            params
+                .replication_opts
+                .get("replication_factor")
+                .map(String::as_str)
+        );
+        assert_eq!(
+            Some("MyStrategy"),
+            params.replication_opts.get("class").map(String::as_str)
+        );
         assert_eq!(
             Some("value1"),
             params.replication_opts.get("key1").map(String::as_str)
@@ -238,7 +245,6 @@ mod tests {
             params.replication_opts.get("key2").map(String::as_str)
         );
         assert_eq!("my_keyspace", params.keyspace);
-        assert_eq!(None, params.compaction_strategy);
         assert_eq!(1, params.compaction_opts.len());
         assert_eq!(
             Some("value1"),
