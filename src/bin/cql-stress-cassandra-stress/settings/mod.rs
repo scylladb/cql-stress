@@ -166,7 +166,7 @@ where
         // The default distribution (if not specified) is SEQ(1..operation_count).
         // If operation_count is not specified, then the default is 1M.
         let operation_count = command_params
-            .basic_params
+            .common
             .operation_count
             .map_or(String::from("1000000"), |op| format!("{op}"));
         let population = PopulationOption::parse(&mut payload, &operation_count)?;

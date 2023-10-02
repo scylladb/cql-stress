@@ -128,7 +128,7 @@ async fn prepare_run(
 
     create_schema(&session, &settings).await?;
 
-    let duration = settings.command_params.basic_params.duration;
+    let duration = settings.command_params.common.duration;
 
     let (concurrency, throttle) = match settings.rate.threads_info {
         ThreadsInfo::Fixed {

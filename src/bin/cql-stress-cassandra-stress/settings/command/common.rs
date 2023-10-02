@@ -181,7 +181,7 @@ impl Parsable for SerialConsistencyLevel {
     }
 }
 
-pub struct ReadWriteParams {
+pub struct CommonParams {
     pub uncertainty: Option<Uncertainty>,
     pub no_warmup: bool,
     pub truncate: Truncate,
@@ -191,7 +191,7 @@ pub struct ReadWriteParams {
     pub duration: Option<Duration>,
 }
 
-impl ReadWriteParams {
+impl CommonParams {
     pub fn print_settings(&self, command: &Command) {
         println!("Command:");
         println!("  Type: {}", command.show());
@@ -218,7 +218,7 @@ impl ReadWriteParams {
     }
 }
 
-struct ReadWriteParamHandles {
+struct CommonParamHandles {
     err: SimpleParamHandle<UnitInterval>,
     ngt: SimpleParamHandle<u64>,
     nlt: SimpleParamHandle<u64>,
@@ -230,7 +230,7 @@ struct ReadWriteParamHandles {
     duration: SimpleParamHandle<Duration>,
 }
 
-fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
+fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles) {
     let mut parser = ParamsParser::new(cmd);
     let err = parser.simple_param(
         "err<",
@@ -285,7 +285,7 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
 
     (
         parser,
-        ReadWriteParamHandles {
+        CommonParamHandles {
             err,
             ngt,
             nlt,
@@ -299,7 +299,7 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
     )
 }
 
-fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
+fn parse_with_handles(handles: CommonParamHandles) -> CommonParams {
     let err = handles.err.get();
     let ngt = handles.ngt.get();
     let nlt = handles.nlt.get();
@@ -316,7 +316,7 @@ fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
     };
 
     // Parser's regular expressions ensure that String parsing won't fail.
-    ReadWriteParams {
+    CommonParams {
         uncertainty,
         no_warmup,
         truncate,
@@ -327,16 +327,16 @@ fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
     }
 }
 
-pub fn parse_read_write_params(cmd: &Command, payload: &mut ParsePayload) -> Result<CommandParams> {
+pub fn parse_common_params(cmd: &Command, payload: &mut ParsePayload) -> Result<CommandParams> {
     let args = payload.remove(cmd.show()).unwrap();
     let (parser, handles) = prepare_parser(cmd.show());
     parser.parse(args)?;
     Ok(CommandParams {
-        basic_params: parse_with_handles(handles),
+        common: parse_with_handles(handles),
     })
 }
 
-pub fn print_help_read_write(command_str: &str) {
+pub fn print_help_common(command_str: &str) {
     let (parser, _) = prepare_parser(command_str);
     parser.print_help();
 }
@@ -346,7 +346,7 @@ mod tests {
     use scylla::statement::{Consistency, SerialConsistency};
 
     use crate::settings::command::{
-        read_write::{parse_with_handles, prepare_parser, Truncate},
+        common::{parse_with_handles, prepare_parser, Truncate},
         Command,
     };
 
