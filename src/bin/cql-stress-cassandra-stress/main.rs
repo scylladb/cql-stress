@@ -10,7 +10,7 @@ mod stats;
 extern crate lazy_static;
 
 use crate::{
-    operation::{ReadOperationFactory, RowGeneratorFactory},
+    operation::{RegularReadOperationFactory, RowGeneratorFactory},
     settings::{parse_cassandra_stress_args, Command, ThreadsInfo},
 };
 use anyhow::{Context, Result};
@@ -189,7 +189,7 @@ async fn create_operation_factory(
             WriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::Read => Ok(Arc::new(
-            ReadOperationFactory::new(settings, session, workload_factory, stats).await?,
+            RegularReadOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::CounterWrite => Ok(Arc::new(
             CounterWriteOperationFactory::new(settings, session, workload_factory, stats).await?,

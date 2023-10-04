@@ -1,4 +1,4 @@
-use std::{ops::ControlFlow, sync::Arc};
+use std::{marker::PhantomData, ops::ControlFlow, sync::Arc};
 
 use cql_stress::{
     configuration::{Operation, OperationContext, OperationFactory},
@@ -12,38 +12,43 @@ use crate::{settings::CassandraStressSettings, stats::ShardedStats};
 
 use super::{
     row_generator::{RowGenerator, RowGeneratorFactory},
-    validate_row,
+    EqualRowValidator, RowValidator,
 };
 
-pub struct ReadOperation {
+pub struct ReadOperation<V: RowValidator> {
     session: Arc<Session>,
     statement: PreparedStatement,
     workload: RowGenerator,
     max_operations: Option<u64>,
     stats: Arc<ShardedStats>,
+    row_validator: V,
 }
 
-pub struct ReadOperationFactory {
+pub struct GenericReadOperationFactory<V: RowValidator> {
     session: Arc<Session>,
     statement: PreparedStatement,
     workload_factory: RowGeneratorFactory,
     max_operations: Option<u64>,
     stats: Arc<ShardedStats>,
+    _phantom: PhantomData<V>,
 }
 
-impl OperationFactory for ReadOperationFactory {
+pub type RegularReadOperationFactory = GenericReadOperationFactory<EqualRowValidator>;
+
+impl<V: RowValidator + 'static> OperationFactory for GenericReadOperationFactory<V> {
     fn create(&self) -> Box<dyn Operation> {
-        Box::new(ReadOperation {
+        Box::new(ReadOperation::<V> {
             session: Arc::clone(&self.session),
             statement: self.statement.clone(),
             workload: self.workload_factory.create(),
             max_operations: self.max_operations,
             stats: Arc::clone(&self.stats),
+            row_validator: Default::default(),
         })
     }
 }
 
-impl ReadOperationFactory {
+impl<V: RowValidator> GenericReadOperationFactory<V> {
     pub async fn new(
         settings: Arc<CassandraStressSettings>,
         session: Arc<Session>,
@@ -68,12 +73,13 @@ impl ReadOperationFactory {
             workload_factory,
             max_operations: settings.command_params.common.operation_count,
             stats,
+            _phantom: PhantomData,
         })
     }
 }
 
-make_runnable!(ReadOperation);
-impl ReadOperation {
+make_runnable!(ReadOperation<V: RowValidator>);
+impl<V: RowValidator> ReadOperation<V> {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         if self
             .max_operations
@@ -102,7 +108,7 @@ impl ReadOperation {
             );
         }
 
-        let validation_result = validate_row(row, result?);
+        let validation_result = self.row_validator.validate_row(row, result?);
         if let Err(err) = validation_result.as_ref() {
             tracing::error!(
                 error = %err,
