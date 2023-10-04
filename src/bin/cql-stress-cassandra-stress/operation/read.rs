@@ -50,12 +50,13 @@ impl<V: RowValidator + 'static> OperationFactory for GenericReadOperationFactory
 
 impl<V: RowValidator> GenericReadOperationFactory<V> {
     pub async fn new(
+        table_name: &'static str,
         settings: Arc<CassandraStressSettings>,
         session: Arc<Session>,
         workload_factory: RowGeneratorFactory,
         stats: Arc<ShardedStats>,
     ) -> Result<Self> {
-        let statement_str = "SELECT * FROM standard1 WHERE KEY=?";
+        let statement_str = format!("SELECT * FROM {} WHERE KEY=?", table_name);
         let mut statement = session
             .prepare(statement_str)
             .await

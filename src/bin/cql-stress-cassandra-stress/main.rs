@@ -28,6 +28,8 @@ use tracing_subscriber::EnvFilter;
 
 use settings::{CassandraStressParsingResult, CassandraStressSettings};
 
+const DEFAULT_TABLE_NAME: &str = "standard1";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -189,7 +191,14 @@ async fn create_operation_factory(
             WriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::Read => Ok(Arc::new(
-            RegularReadOperationFactory::new(settings, session, workload_factory, stats).await?,
+            RegularReadOperationFactory::new(
+                DEFAULT_TABLE_NAME,
+                settings,
+                session,
+                workload_factory,
+                stats,
+            )
+            .await?,
         )),
         Command::CounterWrite => Ok(Arc::new(
             CounterWriteOperationFactory::new(settings, session, workload_factory, stats).await?,
