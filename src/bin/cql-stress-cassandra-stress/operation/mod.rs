@@ -1,3 +1,4 @@
+mod counter_write;
 mod read;
 mod row_generator;
 mod write;
@@ -5,6 +6,7 @@ mod write;
 use anyhow::Result;
 use std::num::Wrapping;
 
+pub use counter_write::CounterWriteOperationFactory;
 pub use read::ReadOperationFactory;
 pub use row_generator::RowGeneratorFactory;
 use scylla::{frame::response::result::CqlValue, QueryResult};
