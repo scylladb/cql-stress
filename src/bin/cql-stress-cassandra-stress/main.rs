@@ -20,7 +20,7 @@ use cql_stress::{
     sharded_stats::Stats as _,
     sharded_stats::StatsFactory as _,
 };
-use operation::{CounterWriteOperationFactory, WriteOperationFactory};
+use operation::{CounterReadOperationFactory, CounterWriteOperationFactory, WriteOperationFactory};
 use scylla::{transport::session::PoolSize, ExecutionProfile, Session, SessionBuilder};
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
 use std::{env, sync::Arc, time::Duration};
@@ -29,6 +29,7 @@ use tracing_subscriber::EnvFilter;
 use settings::{CassandraStressParsingResult, CassandraStressSettings};
 
 const DEFAULT_TABLE_NAME: &str = "standard1";
+const DEFAULT_COUNTER_TABLE_NAME: &str = "counter1";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -202,6 +203,16 @@ async fn create_operation_factory(
         )),
         Command::CounterWrite => Ok(Arc::new(
             CounterWriteOperationFactory::new(settings, session, workload_factory, stats).await?,
+        )),
+        Command::CounterRead => Ok(Arc::new(
+            CounterReadOperationFactory::new(
+                DEFAULT_COUNTER_TABLE_NAME,
+                settings,
+                session,
+                workload_factory,
+                stats,
+            )
+            .await?,
         )),
         cmd => Err(anyhow::anyhow!(
             "Runtime for command '{}' not implemented yet.",

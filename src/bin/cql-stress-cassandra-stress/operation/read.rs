@@ -12,7 +12,7 @@ use crate::{settings::CassandraStressSettings, stats::ShardedStats};
 
 use super::{
     row_generator::{RowGenerator, RowGeneratorFactory},
-    EqualRowValidator, RowValidator,
+    EqualRowValidator, ExistsRowValidator, RowValidator,
 };
 
 pub struct ReadOperation<V: RowValidator> {
@@ -34,6 +34,7 @@ pub struct GenericReadOperationFactory<V: RowValidator> {
 }
 
 pub type RegularReadOperationFactory = GenericReadOperationFactory<EqualRowValidator>;
+pub type CounterReadOperationFactory = GenericReadOperationFactory<ExistsRowValidator>;
 
 impl<V: RowValidator + 'static> OperationFactory for GenericReadOperationFactory<V> {
     fn create(&self) -> Box<dyn Operation> {

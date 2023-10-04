@@ -7,6 +7,7 @@ use anyhow::Result;
 use std::num::Wrapping;
 
 pub use counter_write::CounterWriteOperationFactory;
+pub use read::CounterReadOperationFactory;
 pub use read::RegularReadOperationFactory;
 pub use row_generator::RowGeneratorFactory;
 use scylla::{
@@ -86,6 +87,17 @@ impl RowValidator for EqualRowValidator {
             first_row.columns,
             generated_row,
         );
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct ExistsRowValidator;
+impl RowValidator for ExistsRowValidator {
+    fn validate_row(&self, _generated_row: &[CqlValue], query_result: QueryResult) -> Result<()> {
+        // We only check that the row with given PK exists, which is equivalent to
+        // successfully extracting the first row from the query result.
+        let _first_row = extract_first_row_from_query_result(&query_result)?;
         Ok(())
     }
 }
