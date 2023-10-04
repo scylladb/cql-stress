@@ -9,7 +9,10 @@ use std::num::Wrapping;
 pub use counter_write::CounterWriteOperationFactory;
 pub use read::RegularReadOperationFactory;
 pub use row_generator::RowGeneratorFactory;
-use scylla::{frame::response::result::CqlValue, QueryResult};
+use scylla::{
+    frame::response::result::{CqlValue, Row},
+    QueryResult,
+};
 pub use write::WriteOperationFactory;
 
 /// See https://github.com/scylladb/scylla-tools-java/blob/master/tools/stress/src/org/apache/cassandra/stress/generate/PartitionIterator.java#L725.
@@ -26,6 +29,27 @@ fn recompute_seed(seed: i64, partition_key: &CqlValue) -> i64 {
     }
 }
 
+fn extract_first_row_from_query_result(query_result: &QueryResult) -> Result<&Row> {
+    let rows = match &query_result.rows {
+        Some(rows) => rows,
+        None => anyhow::bail!("Query result doesn't contain any rows.",),
+    };
+
+    match rows.split_first() {
+        Some((first_row, remaining_rows)) => {
+            // Note that row-generation logic behaves in a way that given partition_key,
+            // there is exactly one row with this partition_key.
+            anyhow::ensure!(
+                remaining_rows.is_empty(),
+                "Multiple rows matched the key. Rows: {:?}",
+                rows
+            );
+            Ok(first_row)
+        }
+        None => anyhow::bail!("Query result doesn't contain any rows.",),
+    }
+}
+
 pub trait RowValidator: Sync + Send + Default {
     fn validate_row(&self, generated_row: &[CqlValue], query_result: QueryResult) -> Result<()>;
 }
@@ -34,24 +58,7 @@ pub trait RowValidator: Sync + Send + Default {
 pub struct EqualRowValidator;
 impl RowValidator for EqualRowValidator {
     fn validate_row(&self, generated_row: &[CqlValue], query_result: QueryResult) -> Result<()> {
-        let rows = match query_result.rows {
-            Some(rows) => rows,
-            None => anyhow::bail!("Query result doesn't contain any rows.",),
-        };
-
-        let first_row = match rows.split_first() {
-            Some((first_row, remaining_rows)) => {
-                // Note that row-generation logic behaves in a way that given partition_key,
-                // there is exactly one row with this partition_key.
-                anyhow::ensure!(
-                    remaining_rows.is_empty(),
-                    "Multiple rows matched the key. Rows: {:?}",
-                    rows
-                );
-                first_row
-            }
-            None => anyhow::bail!("Query result doesn't contain any rows.",),
-        };
+        let first_row = extract_first_row_from_query_result(&query_result)?;
 
         anyhow::ensure!(
             first_row.columns.len() == generated_row.len(),
