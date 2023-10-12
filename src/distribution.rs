@@ -29,6 +29,16 @@ impl<'a> Description<'a> {
         );
         Ok(())
     }
+
+    pub fn check_minimum_argument_count(&self, minimum: usize) -> Result<()> {
+        anyhow::ensure!(
+            self.args.len() >= minimum,
+            "Expected at least {} arguments, but got {}",
+            minimum,
+            self.args.len(),
+        );
+        Ok(())
+    }
 }
 
 // Parses the description of a distribution.
