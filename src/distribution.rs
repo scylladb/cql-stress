@@ -39,6 +39,10 @@ impl<'a> Description<'a> {
         );
         Ok(())
     }
+
+    pub fn args_fused(&self) -> impl Iterator<Item = &&'a str> {
+        self.args.iter().fuse()
+    }
 }
 
 // Parses the description of a distribution.
