@@ -3,6 +3,8 @@ cassandra-stress write no-warmup cl=quorum n=10b truncate=always
 cassandra-stress counter_read cl=QUORUM duration=5760m
 cassandra-stress write no-warmup cl=QUORUM duration=30m
 cassandra-stress write no-warmup serial-cl=LOCAL_SERIAL
+cassandra-stress write cl=ONE n=10000 keysize=5
+cassandra-stress write err<0.2 n>20 keysize=15
 cassandra-stress write err<0.2 n>20
 cassandra-stress write
 cassandra-stress read

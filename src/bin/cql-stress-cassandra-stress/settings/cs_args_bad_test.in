@@ -22,3 +22,7 @@ cassandra-stress write -col size=SEQ(1..10,50)
 cassandra-stress write -col names=foo,bar,baz n=3
 cassandra-stress write -pop dist=foo
 cassandra-stress write -pop dist=SEQ(1..10,50)
+
+# Keysize must be a positive number.
+cassandra-stress write keysize=0
+cassandra-stress write keysize=-1
