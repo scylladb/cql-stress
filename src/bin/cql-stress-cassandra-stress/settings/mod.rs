@@ -52,7 +52,7 @@ pub enum CassandraStressParsingResult {
     Workload(Box<CassandraStressSettings>),
 }
 
-type ParsePayload<'a> = HashMap<&'a str, Vec<&'a str>>;
+type ParsePayload<'a> = HashMap<String, Vec<&'a str>>;
 
 /// Groups the commands/options and their corresponding parametes.
 ///
@@ -60,25 +60,30 @@ type ParsePayload<'a> = HashMap<&'a str, Vec<&'a str>>;
 /// ./cassandra-stress COMMAND [command_param...] [OPTION [option_param...]...]
 fn prepare_parse_payload(args: &[String]) -> Result<(&str, ParsePayload)> {
     let mut cl_args: ParsePayload = HashMap::new();
-    let mut current: &str = "";
-    let mut cmd: &str = "";
-    for (i, arg) in args.iter().enumerate() {
-        let arg = arg.as_ref();
-        if i == 0 {
-            cmd = arg;
-        }
-        if i == 0 || arg.starts_with('-') {
+
+    let mut iter = args.iter();
+    let (cmd, mut current) = {
+        let cmd = iter.next().ok_or(anyhow::anyhow!("No command specified"))?;
+        let current = cmd.to_lowercase();
+        cl_args.insert(current.clone(), vec![]);
+        (cmd, current)
+    };
+
+    for arg in iter {
+        let arg: &str = arg.as_ref();
+
+        if arg.starts_with('-') {
             anyhow::ensure!(
                 !cl_args.contains_key(arg),
                 "{} is defined multiple times. Each option/command can be specified at most once.",
                 arg
             );
-            current = arg;
-            cl_args.insert(arg, vec![]);
+            current = arg.to_lowercase();
+            cl_args.insert(current.clone(), vec![]);
             continue;
         }
 
-        let params = cl_args.get_mut(current).unwrap();
+        let params = cl_args.get_mut(&current).unwrap();
         params.push(arg);
     }
 

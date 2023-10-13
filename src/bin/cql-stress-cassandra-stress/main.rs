@@ -34,8 +34,7 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("warn")))
         .init();
 
-    // Cassandra-stress CLI is case-insensitive.
-    let settings = match parse_cassandra_stress_args(env::args().map(|arg| arg.to_lowercase())) {
+    let settings = match parse_cassandra_stress_args(env::args()) {
         // Special commands: help, print, version
         Ok(CassandraStressParsingResult::SpecialCommand) => return Ok(()),
         Ok(CassandraStressParsingResult::Workload(payload)) => Arc::new(*payload),
