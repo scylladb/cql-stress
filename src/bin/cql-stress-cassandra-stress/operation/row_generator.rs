@@ -126,7 +126,9 @@ impl RowGeneratorFactory {
             GeneratorConfig::new(
                 "randomstrkey",
                 None,
-                Some(Box::new(FixedDistribution::new(10))),
+                Some(Box::new(FixedDistribution::new(
+                    self.settings.command_params.common.keysize.get() as i64,
+                ))),
             ),
         );
 
