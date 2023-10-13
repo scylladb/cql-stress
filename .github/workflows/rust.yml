@@ -33,3 +33,5 @@ jobs:
       run: cargo test --verbose -- --test-threads=1
     - name: Install python driver
       run: pip install scylla-driver
+    - name: Install pytest
+      run: pip install -U pytest
