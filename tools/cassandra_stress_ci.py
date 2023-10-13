@@ -4,6 +4,7 @@ import pytest
 from util.scylla_docker import ScyllaDockerNode
 from util.cassandra_stress import CassandraStress, CqlStressCassandraStress, CSCliRuntimeArguments
 from test_cs_write_and_validate import run as run_write_and_validate
+from test_cs_equal_db import run as run_equal_db
 
 
 # Utils for test cases
@@ -39,3 +40,9 @@ def test_write_and_validate(default_runtime_args, scylla_docker_node,
                             cassandra_stress, cql_stress):
     run_write_and_validate(runtime_args=default_runtime_args, node=scylla_docker_node,
                            cs=cassandra_stress, cql_stress=cql_stress)
+
+
+def test_equal_db(default_runtime_args, scylla_docker_node,
+                  cassandra_stress, cql_stress):
+    run_equal_db(runtime_args=default_runtime_args, node=scylla_docker_node,
+                 cs=cassandra_stress, cql_stress=cql_stress)
