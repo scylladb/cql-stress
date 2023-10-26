@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   build:
@@ -17,7 +18,7 @@ jobs:
         image: scylladb/scylla
         ports:
           - 9042:9042
-        options: --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
+        options: --name scylla-ci --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
         volumes:
           - ${{ github.workspace }}:/workspace
     steps:
@@ -31,3 +32,11 @@ jobs:
     - name: Run tests
       # test threads must be one because else database tests will run in parallel and will result in flaky tests
       run: cargo test --verbose -- --test-threads=1
+    - name: Install python driver
+      run: pip install scylla-driver
+    - name: Install pytest
+      run: pip install -U pytest
+    - name: Build C-S frontend
+      run: cargo build --bin cql-stress-cassandra-stress
+    - name: C-S frontend tests
+      run: pytest -s ./tools/cassandra_stress_ci.py
