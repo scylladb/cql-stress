@@ -3,10 +3,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use java_random::Random;
 use thread_local::ThreadLocal;
 
+use super::Random;
+
 pub mod fixed;
+pub mod normal;
 pub mod sequence;
 pub mod uniform;
 

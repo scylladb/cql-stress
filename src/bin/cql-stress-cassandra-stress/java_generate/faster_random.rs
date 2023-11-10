@@ -1,6 +1,6 @@
 use std::num::Wrapping;
 
-use java_random::Random;
+use super::Random;
 
 /// Implementation of the RNG used in cassandra-stress.
 /// See: https://github.com/scylladb/scylla-tools-java/blob/master/tools/stress/src/org/apache/cassandra/stress/generate/FasterRandom.java

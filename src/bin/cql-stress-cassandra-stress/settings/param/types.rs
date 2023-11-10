@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
 
 use crate::java_generate::distribution::{
-    fixed::FixedDistributionFactory, sequence::SeqDistributionFactory,
-    uniform::UniformDistributionFactory, DistributionFactory,
+    fixed::FixedDistributionFactory, normal::NormalDistributionFactory,
+    sequence::SeqDistributionFactory, uniform::UniformDistributionFactory, DistributionFactory,
 };
 
 pub trait Parsable: Sized {
@@ -214,6 +214,9 @@ impl Parsable for Box<dyn DistributionFactory> {
             "fixed" => FixedDistributionFactory::parse_from_description(description),
             "seq" => SeqDistributionFactory::parse_from_description(description),
             "uniform" => UniformDistributionFactory::parse_from_description(description),
+            "gaussian" | "gauss" | "norm" | "normal" => {
+                NormalDistributionFactory::parse_from_description(description)
+            }
             _ => Err(anyhow::anyhow!(
                 "Invalid distribution name: {}",
                 description.name
@@ -290,6 +293,34 @@ mod tests {
             "uniform40)",
         ];
 
+        for input in bad_test_cases {
+            assert!(DistributionTestType::parse(input).is_err());
+        }
+    }
+
+    #[test]
+    fn distribution_param_gaussian_test() {
+        let good_test_cases = &[
+            "gaussian(1..10)",
+            "gauss(1..10)",
+            "normal(1..10)",
+            "norm(1..10)",
+            "gaussian(1..10,5)",
+            "gaussian(1..10,5,5)",
+        ];
+        for input in good_test_cases {
+            assert!(DistributionTestType::parse(input).is_ok());
+        }
+
+        let bad_test_cases = &[
+            "gaussian(2..1)",
+            "gaussian(1..20,50,50,50)",
+            "gaussian(45",
+            "gaussian45..50",
+            "gaussian(45)",
+            "gaussian(100.1234)",
+            "gaussian40)",
+        ];
         for input in bad_test_cases {
             assert!(DistributionTestType::parse(input).is_err());
         }

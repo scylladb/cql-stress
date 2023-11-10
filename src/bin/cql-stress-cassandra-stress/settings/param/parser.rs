@@ -2,8 +2,8 @@ use anyhow::Result;
 use std::{cell::RefCell, rc::Rc};
 
 use crate::java_generate::distribution::{
-    fixed::FixedDistributionFactory, sequence::SeqDistributionFactory,
-    uniform::UniformDistributionFactory, DistributionFactory,
+    fixed::FixedDistributionFactory, normal::NormalDistributionFactory,
+    sequence::SeqDistributionFactory, uniform::UniformDistributionFactory, DistributionFactory,
 };
 
 use super::{
@@ -167,6 +167,9 @@ impl ParamsParser {
                     &FixedDistributionFactory::help_description(),
                     &SeqDistributionFactory::help_description(),
                     &UniformDistributionFactory::help_description(),
+                    &NormalDistributionFactory::help_description_two_args(),
+                    &NormalDistributionFactory::help_description_three_args(),
+                    &NormalDistributionFactory::help_description_four_args(),
                     "",
                     "    Preceding the name with ~ will invert the distribution.",
                 ];

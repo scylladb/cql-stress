@@ -29,6 +29,20 @@ impl<'a> Description<'a> {
         );
         Ok(())
     }
+
+    pub fn check_minimum_argument_count(&self, minimum: usize) -> Result<()> {
+        anyhow::ensure!(
+            self.args.len() >= minimum,
+            "Expected at least {} arguments, but got {}",
+            minimum,
+            self.args.len(),
+        );
+        Ok(())
+    }
+
+    pub fn args_fused(&self) -> impl Iterator<Item = &&'a str> {
+        self.args.iter().fuse()
+    }
 }
 
 // Parses the description of a distribution.
