@@ -1,7 +1,7 @@
 use crate::settings::{
     param::{
         types::{Count, Parsable, UnitInterval},
-        ParamsParser, SimpleParamHandle,
+        ParamHandle, ParamsParser, SimpleParamHandle,
     },
     ParsePayload,
 };
@@ -220,7 +220,7 @@ impl CommonParams {
     }
 }
 
-struct CommonParamHandles {
+pub struct CommonParamHandles {
     err: SimpleParamHandle<UnitInterval>,
     ngt: SimpleParamHandle<u64>,
     nlt: SimpleParamHandle<u64>,
@@ -233,8 +233,9 @@ struct CommonParamHandles {
     keysize: SimpleParamHandle<NonZeroU32>,
 }
 
-fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles) {
-    let mut parser = ParamsParser::new(cmd);
+pub fn add_common_param_groups(
+    parser: &mut ParamsParser,
+) -> (Vec<Vec<Box<dyn ParamHandle>>>, CommonParamHandles) {
     let err = parser.simple_param(
         "err<",
         Some("0.02"),
@@ -284,17 +285,37 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles) {
     //  OR
     // Usage: read duration=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?] [keysize=?]
 
-    // TODO:
-    // Consider refactoring `ParamsGroup` in the future.
-    // When new parameter is included, it's easy to forget about the grouping.
-    parser.group(&[
-        &err, &ngt, &nlt, &no_warmup, &truncate, &cl, &serial_cl, &keysize,
-    ]);
-    parser.group(&[&n, &no_warmup, &truncate, &cl, &serial_cl, &keysize]);
-    parser.group(&[&duration, &no_warmup, &truncate, &cl, &serial_cl, &keysize]);
+    let groups: Vec<Vec<Box<dyn ParamHandle>>> = vec![
+        vec![
+            Box::new(err.clone()),
+            Box::new(ngt.clone()),
+            Box::new(nlt.clone()),
+            Box::new(no_warmup.clone()),
+            Box::new(truncate.clone()),
+            Box::new(cl.clone()),
+            Box::new(serial_cl.clone()),
+            Box::new(keysize.clone()),
+        ],
+        vec![
+            Box::new(n.clone()),
+            Box::new(no_warmup.clone()),
+            Box::new(truncate.clone()),
+            Box::new(cl.clone()),
+            Box::new(serial_cl.clone()),
+            Box::new(keysize.clone()),
+        ],
+        vec![
+            Box::new(duration.clone()),
+            Box::new(no_warmup.clone()),
+            Box::new(truncate.clone()),
+            Box::new(cl.clone()),
+            Box::new(serial_cl.clone()),
+            Box::new(keysize.clone()),
+        ],
+    ];
 
     (
-        parser,
+        groups,
         CommonParamHandles {
             err,
             ngt,
@@ -308,6 +329,18 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles) {
             keysize,
         },
     )
+}
+
+fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles) {
+    let mut parser = ParamsParser::new(cmd);
+
+    let (groups, handles) = add_common_param_groups(&mut parser);
+
+    for group in groups.iter() {
+        parser.group(&group.iter().map(|e| e.as_ref()).collect::<Vec<_>>())
+    }
+
+    (parser, handles)
 }
 
 fn parse_with_handles(handles: CommonParamHandles) -> CommonParams {
