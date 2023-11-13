@@ -343,7 +343,7 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles) {
     (parser, handles)
 }
 
-fn parse_with_handles(handles: CommonParamHandles) -> CommonParams {
+pub fn parse_with_handles(handles: CommonParamHandles) -> CommonParams {
     let err = handles.err.get();
     let ngt = handles.ngt.get();
     let nlt = handles.nlt.get();
@@ -379,6 +379,7 @@ pub fn parse_common_params(cmd: &Command, payload: &mut ParsePayload) -> Result<
     parser.parse(args)?;
     Ok(CommandParams {
         common: parse_with_handles(handles),
+        counter: None,
     })
 }
 

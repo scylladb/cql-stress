@@ -21,9 +21,9 @@ cassandra-stress counter_write no-warmup cl=QUORUM duration=20m -schema replicat
 cassandra-stress counter_write no-warmup cl=QUORUM duration=20m -schema replication(strategy=NetworkTopologyStrategy)
 cassandra-stress counter_write no-warmup cl=QUORUM duration=20m -schema replication(replication_factor=3)
 cassandra-stress counter_write no-warmup cl=LOCAL_ONE duration=20m -schema replication(strategy=NetworkTopologyStrategy,replication_factor=3) keyspace=keyspace2
-cassandra-stress counter_write no-warmup cl=THREE duration=20m -schema keyspace=keyspace2
-cassandra-stress counter_write no-warmup cl=ANY duration=20m -schema replication(strategy=NetworkTopologyStrategy) keyspace=keyspace2
-cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2
+cassandra-stress counter_write no-warmup add=UNIFORM(1..10) cl=THREE duration=20m -schema keyspace=keyspace2
+cassandra-stress counter_write no-warmup add=GAUSSIAN(1..10) cl=ANY duration=20m -schema replication(strategy=NetworkTopologyStrategy) keyspace=keyspace2
+cassandra-stress counter_write no-warmup add=FIXED(2) cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2
 cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2 -node shard-connection-count=5
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1) -rate threads=10 -col n=10 size=UNIFORM(1..20)
 cassandra-stress read cl=QUORUM n=10000 -schema replication(key=value) -rate threads=10 -col names=foo,bar,baz
