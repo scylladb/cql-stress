@@ -1,12 +1,15 @@
 use std::collections::HashSet;
 
 use crate::{
-    java_generate::distribution::enumerated::EnumeratedDistribution,
-    settings::param::types::Parsable,
+    java_generate::distribution::{enumerated::EnumeratedDistribution, DistributionFactory},
+    settings::{
+        param::{types::Parsable, ParamsParser, SimpleParamHandle},
+        ParsePayload,
+    },
 };
 use anyhow::{Context, Result};
 
-use super::Command;
+use super::{common::CommonParamHandles, counter::CounterParams, Command, CommandParams};
 
 // Available subcommands for mixed command.
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
@@ -103,4 +106,80 @@ impl OperationRatio {
 
         Self::new(weights)
     }
+}
+
+pub struct MixedParamHandles {
+    operation_ratio: SimpleParamHandle<OperationRatio>,
+    clustering: SimpleParamHandle<Box<dyn DistributionFactory>>,
+}
+
+pub struct MixedParams {
+    pub operation_ratio: OperationRatio,
+    pub clustering: Box<dyn DistributionFactory>,
+}
+
+impl MixedParams {
+    pub fn print_settings(&self) {
+        println!("Command ratios: {}", self.operation_ratio);
+        println!("Command clustering distribution: {}", self.clustering);
+    }
+
+    pub fn parse(cmd: &Command, payload: &mut ParsePayload) -> Result<CommandParams> {
+        let args = payload.remove(cmd.show()).unwrap();
+        let (parser, common_handles, counter_add_distribution_handle, mixed_handles) =
+            prepare_parser(cmd.show());
+        parser.parse(args)?;
+        Ok(CommandParams {
+            common: super::common::parse_with_handles(common_handles),
+            counter: Some(CounterParams {
+                add_distribution: counter_add_distribution_handle.get().unwrap(),
+            }),
+            mixed: Some(MixedParams {
+                operation_ratio: mixed_handles.operation_ratio.get().unwrap(),
+                clustering: mixed_handles.clustering.get().unwrap(),
+            }),
+        })
+    }
+}
+
+fn prepare_parser(
+    cmd: &str,
+) -> (
+    ParamsParser,
+    CommonParamHandles,
+    SimpleParamHandle<Box<dyn DistributionFactory>>,
+    MixedParamHandles,
+) {
+    let mut parser = ParamsParser::new(cmd);
+
+    let mut counter_payload = super::counter::add_counter_param_groups(&mut parser);
+
+    let operation_ratio = parser.simple_param("ratio", Some("(read=1,write=1)"), "Specify the ratios for operations to perform; e.g. ratio(read=2,write=1) will perform 2 reads for each write. Available commands are: read, write, counter_write, counter_read.", false);
+    let clustering = parser.distribution_param(
+        "clustering=",
+        Some("GAUSSIAN(1..10)"),
+        "Distribution clustering runs of operations of the same kind",
+        false,
+    );
+
+    for group in counter_payload.groups.iter_mut() {
+        group.push(Box::new(operation_ratio.clone()));
+        group.push(Box::new(clustering.clone()));
+        parser.group(&group.iter().map(|e| e.as_ref()).collect::<Vec<_>>())
+    }
+
+    (
+        parser,
+        counter_payload.common_handles,
+        counter_payload.add_distribution_handle,
+        MixedParamHandles {
+            operation_ratio,
+            clustering,
+        },
+    )
+}
+
+pub fn print_help_mixed(command_str: &str) {
+    let (parser, _, _, _) = prepare_parser(command_str);
+    parser.print_help();
 }

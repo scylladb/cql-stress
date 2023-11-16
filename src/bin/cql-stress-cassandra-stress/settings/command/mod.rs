@@ -17,7 +17,8 @@ mod mixed;
 use self::common::{parse_common_params, print_help_common};
 use self::counter::print_help_counter;
 use self::counter::CounterParams;
-
+use self::mixed::print_help_mixed;
+use self::mixed::MixedParams;
 pub use help::print_help;
 
 use super::ParsePayload;
@@ -35,6 +36,7 @@ pub enum Command {
     Read,
     CounterWrite,
     CounterRead,
+    Mixed,
 }
 
 impl Command {
@@ -48,6 +50,7 @@ impl Command {
                 Ok(Some(parse_common_params(self, payload)?))
             }
             Command::CounterWrite => Ok(Some(CounterParams::parse(self, payload)?)),
+            Command::Mixed => Ok(Some(MixedParams::parse(self, payload)?)),
             Command::Help => {
                 parse_help_command(payload)?;
                 Ok(None)
@@ -65,6 +68,7 @@ impl Command {
             Command::Write => "Multiple concurrent writes against the cluster.",
             Command::CounterWrite => "Multiple concurrent updates of counters.",
             Command::CounterRead => "Multiple concurrent reads of counters. The cluster must first be populated by a counterwrite test.",
+            Command::Mixed => "Interleaving of any basic commands, with configurable ratio and distribution - the cluster must first be populated by a write test.",
             Command::Help => "Print help for a command or option",
         };
 
@@ -82,6 +86,7 @@ impl Command {
         match self {
             Command::Read | Command::Write | Command::CounterRead => print_help_common(self.show()),
             Command::CounterWrite => print_help_counter(self.show()),
+            Command::Mixed => print_help_mixed(self.show()),
             Command::Help => help::print_help(),
         }
     }
@@ -91,6 +96,7 @@ pub struct CommandParams {
     // Parameters shared across all of the commands
     pub common: CommonParams,
     pub counter: Option<CounterParams>,
+    pub mixed: Option<MixedParams>,
 }
 
 impl CommandParams {
@@ -98,6 +104,9 @@ impl CommandParams {
         self.common.print_settings(cmd);
         if let Some(counter) = &self.counter {
             counter.print_settings()
+        }
+        if let Some(mixed) = &self.mixed {
+            mixed.print_settings()
         }
     }
 }

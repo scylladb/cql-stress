@@ -28,6 +28,7 @@ impl CounterParams {
             counter: Some(CounterParams {
                 add_distribution: add_distribution.get().unwrap(),
             }),
+            mixed: None,
         })
     }
 }
