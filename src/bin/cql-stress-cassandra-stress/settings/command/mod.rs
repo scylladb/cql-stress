@@ -12,15 +12,19 @@ use anyhow::Result;
 mod common;
 mod counter;
 mod help;
+mod mixed;
 
 use self::common::{parse_common_params, print_help_common};
 use self::counter::print_help_counter;
 use self::counter::CounterParams;
+
 pub use help::print_help;
 
 use super::ParsePayload;
 use common::CommonParams;
 use help::parse_help_command;
+pub use mixed::MixedSubcommand;
+pub use mixed::OperationRatio;
 
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, AsRefStr, EnumString)]
 #[strum(serialize_all = "snake_case")]
@@ -87,9 +91,6 @@ pub struct CommandParams {
     // Parameters shared across all of the commands
     pub common: CommonParams,
     pub counter: Option<CounterParams>,
-    // TODO:
-    // mixed_params: Option<MixedParams>
-    // user_params: Option<UserParams>
 }
 
 impl CommandParams {

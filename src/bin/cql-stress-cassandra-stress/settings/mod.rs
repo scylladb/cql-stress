@@ -11,6 +11,8 @@ mod test;
 
 pub use command::Command;
 pub use command::CommandParams;
+pub use command::MixedSubcommand;
+pub use command::OperationRatio;
 pub use option::ThreadsInfo;
 use regex::Regex;
 
