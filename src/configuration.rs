@@ -111,9 +111,9 @@ pub trait Operation: Send + Sync {
 /// can be clearly visible on the flamegraphs.
 #[macro_export]
 macro_rules! make_runnable {
-    ($op:ty) => {
+    ($op:ident$(<$($targ:tt: $tbound:tt),+>)?) => {
         #[async_trait]
-        impl $crate::configuration::Operation for $op {
+        impl$(<$($targ: $tbound),+>)? $crate::configuration::Operation for $op$(<$($targ),*>)? {
             async fn run(&mut self, mut session: $crate::run::WorkerSession) -> anyhow::Result<()> {
                 while let Some(ctx) = session.start_operation().await {
                     let result = self.execute(&ctx).await;

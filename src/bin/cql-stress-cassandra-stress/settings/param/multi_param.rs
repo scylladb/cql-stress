@@ -229,6 +229,14 @@ pub struct MultiParamHandle<A: ArbitraryParamsAcceptance> {
     cell: Rc<RefCell<TypedParam<MultiParam<A>>>>,
 }
 
+impl<A: ArbitraryParamsAcceptance> Clone for MultiParamHandle<A> {
+    fn clone(&self) -> Self {
+        Self {
+            cell: Rc::clone(&self.cell),
+        }
+    }
+}
+
 pub type MultiParamAcceptsArbitraryHandle = MultiParamHandle<AcceptsArbitraryParams>;
 
 impl MultiParamAcceptsArbitraryHandle {

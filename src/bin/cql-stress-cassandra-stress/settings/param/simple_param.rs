@@ -85,6 +85,14 @@ pub struct SimpleParamHandle<T: Parsable> {
     cell: Rc<RefCell<TypedParam<SimpleParam<T>>>>,
 }
 
+impl<T: Parsable> Clone for SimpleParamHandle<T> {
+    fn clone(&self) -> Self {
+        Self {
+            cell: Rc::clone(&self.cell),
+        }
+    }
+}
+
 impl<T: Parsable> SimpleParamHandle<T> {
     pub fn new(cell: Rc<RefCell<TypedParam<SimpleParam<T>>>>) -> Self {
         Self { cell }

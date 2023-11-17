@@ -63,19 +63,16 @@ impl WriteOperationFactory {
             .context("Failed to prepare statement")?;
 
         statement.set_is_idempotent(true);
-        statement.set_consistency(settings.command_params.basic_params.consistency_level);
+        statement.set_consistency(settings.command_params.common.consistency_level);
         statement.set_serial_consistency(Some(
-            settings
-                .command_params
-                .basic_params
-                .serial_consistency_level,
+            settings.command_params.common.serial_consistency_level,
         ));
 
         Ok(Self {
             session,
             statement,
             workload_factory,
-            max_operations: settings.command_params.basic_params.operation_count,
+            max_operations: settings.command_params.common.operation_count,
             stats,
         })
     }

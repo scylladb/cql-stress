@@ -1,13 +1,13 @@
 use crate::settings::{
     param::{
         types::{Count, Parsable, UnitInterval},
-        ParamsParser, SimpleParamHandle,
+        ParamHandle, ParamsParser, SimpleParamHandle,
     },
     ParsePayload,
 };
 use anyhow::{Context, Result};
 use scylla::statement::{Consistency, SerialConsistency};
-use std::{str::FromStr, time::Duration};
+use std::{num::NonZeroU32, str::FromStr, time::Duration};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter, EnumString};
 
@@ -181,7 +181,7 @@ impl Parsable for SerialConsistencyLevel {
     }
 }
 
-pub struct ReadWriteParams {
+pub struct CommonParams {
     pub uncertainty: Option<Uncertainty>,
     pub no_warmup: bool,
     pub truncate: Truncate,
@@ -189,9 +189,10 @@ pub struct ReadWriteParams {
     pub serial_consistency_level: SerialConsistency,
     pub operation_count: Option<u64>,
     pub duration: Option<Duration>,
+    pub keysize: NonZeroU32,
 }
 
-impl ReadWriteParams {
+impl CommonParams {
     pub fn print_settings(&self, command: &Command) {
         println!("Command:");
         println!("  Type: {}", command.show());
@@ -215,10 +216,11 @@ impl ReadWriteParams {
         } else {
             self.uncertainty.as_ref().unwrap().print_settings();
         }
+        println!("  Key Size (bytes): {}", self.keysize);
     }
 }
 
-struct ReadWriteParamHandles {
+pub struct CommonParamHandles {
     err: SimpleParamHandle<UnitInterval>,
     ngt: SimpleParamHandle<u64>,
     nlt: SimpleParamHandle<u64>,
@@ -228,10 +230,12 @@ struct ReadWriteParamHandles {
     serial_cl: SimpleParamHandle<SerialConsistencyLevel>,
     n: SimpleParamHandle<Count>,
     duration: SimpleParamHandle<Duration>,
+    keysize: SimpleParamHandle<NonZeroU32>,
 }
 
-fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
-    let mut parser = ParamsParser::new(cmd);
+pub fn add_common_param_groups(
+    parser: &mut ParamsParser,
+) -> (Vec<Vec<Box<dyn ParamHandle>>>, CommonParamHandles) {
     let err = parser.simple_param(
         "err<",
         Some("0.02"),
@@ -271,21 +275,48 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
         "Time to run in (in seconds, minutes or hours)",
         true,
     );
+    let keysize = parser.simple_param("keysize=", Some("10"), "Key size in bytes", false);
 
     // $ ./cassandra-stress help read
     //
-    // Usage: read [err<?] [n>?] [n<?] [no-warmup] [truncate=?] [cl=?] [serial-cl=?]
+    // Usage: read [err<?] [n>?] [n<?] [no-warmup] [truncate=?] [cl=?] [serial-cl=?] [keysize=?]
     //  OR
-    // Usage: read n=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?]
+    // Usage: read n=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?] [keysize=?]
     //  OR
-    // Usage: read duration=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?]
-    parser.group(&[&err, &ngt, &nlt, &no_warmup, &truncate, &cl, &serial_cl]);
-    parser.group(&[&n, &no_warmup, &truncate, &cl, &serial_cl]);
-    parser.group(&[&duration, &no_warmup, &truncate, &cl, &serial_cl]);
+    // Usage: read duration=? [no-warmup] [truncate=?] [cl=?] [serial-cl=?] [keysize=?]
+
+    let groups: Vec<Vec<Box<dyn ParamHandle>>> = vec![
+        vec![
+            Box::new(err.clone()),
+            Box::new(ngt.clone()),
+            Box::new(nlt.clone()),
+            Box::new(no_warmup.clone()),
+            Box::new(truncate.clone()),
+            Box::new(cl.clone()),
+            Box::new(serial_cl.clone()),
+            Box::new(keysize.clone()),
+        ],
+        vec![
+            Box::new(n.clone()),
+            Box::new(no_warmup.clone()),
+            Box::new(truncate.clone()),
+            Box::new(cl.clone()),
+            Box::new(serial_cl.clone()),
+            Box::new(keysize.clone()),
+        ],
+        vec![
+            Box::new(duration.clone()),
+            Box::new(no_warmup.clone()),
+            Box::new(truncate.clone()),
+            Box::new(cl.clone()),
+            Box::new(serial_cl.clone()),
+            Box::new(keysize.clone()),
+        ],
+    ];
 
     (
-        parser,
-        ReadWriteParamHandles {
+        groups,
+        CommonParamHandles {
             err,
             ngt,
             nlt,
@@ -295,11 +326,24 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, ReadWriteParamHandles) {
             serial_cl,
             n,
             duration,
+            keysize,
         },
     )
 }
 
-fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
+fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles) {
+    let mut parser = ParamsParser::new(cmd);
+
+    let (groups, handles) = add_common_param_groups(&mut parser);
+
+    for group in groups.iter() {
+        parser.group(&group.iter().map(|e| e.as_ref()).collect::<Vec<_>>())
+    }
+
+    (parser, handles)
+}
+
+pub fn parse_with_handles(handles: CommonParamHandles) -> CommonParams {
     let err = handles.err.get();
     let ngt = handles.ngt.get();
     let nlt = handles.nlt.get();
@@ -309,6 +353,7 @@ fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
     let serial_consistency_level = handles.serial_cl.get().unwrap();
     let operation_count = handles.n.get();
     let duration = handles.duration.get();
+    let keysize = handles.keysize.get().unwrap();
 
     let uncertainty = match (err, ngt, nlt) {
         (Some(err), Some(ngt), Some(nlt)) => Some(Uncertainty::new(err, ngt, nlt)),
@@ -316,7 +361,7 @@ fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
     };
 
     // Parser's regular expressions ensure that String parsing won't fail.
-    ReadWriteParams {
+    CommonParams {
         uncertainty,
         no_warmup,
         truncate,
@@ -324,29 +369,33 @@ fn parse_with_handles(handles: ReadWriteParamHandles) -> ReadWriteParams {
         serial_consistency_level,
         operation_count,
         duration,
+        keysize,
     }
 }
 
-pub fn parse_read_write_params(cmd: &Command, payload: &mut ParsePayload) -> Result<CommandParams> {
+pub fn parse_common_params(cmd: &Command, payload: &mut ParsePayload) -> Result<CommandParams> {
     let args = payload.remove(cmd.show()).unwrap();
     let (parser, handles) = prepare_parser(cmd.show());
     parser.parse(args)?;
     Ok(CommandParams {
-        basic_params: parse_with_handles(handles),
+        common: parse_with_handles(handles),
+        counter: None,
     })
 }
 
-pub fn print_help_read_write(command_str: &str) {
+pub fn print_help_common(command_str: &str) {
     let (parser, _) = prepare_parser(command_str);
     parser.print_help();
 }
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use scylla::statement::{Consistency, SerialConsistency};
 
     use crate::settings::command::{
-        read_write::{parse_with_handles, prepare_parser, Truncate},
+        common::{parse_with_handles, prepare_parser, Truncate},
         Command,
     };
 
@@ -354,7 +403,7 @@ mod tests {
 
     #[test]
     fn read_params_parser_with_operation_count_test() {
-        let args = vec!["n=10m", "cl=quorum", "no-warmup"];
+        let args = vec!["n=10m", "cl=quorum", "no-warmup", "keysize=5"];
         let (parser, handles) = prepare_parser(CMD.show());
 
         assert!(parser.parse(args).is_ok());
@@ -368,6 +417,7 @@ mod tests {
         assert_eq!(SerialConsistency::Serial, params.serial_consistency_level);
         assert_eq!(Some(10_000_000), params.operation_count);
         assert_eq!(None, params.duration);
+        assert_eq!(NonZeroU32::new(5).unwrap(), params.keysize);
     }
 
     #[test]
@@ -406,6 +456,7 @@ mod tests {
         assert_eq!(SerialConsistency::Serial, params.serial_consistency_level);
         assert_eq!(None, params.operation_count);
         assert_eq!(None, params.duration);
+        assert_eq!(NonZeroU32::new(10).unwrap(), params.keysize);
     }
 
     #[test]

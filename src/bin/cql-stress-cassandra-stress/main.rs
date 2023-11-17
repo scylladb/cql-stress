@@ -10,7 +10,7 @@ mod stats;
 extern crate lazy_static;
 
 use crate::{
-    operation::{ReadOperationFactory, RowGeneratorFactory},
+    operation::{RegularReadOperationFactory, RowGeneratorFactory},
     settings::{parse_cassandra_stress_args, Command, ThreadsInfo},
 };
 use anyhow::{Context, Result};
@@ -20,13 +20,16 @@ use cql_stress::{
     sharded_stats::Stats as _,
     sharded_stats::StatsFactory as _,
 };
-use operation::WriteOperationFactory;
+use operation::{CounterReadOperationFactory, CounterWriteOperationFactory, WriteOperationFactory};
 use scylla::{transport::session::PoolSize, ExecutionProfile, Session, SessionBuilder};
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
 use std::{env, sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;
 
 use settings::{CassandraStressParsingResult, CassandraStressSettings};
+
+const DEFAULT_TABLE_NAME: &str = "standard1";
+const DEFAULT_COUNTER_TABLE_NAME: &str = "counter1";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -128,7 +131,7 @@ async fn prepare_run(
 
     create_schema(&session, &settings).await?;
 
-    let duration = settings.command_params.basic_params.duration;
+    let duration = settings.command_params.common.duration;
 
     let (concurrency, throttle) = match settings.rate.threads_info {
         ThreadsInfo::Fixed {
@@ -189,7 +192,27 @@ async fn create_operation_factory(
             WriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::Read => Ok(Arc::new(
-            ReadOperationFactory::new(settings, session, workload_factory, stats).await?,
+            RegularReadOperationFactory::new(
+                DEFAULT_TABLE_NAME,
+                settings,
+                session,
+                workload_factory,
+                stats,
+            )
+            .await?,
+        )),
+        Command::CounterWrite => Ok(Arc::new(
+            CounterWriteOperationFactory::new(settings, session, workload_factory, stats).await?,
+        )),
+        Command::CounterRead => Ok(Arc::new(
+            CounterReadOperationFactory::new(
+                DEFAULT_COUNTER_TABLE_NAME,
+                settings,
+                session,
+                workload_factory,
+                stats,
+            )
+            .await?,
         )),
         cmd => Err(anyhow::anyhow!(
             "Runtime for command '{}' not implemented yet.",

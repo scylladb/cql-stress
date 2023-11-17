@@ -1,4 +1,7 @@
-use std::{num::NonZeroUsize, time::Duration};
+use std::{
+    num::{NonZeroU32, NonZeroUsize},
+    time::Duration,
+};
 
 use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
@@ -53,6 +56,15 @@ impl Parsable for NonZeroUsize {
     fn parse(s: &str) -> Result<Self::Parsed> {
         s.parse::<NonZeroUsize>()
             .with_context(|| format!("Invalid non-zero usize value: {s}"))
+    }
+}
+
+impl Parsable for NonZeroU32 {
+    type Parsed = NonZeroU32;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        s.parse::<NonZeroU32>()
+            .with_context(|| format!("Invalid non-zero u32 value: {s}"))
     }
 }
 

@@ -86,15 +86,19 @@ pub struct RowGeneratorFactory {
 }
 
 impl RowGenerator {
+    pub fn generate_pk(&mut self) -> CqlValue {
+        // Sample the partition_key seed from the shared distribution.
+        let pk_seed = self.pk_seed_distribution.next_i64();
+        self.pk_generator.set_seed(pk_seed);
+        self.pk_generator.generate()
+    }
+
     pub fn generate_row(&mut self) -> Vec<CqlValue> {
         // +1 for partition_key.
         let row_length = self.column_generators.len() + 1;
         let mut result = Vec::with_capacity(row_length);
 
-        // Sample the partition_key seed from the shared distribution.
-        let pk_seed = self.pk_seed_distribution.next_i64();
-        self.pk_generator.set_seed(pk_seed);
-        let key = self.pk_generator.generate();
+        let key = self.generate_pk();
 
         // Compute the seed used for generating the rest of the row.
         let columns_seed = recompute_seed(0, &key);
@@ -126,7 +130,9 @@ impl RowGeneratorFactory {
             GeneratorConfig::new(
                 "randomstrkey",
                 None,
-                Some(Box::new(FixedDistribution::new(10))),
+                Some(Box::new(FixedDistribution::new(
+                    self.settings.command_params.common.keysize.get() as i64,
+                ))),
             ),
         );
 

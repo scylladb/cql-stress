@@ -1,4 +1,4 @@
-use std::{ops::ControlFlow, sync::Arc};
+use std::{marker::PhantomData, ops::ControlFlow, sync::Arc};
 
 use cql_stress::{
     configuration::{Operation, OperationContext, OperationFactory},
@@ -12,71 +12,76 @@ use crate::{settings::CassandraStressSettings, stats::ShardedStats};
 
 use super::{
     row_generator::{RowGenerator, RowGeneratorFactory},
-    validate_row,
+    EqualRowValidator, ExistsRowValidator, RowValidator,
 };
 
-pub struct ReadOperation {
+pub struct ReadOperation<V: RowValidator> {
     session: Arc<Session>,
     statement: PreparedStatement,
     workload: RowGenerator,
     max_operations: Option<u64>,
     stats: Arc<ShardedStats>,
+    row_validator: V,
 }
 
-pub struct ReadOperationFactory {
+pub struct GenericReadOperationFactory<V: RowValidator> {
     session: Arc<Session>,
     statement: PreparedStatement,
     workload_factory: RowGeneratorFactory,
     max_operations: Option<u64>,
     stats: Arc<ShardedStats>,
+    _phantom: PhantomData<V>,
 }
 
-impl OperationFactory for ReadOperationFactory {
+pub type RegularReadOperationFactory = GenericReadOperationFactory<EqualRowValidator>;
+pub type CounterReadOperationFactory = GenericReadOperationFactory<ExistsRowValidator>;
+
+impl<V: RowValidator + 'static> OperationFactory for GenericReadOperationFactory<V> {
     fn create(&self) -> Box<dyn Operation> {
-        Box::new(ReadOperation {
+        Box::new(ReadOperation::<V> {
             session: Arc::clone(&self.session),
             statement: self.statement.clone(),
             workload: self.workload_factory.create(),
             max_operations: self.max_operations,
             stats: Arc::clone(&self.stats),
+            row_validator: Default::default(),
         })
     }
 }
 
-impl ReadOperationFactory {
+impl<V: RowValidator> GenericReadOperationFactory<V> {
     pub async fn new(
+        table_name: &'static str,
         settings: Arc<CassandraStressSettings>,
         session: Arc<Session>,
         workload_factory: RowGeneratorFactory,
         stats: Arc<ShardedStats>,
     ) -> Result<Self> {
-        let statement_str = "SELECT * FROM standard1 WHERE KEY=?";
+        let statement_str = format!("SELECT * FROM {} WHERE KEY=?", table_name);
         let mut statement = session
             .prepare(statement_str)
             .await
             .context("Failed to prepare statement")?;
 
         statement.set_is_idempotent(true);
-        statement.set_consistency(settings.command_params.basic_params.consistency_level);
+        statement.set_consistency(settings.command_params.common.consistency_level);
         statement.set_serial_consistency(Some(
-            settings
-                .command_params
-                .basic_params
-                .serial_consistency_level,
+            settings.command_params.common.serial_consistency_level,
         ));
 
         Ok(Self {
             session,
             statement,
             workload_factory,
-            max_operations: settings.command_params.basic_params.operation_count,
+            max_operations: settings.command_params.common.operation_count,
             stats,
+            _phantom: PhantomData,
         })
     }
 }
 
-make_runnable!(ReadOperation);
-impl ReadOperation {
+make_runnable!(ReadOperation<V: RowValidator>);
+impl<V: RowValidator> ReadOperation<V> {
     async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
         if self
             .max_operations
@@ -105,7 +110,7 @@ impl ReadOperation {
             );
         }
 
-        let validation_result = validate_row(row, result?);
+        let validation_result = self.row_validator.validate_row(row, result?);
         if let Err(err) = validation_result.as_ref() {
             tracing::error!(
                 error = %err,

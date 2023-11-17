@@ -9,15 +9,18 @@ use strum_macros::EnumString;
 
 use anyhow::Result;
 
+mod common;
+mod counter;
 mod help;
-mod read_write;
 
-use self::read_write::{parse_read_write_params, print_help_read_write};
+use self::common::{parse_common_params, print_help_common};
+use self::counter::print_help_counter;
+use self::counter::CounterParams;
 pub use help::print_help;
 
 use super::ParsePayload;
+use common::CommonParams;
 use help::parse_help_command;
-use read_write::ReadWriteParams;
 
 #[derive(Clone, Debug, PartialEq, Eq, EnumIter, AsRefStr, EnumString)]
 #[strum(serialize_all = "snake_case")]
@@ -37,9 +40,10 @@ impl Command {
 
     fn parse_params(&self, payload: &mut ParsePayload) -> Result<Option<CommandParams>> {
         match self {
-            Command::Read | Command::Write | Command::CounterRead | Command::CounterWrite => {
-                Ok(Some(parse_read_write_params(self, payload)?))
+            Command::Read | Command::Write | Command::CounterRead => {
+                Ok(Some(parse_common_params(self, payload)?))
             }
+            Command::CounterWrite => Ok(Some(CounterParams::parse(self, payload)?)),
             Command::Help => {
                 parse_help_command(payload)?;
                 Ok(None)
@@ -72,9 +76,8 @@ impl Command {
 
     fn print_help(&self) {
         match self {
-            Command::Read | Command::Write | Command::CounterRead | Command::CounterWrite => {
-                print_help_read_write(self.show())
-            }
+            Command::Read | Command::Write | Command::CounterRead => print_help_common(self.show()),
+            Command::CounterWrite => print_help_counter(self.show()),
             Command::Help => help::print_help(),
         }
     }
@@ -82,7 +85,8 @@ impl Command {
 
 pub struct CommandParams {
     // Parameters shared across all of the commands
-    pub basic_params: ReadWriteParams,
+    pub common: CommonParams,
+    pub counter: Option<CounterParams>,
     // TODO:
     // mixed_params: Option<MixedParams>
     // user_params: Option<UserParams>
@@ -90,7 +94,10 @@ pub struct CommandParams {
 
 impl CommandParams {
     pub fn print_settings(&self, cmd: &Command) {
-        self.basic_params.print_settings(cmd);
+        self.common.print_settings(cmd);
+        if let Some(counter) = &self.counter {
+            counter.print_settings()
+        }
     }
 }
 
