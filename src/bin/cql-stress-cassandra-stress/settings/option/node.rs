@@ -24,7 +24,7 @@ pub struct NodeOption {
 }
 
 impl NodeOption {
-    pub const CLI_STRING: &str = "-node";
+    pub const CLI_STRING: &'static str = "-node";
 
     pub fn description() -> &'static str {
         "Nodes to connect to"

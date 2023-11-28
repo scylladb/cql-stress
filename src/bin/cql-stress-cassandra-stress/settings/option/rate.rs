@@ -50,7 +50,7 @@ impl ThreadsInfo {
 }
 
 impl RateOption {
-    pub const CLI_STRING: &str = "-rate";
+    pub const CLI_STRING: &'static str = "-rate";
 
     pub fn description() -> &'static str {
         "Thread count, rate limit or automatic mode (default is auto)"
