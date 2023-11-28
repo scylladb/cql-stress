@@ -17,7 +17,7 @@ impl SchemaOption {
         "Replication settings, compression, compaction, etc."
     }
 
-    pub const CLI_STRING: &str = "-schema";
+    pub const CLI_STRING: &'static str = "-schema";
 
     pub fn parse(cl_args: &mut ParsePayload) -> Result<Self> {
         let params = cl_args.remove(Self::CLI_STRING).unwrap_or_default();

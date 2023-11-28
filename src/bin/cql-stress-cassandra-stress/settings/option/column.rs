@@ -14,7 +14,7 @@ pub struct ColumnOption {
 }
 
 impl ColumnOption {
-    pub const CLI_STRING: &str = "-col";
+    pub const CLI_STRING: &'static str = "-col";
 
     pub fn description() -> &'static str {
         "Column details such as size distribution, names"

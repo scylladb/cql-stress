@@ -13,7 +13,7 @@ pub struct PopulationOption {
 }
 
 impl PopulationOption {
-    pub const CLI_STRING: &str = "-pop";
+    pub const CLI_STRING: &'static str = "-pop";
 
     pub fn description() -> &'static str {
         "Population distribution"
