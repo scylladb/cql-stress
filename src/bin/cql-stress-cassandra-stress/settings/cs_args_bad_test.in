@@ -30,3 +30,9 @@ cassandra-stress write add=FIXED(10)
 # Keysize must be a positive number.
 cassandra-stress write keysize=0
 cassandra-stress write keysize=-1
+
+cassandra-stress mixed ratio(help=1)
+cassandra-stress mixed ratio(mixed=1)
+cassandra-stress mixed ratio()
+cassandra-stress read ratio(read=1,write=2)
+cassandra-stress read clustering=FIXED(2)
