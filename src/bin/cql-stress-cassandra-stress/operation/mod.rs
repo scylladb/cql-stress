@@ -1,4 +1,5 @@
 mod counter_write;
+mod mixed;
 mod read;
 mod row_generator;
 mod write;
@@ -14,6 +15,7 @@ use std::num::Wrapping;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
+pub use mixed::MixedOperationFactory;
 pub use row_generator::RowGeneratorFactory;
 use scylla::{
     frame::response::result::{CqlValue, Row},
