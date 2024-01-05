@@ -149,7 +149,8 @@ async fn prepare_run(
         concurrency,
         rate_limit_per_second: throttle,
         operation_factory,
-        max_retries_per_op: 0,
+        // TODO: adjust when -errors option is supported
+        max_retries_per_op: 9,
     })
 }
 
