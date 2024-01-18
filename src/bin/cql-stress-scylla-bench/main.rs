@@ -42,6 +42,7 @@ use crate::workload::{
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
+        .with_ansi(false)
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("warn")))
         .init();
 
