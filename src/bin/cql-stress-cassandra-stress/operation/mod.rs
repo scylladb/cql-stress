@@ -14,7 +14,6 @@ use std::num::Wrapping;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
-pub use counter_write::CounterWriteOperationFactory;
 pub use row_generator::RowGeneratorFactory;
 use scylla::{
     frame::response::result::{CqlValue, Row},
@@ -117,6 +116,8 @@ pub struct GenericCassandraStressOperationFactory<O: CassandraStressOperation> {
 }
 
 pub type WriteOperationFactory = GenericCassandraStressOperationFactory<write::WriteOperation>;
+pub type CounterWriteOperationFactory =
+    GenericCassandraStressOperationFactory<counter_write::CounterWriteOperation>;
 pub type RegularReadOperationFactory =
     GenericCassandraStressOperationFactory<read::RegularReadOperation>;
 pub type CounterReadOperationFactory =
@@ -131,6 +132,26 @@ impl WriteOperationFactory {
     ) -> Result<Self> {
         let max_operations = settings.command_params.common.operation_count;
         let cs_operation_factory = write::WriteOperationFactory::new(settings, session).await?;
+
+        Ok(Self {
+            cs_operation_factory,
+            max_operations,
+            workload_factory,
+            stats,
+        })
+    }
+}
+
+impl CounterWriteOperationFactory {
+    pub async fn new(
+        settings: Arc<CassandraStressSettings>,
+        session: Arc<Session>,
+        workload_factory: RowGeneratorFactory,
+        stats: Arc<ShardedStats>,
+    ) -> Result<Self> {
+        let max_operations = settings.command_params.common.operation_count;
+        let cs_operation_factory =
+            counter_write::CounterWriteOperationFactory::new(settings, session).await?;
 
         Ok(Self {
             cs_operation_factory,
