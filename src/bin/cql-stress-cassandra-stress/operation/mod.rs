@@ -22,8 +22,8 @@ use scylla::{
     frame::response::result::{CqlValue, Row},
     QueryResult,
 };
-pub use write::WriteOperationFactory;
 
+use crate::settings::CassandraStressSettings;
 use crate::stats::ShardedStats;
 
 use self::row_generator::RowGenerator;
@@ -113,6 +113,27 @@ pub struct GenericCassandraStressOperationFactory<O: CassandraStressOperation> {
     workload_factory: RowGeneratorFactory,
     max_operations: Option<u64>,
     stats: Arc<ShardedStats>,
+}
+
+pub type WriteOperationFactory = GenericCassandraStressOperationFactory<write::WriteOperation>;
+
+impl WriteOperationFactory {
+    pub async fn new(
+        settings: Arc<CassandraStressSettings>,
+        session: Arc<Session>,
+        workload_factory: RowGeneratorFactory,
+        stats: Arc<ShardedStats>,
+    ) -> Result<Self> {
+        let max_operations = settings.command_params.common.operation_count;
+        let cs_operation_factory = write::WriteOperationFactory::new(settings, session).await?;
+
+        Ok(Self {
+            cs_operation_factory,
+            max_operations,
+            workload_factory,
+            stats,
+        })
+    }
 }
 
 impl<O: CassandraStressOperation + 'static> OperationFactory
