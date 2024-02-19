@@ -15,8 +15,6 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 
 pub use counter_write::CounterWriteOperationFactory;
-pub use read::CounterReadOperationFactory;
-pub use read::RegularReadOperationFactory;
 pub use row_generator::RowGeneratorFactory;
 use scylla::{
     frame::response::result::{CqlValue, Row},
@@ -27,6 +25,9 @@ use crate::settings::CassandraStressSettings;
 use crate::stats::ShardedStats;
 
 use self::row_generator::RowGenerator;
+
+const DEFAULT_TABLE_NAME: &str = "standard1";
+const DEFAULT_COUNTER_TABLE_NAME: &str = "counter1";
 
 /// A specific CassandraStress operation.
 ///
@@ -116,6 +117,10 @@ pub struct GenericCassandraStressOperationFactory<O: CassandraStressOperation> {
 }
 
 pub type WriteOperationFactory = GenericCassandraStressOperationFactory<write::WriteOperation>;
+pub type RegularReadOperationFactory =
+    GenericCassandraStressOperationFactory<read::RegularReadOperation>;
+pub type CounterReadOperationFactory =
+    GenericCassandraStressOperationFactory<read::CounterReadOperation>;
 
 impl WriteOperationFactory {
     pub async fn new(
@@ -126,6 +131,47 @@ impl WriteOperationFactory {
     ) -> Result<Self> {
         let max_operations = settings.command_params.common.operation_count;
         let cs_operation_factory = write::WriteOperationFactory::new(settings, session).await?;
+
+        Ok(Self {
+            cs_operation_factory,
+            max_operations,
+            workload_factory,
+            stats,
+        })
+    }
+}
+
+impl RegularReadOperationFactory {
+    pub async fn new(
+        settings: Arc<CassandraStressSettings>,
+        session: Arc<Session>,
+        workload_factory: RowGeneratorFactory,
+        stats: Arc<ShardedStats>,
+    ) -> Result<Self> {
+        let max_operations = settings.command_params.common.operation_count;
+        let cs_operation_factory =
+            read::RegularReadOperationFactory::new(settings, session, DEFAULT_TABLE_NAME).await?;
+
+        Ok(Self {
+            cs_operation_factory,
+            max_operations,
+            workload_factory,
+            stats,
+        })
+    }
+}
+
+impl CounterReadOperationFactory {
+    pub async fn new(
+        settings: Arc<CassandraStressSettings>,
+        session: Arc<Session>,
+        workload_factory: RowGeneratorFactory,
+        stats: Arc<ShardedStats>,
+    ) -> Result<Self> {
+        let max_operations = settings.command_params.common.operation_count;
+        let cs_operation_factory =
+            read::CounterReadOperationFactory::new(settings, session, DEFAULT_COUNTER_TABLE_NAME)
+                .await?;
 
         Ok(Self {
             cs_operation_factory,
