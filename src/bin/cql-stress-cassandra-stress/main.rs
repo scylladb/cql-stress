@@ -113,7 +113,9 @@ async fn prepare_run(
     settings: Arc<CassandraStressSettings>,
     stats: Arc<ShardedStats>,
 ) -> Result<Configuration> {
-    let mut builder = SessionBuilder::new().known_nodes(&settings.node.nodes);
+    let mut builder = SessionBuilder::new()
+        .known_nodes(&settings.node.nodes)
+        .compression(settings.mode.compression);
 
     let default_exec_profile = ExecutionProfile::builder()
         .load_balancing_policy(settings.node.load_balancing_policy())
