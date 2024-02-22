@@ -31,6 +31,7 @@ cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value)
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50) -pop dist=SEQ(1..10)
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=FIXED(50) -pop dist=UNIFORM(1..10)
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=fixed(50) -pop dist=UNIFORM(1..10)
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=fixed(50) -pop seq=1..100
 
 # This tests the case sensitivity of throttle= parameter's value. We should accept both /S and /s.
 cassandra-stress read no-warmup cl=QUORUM duration=600M -rate threads=80 throttle=8000/S
