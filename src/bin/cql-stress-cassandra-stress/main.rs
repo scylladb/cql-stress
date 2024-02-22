@@ -117,6 +117,10 @@ async fn prepare_run(
         .known_nodes(&settings.node.nodes)
         .compression(settings.mode.compression);
 
+    if let Some(creds) = &settings.mode.user_credentials {
+        builder = builder.user(&creds.username, &creds.password);
+    }
+
     let default_exec_profile = ExecutionProfile::builder()
         .load_balancing_policy(settings.node.load_balancing_policy())
         .build();
