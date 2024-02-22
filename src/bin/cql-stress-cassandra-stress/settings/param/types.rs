@@ -1,4 +1,5 @@
 use std::{
+    marker::PhantomData,
     num::{NonZeroU32, NonZeroUsize},
     time::Duration,
 };
@@ -234,6 +235,30 @@ impl Parsable for Box<dyn DistributionFactory> {
                 description.name
             )),
         }
+    }
+}
+
+/// A range syntax (where value1 and value2 parse to type T) is "value1..value2".
+pub struct Range<T: Parsable>(PhantomData<T>);
+
+impl<T: Parsable> Parsable for Range<T> {
+    type Parsed = (T::Parsed, T::Parsed);
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let (from, to) = match s.split_once("..") {
+            Some((from_str, to_str)) => {
+                let from = T::parse(from_str)?;
+                let to = T::parse(to_str)?;
+                (from, to)
+            }
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Invalid range value: Expected syntax is value1..value2"
+                ));
+            }
+        };
+
+        Ok((from, to))
     }
 }
 
