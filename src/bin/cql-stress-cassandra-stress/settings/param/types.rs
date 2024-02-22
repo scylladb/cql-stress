@@ -287,6 +287,17 @@ impl Parsable for ConnectionsPerHost {
     }
 }
 
+pub struct ConnectionsPerShard;
+
+impl Parsable for ConnectionsPerShard {
+    type Parsed = PoolSize;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let value = <NonZeroUsize as Parsable>::parse(s)?;
+        Ok(PoolSize::PerShard(value))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::java_generate::distribution::DistributionFactory;
