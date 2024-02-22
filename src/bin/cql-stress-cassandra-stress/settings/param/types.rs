@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
+use scylla::frame::Compression;
 
 use crate::java_generate::distribution::{
     fixed::FixedDistributionFactory, normal::NormalDistributionFactory,
@@ -259,6 +260,19 @@ impl<T: Parsable> Parsable for Range<T> {
         };
 
         Ok((from, to))
+    }
+}
+
+impl Parsable for Option<Compression> {
+    type Parsed = Option<Compression>;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        match s {
+            "none" => Ok(None),
+            "lz4" => Ok(Some(Compression::Lz4)),
+            "snappy" => Ok(Some(Compression::Snappy)),
+            _ => Err(anyhow::anyhow!("Invalid compression algorithm: {}. Valid compression algorithms: none, lz4, snappy.", s))
+        }
     }
 }
 
