@@ -1,9 +1,12 @@
 use anyhow::Result;
 
 use crate::{
-    java_generate::distribution::DistributionFactory,
+    java_generate::distribution::{sequence::SeqDistributionFactory, DistributionFactory},
     settings::{
-        param::{ParamsParser, SimpleParamHandle},
+        param::{
+            types::{Count, Parsable, Range},
+            ParamsParser, SimpleParamHandle,
+        },
         ParsePayload,
     },
 };
@@ -45,6 +48,19 @@ impl PopulationOption {
         Self {
             pk_seed_distribution,
         }
+    }
+}
+
+/// Cassandra-Stress supports bash-friendly syntax for SEQ distribution: -pop seq=1..10000
+/// This is equivalent to: -pop 'dist=SEQ(1..1000)'
+struct BashFriendlySeqDistribution;
+impl Parsable for BashFriendlySeqDistribution {
+    type Parsed = Box<dyn DistributionFactory>;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let (from, to) = <Range<Count> as Parsable>::parse(s)?;
+        let dist = SeqDistributionFactory::new(from as i64, to as i64)?;
+        Ok(Box::new(dist))
     }
 }
 
