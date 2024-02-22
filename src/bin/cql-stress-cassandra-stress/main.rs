@@ -24,7 +24,7 @@ use operation::{
     CounterReadOperationFactory, CounterWriteOperationFactory, MixedOperationFactory,
     WriteOperationFactory,
 };
-use scylla::{transport::session::PoolSize, ExecutionProfile, Session, SessionBuilder};
+use scylla::{ExecutionProfile, Session, SessionBuilder};
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
 use std::{env, sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;
@@ -125,7 +125,7 @@ async fn prepare_run(
         builder = builder.host_filter(host_filter?)
     }
 
-    builder = builder.pool_size(PoolSize::PerShard(settings.node.shard_connection_count));
+    builder = builder.pool_size(settings.mode.pool_size);
 
     let session = builder.build().await?;
     let session = Arc::new(session);
