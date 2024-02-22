@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
-use scylla::frame::Compression;
+use scylla::{frame::Compression, transport::session::PoolSize};
 
 use crate::java_generate::distribution::{
     fixed::FixedDistributionFactory, normal::NormalDistributionFactory,
@@ -273,6 +273,17 @@ impl Parsable for Option<Compression> {
             "snappy" => Ok(Some(Compression::Snappy)),
             _ => Err(anyhow::anyhow!("Invalid compression algorithm: {}. Valid compression algorithms: none, lz4, snappy.", s))
         }
+    }
+}
+
+pub struct ConnectionsPerHost;
+
+impl Parsable for ConnectionsPerHost {
+    type Parsed = PoolSize;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let value = <NonZeroUsize as Parsable>::parse(s)?;
+        Ok(PoolSize::PerHost(value))
     }
 }
 
