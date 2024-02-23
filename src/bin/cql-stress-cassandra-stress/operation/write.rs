@@ -1,42 +1,56 @@
 use std::{ops::ControlFlow, sync::Arc};
 
-use cql_stress::{
-    configuration::{Operation, OperationContext, OperationFactory},
-    make_runnable,
-};
-
 use anyhow::{Context, Result};
-use scylla::{prepared_statement::PreparedStatement, Session};
+use scylla::{frame::response::result::CqlValue, prepared_statement::PreparedStatement, Session};
 
-use crate::{settings::CassandraStressSettings, stats::ShardedStats};
+use crate::settings::CassandraStressSettings;
 
-use super::row_generator::{RowGenerator, RowGeneratorFactory};
+use super::{
+    row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,
+};
 
 pub struct WriteOperation {
     session: Arc<Session>,
     statement: PreparedStatement,
-    workload: RowGenerator,
-    max_operations: Option<u64>,
-    stats: Arc<ShardedStats>,
 }
 
 pub struct WriteOperationFactory {
     session: Arc<Session>,
     statement: PreparedStatement,
-    workload_factory: RowGeneratorFactory,
-    max_operations: Option<u64>,
-    stats: Arc<ShardedStats>,
 }
 
-impl OperationFactory for WriteOperationFactory {
-    fn create(&self) -> Box<dyn Operation> {
-        Box::new(WriteOperation {
+impl CassandraStressOperation for WriteOperation {
+    type Factory = WriteOperationFactory;
+
+    async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+        let result = self.session.execute(&self.statement, &row).await;
+
+        if let Err(err) = result.as_ref() {
+            tracing::error!(
+                error = %err,
+                partition_key = ?row[0],
+                "write error",
+            );
+        }
+
+        result?;
+
+        Ok(ControlFlow::Continue(()))
+    }
+
+    fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {
+        row_generator.generate_row()
+    }
+}
+
+impl CassandraStressOperationFactory for WriteOperationFactory {
+    type Operation = WriteOperation;
+
+    fn create(&self) -> Self::Operation {
+        WriteOperation {
             session: Arc::clone(&self.session),
             statement: self.statement.clone(),
-            workload: self.workload_factory.create(),
-            max_operations: self.max_operations,
-            stats: Arc::clone(&self.stats),
-        })
+        }
     }
 }
 
@@ -44,8 +58,6 @@ impl WriteOperationFactory {
     pub async fn new(
         settings: Arc<CassandraStressSettings>,
         session: Arc<Session>,
-        workload_factory: RowGeneratorFactory,
-        stats: Arc<ShardedStats>,
     ) -> Result<Self> {
         let mut statement_str = String::from("INSERT INTO standard1 (key");
         for column in settings.column.columns.iter() {
@@ -68,40 +80,6 @@ impl WriteOperationFactory {
             settings.command_params.common.serial_consistency_level,
         ));
 
-        Ok(Self {
-            session,
-            statement,
-            workload_factory,
-            max_operations: settings.command_params.common.operation_count,
-            stats,
-        })
-    }
-}
-
-make_runnable!(WriteOperation);
-impl WriteOperation {
-    async fn execute(&mut self, ctx: &OperationContext) -> Result<ControlFlow<()>> {
-        if self
-            .max_operations
-            .is_some_and(|max_ops| ctx.operation_id >= max_ops)
-        {
-            return Ok(ControlFlow::Break(()));
-        }
-
-        let row = self.workload.generate_row();
-        let result = self.session.execute(&self.statement, &row).await;
-
-        if let Err(err) = result.as_ref() {
-            tracing::error!(
-                error = %err,
-                partition_key = ?row[0],
-                "write error",
-            );
-        }
-
-        self.stats.get_shard_mut().account_operation(ctx, &result);
-        result?;
-
-        Ok(ControlFlow::Continue(()))
+        Ok(Self { session, statement })
     }
 }

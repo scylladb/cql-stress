@@ -28,9 +28,6 @@ use tracing_subscriber::EnvFilter;
 
 use settings::{CassandraStressParsingResult, CassandraStressSettings};
 
-const DEFAULT_TABLE_NAME: &str = "standard1";
-const DEFAULT_COUNTER_TABLE_NAME: &str = "counter1";
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -194,27 +191,13 @@ async fn create_operation_factory(
             WriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::Read => Ok(Arc::new(
-            RegularReadOperationFactory::new(
-                DEFAULT_TABLE_NAME,
-                settings,
-                session,
-                workload_factory,
-                stats,
-            )
-            .await?,
+            RegularReadOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::CounterWrite => Ok(Arc::new(
             CounterWriteOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         Command::CounterRead => Ok(Arc::new(
-            CounterReadOperationFactory::new(
-                DEFAULT_COUNTER_TABLE_NAME,
-                settings,
-                session,
-                workload_factory,
-                stats,
-            )
-            .await?,
+            CounterReadOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         cmd => Err(anyhow::anyhow!(
             "Runtime for command '{}' not implemented yet.",
