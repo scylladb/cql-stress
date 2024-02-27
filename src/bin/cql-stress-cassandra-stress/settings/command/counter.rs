@@ -3,7 +3,7 @@ use anyhow::Result;
 use crate::{
     java_generate::distribution::DistributionFactory,
     settings::{
-        param::{ParamsParser, SimpleParamHandle},
+        param::{ParamHandle, ParamsParser, SimpleParamHandle},
         ParsePayload,
     },
 };
@@ -28,7 +28,35 @@ impl CounterParams {
             counter: Some(CounterParams {
                 add_distribution: add_distribution.get().unwrap(),
             }),
+            mixed: None,
         })
+    }
+}
+
+pub struct CounterParamGroups {
+    pub groups: Vec<Vec<Box<dyn ParamHandle>>>,
+    pub common_handles: CommonParamHandles,
+    pub add_distribution_handle: SimpleParamHandle<Box<dyn DistributionFactory>>,
+}
+
+pub fn add_counter_param_groups(parser: &mut ParamsParser) -> CounterParamGroups {
+    let (mut groups, common_handles) = super::common::add_common_param_groups(parser);
+
+    let add_distribution_handle = parser.distribution_param(
+        "add=",
+        Some("fixed(1)"),
+        "Distribution of value of counter increments",
+        false,
+    );
+
+    for group in groups.iter_mut() {
+        group.push(Box::new(add_distribution_handle.clone()));
+    }
+
+    CounterParamGroups {
+        groups,
+        common_handles,
+        add_distribution_handle,
     }
 }
 
@@ -41,21 +69,17 @@ fn prepare_parser(
 ) {
     let mut parser = ParamsParser::new(cmd);
 
-    let (mut groups, common_handles) = super::common::add_common_param_groups(&mut parser);
+    let mut counter_payload = add_counter_param_groups(&mut parser);
 
-    let add_distribution = parser.distribution_param(
-        "add=",
-        Some("fixed(1)"),
-        "Distribution of value of counter increments",
-        false,
-    );
-
-    for group in groups.iter_mut() {
-        group.push(Box::new(add_distribution.clone()));
+    for group in counter_payload.groups.iter_mut() {
         parser.group(&group.iter().map(|e| e.as_ref()).collect::<Vec<_>>())
     }
 
-    (parser, common_handles, add_distribution)
+    (
+        parser,
+        counter_payload.common_handles,
+        counter_payload.add_distribution_handle,
+    )
 }
 
 pub fn print_help_counter(command_str: &str) {

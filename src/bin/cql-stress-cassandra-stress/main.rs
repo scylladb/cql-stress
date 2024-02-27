@@ -20,7 +20,10 @@ use cql_stress::{
     sharded_stats::Stats as _,
     sharded_stats::StatsFactory as _,
 };
-use operation::{CounterReadOperationFactory, CounterWriteOperationFactory, WriteOperationFactory};
+use operation::{
+    CounterReadOperationFactory, CounterWriteOperationFactory, MixedOperationFactory,
+    WriteOperationFactory,
+};
 use scylla::{transport::session::PoolSize, ExecutionProfile, Session, SessionBuilder};
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
 use std::{env, sync::Arc, time::Duration};
@@ -198,6 +201,9 @@ async fn create_operation_factory(
         )),
         Command::CounterRead => Ok(Arc::new(
             CounterReadOperationFactory::new(settings, session, workload_factory, stats).await?,
+        )),
+        Command::Mixed => Ok(Arc::new(
+            MixedOperationFactory::new(settings, session, workload_factory, stats).await?,
         )),
         cmd => Err(anyhow::anyhow!(
             "Runtime for command '{}' not implemented yet.",

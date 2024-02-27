@@ -380,6 +380,7 @@ pub fn parse_common_params(cmd: &Command, payload: &mut ParsePayload) -> Result<
     Ok(CommandParams {
         common: parse_with_handles(handles),
         counter: None,
+        mixed: None,
     })
 }
 

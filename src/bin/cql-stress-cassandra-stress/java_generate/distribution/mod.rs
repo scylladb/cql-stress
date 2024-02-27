@@ -7,6 +7,7 @@ use thread_local::ThreadLocal;
 
 use super::Random;
 
+pub mod enumerated;
 pub mod fixed;
 pub mod normal;
 pub mod sequence;
