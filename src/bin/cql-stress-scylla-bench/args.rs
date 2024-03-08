@@ -608,6 +608,8 @@ fn parse_consistency_level(s: &str) -> Result<Consistency> {
         "local_quorum" => Consistency::LocalQuorum,
         "each_quorum" => Consistency::EachQuorum,
         "local_one" => Consistency::LocalOne,
+        "serial" => Consistency::Serial,
+        "local_serial" => Consistency::LocalSerial,
         _ => return Err(anyhow::anyhow!("Unknown consistency level: {}", s)),
     };
     Ok(level)
