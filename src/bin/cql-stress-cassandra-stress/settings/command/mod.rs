@@ -13,6 +13,7 @@ mod common;
 mod counter;
 mod help;
 mod mixed;
+mod user;
 
 use self::common::{parse_common_params, print_help_common};
 use self::counter::print_help_counter;
