@@ -638,6 +638,8 @@ fn show_consistency_level(cl: &Consistency) -> &'static str {
         Consistency::LocalQuorum => "local_quorum",
         Consistency::EachQuorum => "each_quorum",
         Consistency::LocalOne => "local_one",
+        Consistency::Serial => "serial",
+        Consistency::LocalSerial => "local_serial",
     }
 }
 

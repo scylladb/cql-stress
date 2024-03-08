@@ -78,7 +78,7 @@ impl GeneratorConfig {
         size_distribution: Option<Box<dyn Distribution>>,
     ) -> Self {
         let bytes = seed_str.as_bytes();
-        let salt = Murmur3Partitioner::hash(bytes);
+        let salt = Murmur3Partitioner.hash_one(bytes);
         Self {
             salt: salt.value,
             identity_distribution,
