@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::{stream, StreamExt, TryStreamExt};
 use scylla::cql_to_rust::FromRow;
-use scylla::frame::value::{Counter, SerializedValues};
+use scylla::frame::value::Counter;
 use scylla::{prepared_statement::PreparedStatement, Session};
 
 use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
@@ -154,10 +154,10 @@ impl ReadOperation {
             None => return Ok(ControlFlow::Break(())),
         };
 
-        let mut values = SerializedValues::new();
-        values.add_value(&pk)?;
+        let mut values = Vec::with_capacity(cks.len() + 1);
+        values.push(pk);
         for ck in cks.iter() {
-            values.add_value(ck)?;
+            values.push(*ck);
         }
 
         let stmt = self.statements[self.current_statement_idx].clone();
@@ -186,7 +186,7 @@ impl ReadOperation {
         rctx: &mut ReadContext,
         pk: i64,
         stmt: PreparedStatement,
-        values: SerializedValues,
+        values: Vec<i64>,
     ) -> Result<ControlFlow<()>> {
         let mut iter = self.session.execute_iter(stmt, values).await?;
 

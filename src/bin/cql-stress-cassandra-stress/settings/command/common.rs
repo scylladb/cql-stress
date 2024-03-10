@@ -94,6 +94,8 @@ pub enum ConsistencyLevel {
     Two,
     Three,
     LocalOne,
+    Serial,
+    LocalSerial,
 }
 
 impl ConsistencyLevel {
@@ -112,6 +114,8 @@ impl ConsistencyLevel {
             ConsistencyLevel::Two => Consistency::Two,
             ConsistencyLevel::Three => Consistency::Three,
             ConsistencyLevel::LocalOne => Consistency::LocalOne,
+            ConsistencyLevel::Serial => Consistency::Serial,
+            ConsistencyLevel::LocalSerial => Consistency::LocalSerial,
         }
     }
 }
