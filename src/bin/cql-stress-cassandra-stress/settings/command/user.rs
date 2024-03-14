@@ -67,3 +67,11 @@ impl Parsable for UserProfile {
         Ok(profile)
     }
 }
+
+pub struct UserParams {
+    pub keyspace: String,
+    pub keyspace_definition: Option<String>,
+    pub table: String,
+    pub table_definition: Option<String>,
+    pub queries: HashMap<String, QueryDefinition>,
+}
