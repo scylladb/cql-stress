@@ -39,6 +39,7 @@ pub enum Command {
     CounterWrite,
     CounterRead,
     Mixed,
+    User,
 }
 
 impl Command {
@@ -53,6 +54,7 @@ impl Command {
             }
             Command::CounterWrite => Ok(Some(CounterParams::parse(self, payload)?)),
             Command::Mixed => Ok(Some(MixedParams::parse(self, payload)?)),
+            Command::User => Ok(Some(UserParams::parse(self, payload)?)),
             Command::Help => {
                 parse_help_command(payload)?;
                 Ok(None)
@@ -71,6 +73,7 @@ impl Command {
             Command::CounterWrite => "Multiple concurrent updates of counters.",
             Command::CounterRead => "Multiple concurrent reads of counters. The cluster must first be populated by a counterwrite test.",
             Command::Mixed => "Interleaving of any basic commands, with configurable ratio and distribution - the cluster must first be populated by a write test.",
+            Command::User => "Interleaving of user provided queries, with configurable ratio and distribution - the cluster must first be populated by a write test.",
             Command::Help => "Print help for a command or option",
         };
 
@@ -89,6 +92,7 @@ impl Command {
             Command::Read | Command::Write | Command::CounterRead => print_help_common(self.show()),
             Command::CounterWrite => print_help_counter(self.show()),
             Command::Mixed => print_help_mixed(self.show()),
+            Command::User => UserParams::print_help(self.show()),
             Command::Help => help::print_help(),
         }
     }
