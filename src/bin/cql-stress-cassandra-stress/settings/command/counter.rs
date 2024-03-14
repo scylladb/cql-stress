@@ -29,6 +29,7 @@ impl CounterParams {
                 add_distribution: add_distribution.get().unwrap(),
             }),
             mixed: None,
+            user: None,
         })
     }
 }

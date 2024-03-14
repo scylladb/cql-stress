@@ -20,6 +20,7 @@ use self::counter::print_help_counter;
 use self::counter::CounterParams;
 use self::mixed::print_help_mixed;
 use self::mixed::MixedParams;
+use self::user::UserParams;
 pub use help::print_help;
 
 use super::ParsePayload;
@@ -98,6 +99,7 @@ pub struct CommandParams {
     pub common: CommonParams,
     pub counter: Option<CounterParams>,
     pub mixed: Option<MixedParams>,
+    pub user: Option<UserParams>,
 }
 
 impl CommandParams {
