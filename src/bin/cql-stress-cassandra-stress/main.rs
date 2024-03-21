@@ -162,30 +162,45 @@ async fn prepare_run(
 }
 
 async fn create_schema(session: &Session, settings: &CassandraStressSettings) -> Result<()> {
-    session
-        .query(settings.schema.construct_keyspace_creation_query(), ())
-        .await?;
-    session
-        .use_keyspace(&settings.schema.keyspace, true)
-        .await?;
-    session
-        .query(
+    match settings.command {
+        Command::User => {
+            // 'user' command provided. This unwrap is safe.
             settings
-                .schema
-                .construct_table_creation_query(&settings.column.columns),
-            (),
-        )
-        .await
-        .context("Failed to create standard table")?;
-    session
-        .query(
-            settings
-                .schema
-                .construct_counter_table_creation_query(&settings.column.columns),
-            (),
-        )
-        .await
-        .context("Failed to create counter table")?;
+                .command_params
+                .user
+                .as_ref()
+                .unwrap()
+                .create_schema(session)
+                .await?;
+        }
+        _ => {
+            session
+                .query(settings.schema.construct_keyspace_creation_query(), ())
+                .await?;
+            session
+                .use_keyspace(&settings.schema.keyspace, true)
+                .await?;
+            session
+                .query(
+                    settings
+                        .schema
+                        .construct_table_creation_query(&settings.column.columns),
+                    (),
+                )
+                .await
+                .context("Failed to create standard table")?;
+            session
+                .query(
+                    settings
+                        .schema
+                        .construct_counter_table_creation_query(&settings.column.columns),
+                    (),
+                )
+                .await
+                .context("Failed to create counter table")?;
+        }
+    }
+
     Ok(())
 }
 

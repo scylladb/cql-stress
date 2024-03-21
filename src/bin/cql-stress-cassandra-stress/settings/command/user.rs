@@ -2,6 +2,7 @@ use std::{collections::HashMap, fs::File};
 
 use anyhow::{Context, Result};
 use scylla::statement::{Consistency, SerialConsistency};
+use scylla::Session;
 use serde::{Deserialize, Serialize};
 
 use crate::settings::{
@@ -98,6 +99,25 @@ impl UserParams {
     pub fn print_help(command_str: &str) {
         let (parser, _, _) = prepare_parser(command_str);
         parser.print_help();
+    }
+
+    pub async fn create_schema(&self, session: &Session) -> Result<()> {
+        if let Some(keyspace_definition) = &self.keyspace_definition {
+            session
+                .query(keyspace_definition.as_str(), ())
+                .await
+                .context("Failed to create keyspace based on user profile")?;
+        }
+        session.use_keyspace(&self.keyspace, true).await?;
+
+        if let Some(table_definition) = &self.table_definition {
+            session
+                .query(table_definition.as_str(), ())
+                .await
+                .context("Failed to create table based on user profile")?;
+        }
+
+        Ok(())
     }
 
     fn parse_with_handles(handles: UserParamHandles) -> Result<Self> {
