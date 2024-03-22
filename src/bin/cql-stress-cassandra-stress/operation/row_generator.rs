@@ -134,6 +134,7 @@ impl RowGeneratorFactory {
                     self.settings.command_params.common.keysize.get() as i64,
                 ))),
             ),
+            String::from("key"),
         );
 
         let column_generators = self
@@ -149,6 +150,7 @@ impl RowGeneratorFactory {
                         None,
                         Some(self.settings.column.size_distribution.create()),
                     ),
+                    column.to_owned(),
                 )
             })
             .collect();

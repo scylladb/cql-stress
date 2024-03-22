@@ -23,10 +23,13 @@ pub struct Generator {
     identity_distribution: Box<dyn Distribution>,
     size_distribution: Box<dyn Distribution>,
     gen: Box<dyn ValueGenerator>,
+    // Allow unused in case `user-profile` feature is not enabled.
+    #[allow(unused)]
+    col_name: String,
 }
 
 impl Generator {
-    pub fn new(gen: Box<dyn ValueGenerator>, config: GeneratorConfig) -> Self {
+    pub fn new(gen: Box<dyn ValueGenerator>, config: GeneratorConfig, col_name: String) -> Self {
         let salt = config.salt;
         let identity_distribution = match config.identity_distribution {
             Some(dist) => dist,
@@ -42,6 +45,7 @@ impl Generator {
             identity_distribution,
             size_distribution,
             gen,
+            col_name,
         }
     }
 
@@ -83,6 +87,11 @@ impl Generator {
             self.identity_distribution.as_mut(),
             self.size_distribution.as_mut(),
         )
+    }
+
+    #[cfg(feature = "user-profile")]
+    pub fn get_col_name(&self) -> &str {
+        &self.col_name
     }
 
     /// See https://github.com/scylladb/scylla-tools-java/blob/master/tools/stress/src/org/apache/cassandra/stress/generate/values/Generator.java#L59
@@ -151,7 +160,7 @@ mod tests {
         // "randomstr<column_name>" is the seed string passed to the generator.
         // It used used to compute the salt which is applied to the seed when seeding underlying rng.
         let config = GeneratorConfig::new("randomstrC0", None, None);
-        let gen = Generator::new(Box::new(blob_gen), config);
+        let gen = Generator::new(Box::new(blob_gen), config, String::from("C0"));
         // This value was computed using Java's implementation of Generator.
         assert_eq!(gen.salt, 5919258029671157411);
     }
