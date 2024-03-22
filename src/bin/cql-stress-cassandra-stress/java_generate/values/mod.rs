@@ -1,8 +1,13 @@
 use super::distribution::{uniform::UniformDistribution, Distribution};
+#[cfg(feature = "user-profile")]
+use scylla::transport::topology::CqlType;
 use scylla::{
     frame::response::result::CqlValue,
     transport::partitioner::{Murmur3Partitioner, Partitioner},
 };
+
+#[cfg(feature = "user-profile")]
+use anyhow::Result;
 
 pub mod blob;
 pub mod hex_blob;
@@ -37,6 +42,35 @@ impl Generator {
             identity_distribution,
             size_distribution,
             gen,
+        }
+    }
+
+    #[cfg(feature = "user-profile")]
+    pub fn new_generator_factory_from_cql_type(
+        typ: &CqlType,
+    ) -> Result<Box<dyn ValueGeneratorFactory>> {
+        use self::blob::BlobFactory;
+
+        match typ {
+            CqlType::Native(native_type) => match native_type {
+                scylla::transport::topology::NativeType::Blob => Ok(Box::new(BlobFactory)),
+                _ => anyhow::bail!(
+                    "Column type {:?} is not yet supported by the tool!",
+                    native_type
+                ),
+            },
+            CqlType::Collection { .. } => anyhow::bail!(
+                "Unsupported column type: {:?}. Collection types are not yet supported by the tool!",
+                typ
+            ),
+            CqlType::Tuple(_) => anyhow::bail!(
+                "Unsupported column type: {:?}. Tuples are not yet supported by the tool!",
+                typ
+            ),
+            CqlType::UserDefinedType { .. } => anyhow::bail!(
+                "Unsupported column type: {:?}. UDTs are not yet supported by the tool!",
+                typ
+            ),
         }
     }
 
