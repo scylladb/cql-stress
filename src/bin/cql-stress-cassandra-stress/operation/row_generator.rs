@@ -76,8 +76,8 @@ use super::recompute_seed;
 /// and then validate it using Java's implementation of c-s (and vice-versa).
 pub struct RowGenerator {
     pk_seed_distribution: Arc<dyn Distribution>,
-    pk_generator: Generator<HexBlob>,
-    column_generators: Vec<Generator<Blob>>,
+    pk_generator: Generator,
+    column_generators: Vec<Generator>,
 }
 
 pub struct RowGeneratorFactory {
@@ -126,7 +126,7 @@ impl RowGeneratorFactory {
     pub fn create(&self) -> RowGenerator {
         // See https://github.com/scylladb/scylla-tools-java/blob/master/tools/stress/src/org/apache/cassandra/stress/settings/SettingsCommandPreDefined.java#L77.
         let pk_generator = Generator::new(
-            HexBlob,
+            Box::new(HexBlob),
             GeneratorConfig::new(
                 "randomstrkey",
                 None,
@@ -143,7 +143,7 @@ impl RowGeneratorFactory {
             .iter()
             .map(|column| {
                 Generator::new(
-                    Blob::default(),
+                    Box::<Blob>::default(),
                     GeneratorConfig::new(
                         &format!("randomstr{}", column),
                         None,

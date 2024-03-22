@@ -13,15 +13,15 @@ pub use hex_blob::HexBlob;
 /// Generic generator of random values.
 /// Holds the distributions that the seeds and sizes are sampled from.
 /// Wraps the actual generator which makes use of the distributions.
-pub struct Generator<T: ValueGenerator> {
+pub struct Generator {
     salt: i64,
     identity_distribution: Box<dyn Distribution>,
     size_distribution: Box<dyn Distribution>,
-    gen: T,
+    gen: Box<dyn ValueGenerator>,
 }
 
-impl<T: ValueGenerator> Generator<T> {
-    pub fn new(gen: T, config: GeneratorConfig) -> Self {
+impl Generator {
+    pub fn new(gen: Box<dyn ValueGenerator>, config: GeneratorConfig) -> Self {
         let salt = config.salt;
         let identity_distribution = match config.identity_distribution {
             Some(dist) => dist,
@@ -88,7 +88,7 @@ impl GeneratorConfig {
 }
 
 /// The actual value Generator trait.
-pub trait ValueGenerator {
+pub trait ValueGenerator: Send + Sync + 'static {
     fn generate(
         &mut self,
         identity_distribution: &mut dyn Distribution,
@@ -106,7 +106,7 @@ mod tests {
         // "randomstr<column_name>" is the seed string passed to the generator.
         // It used used to compute the salt which is applied to the seed when seeding underlying rng.
         let config = GeneratorConfig::new("randomstrC0", None, None);
-        let gen = Generator::new(blob_gen, config);
+        let gen = Generator::new(Box::new(blob_gen), config);
         // This value was computed using Java's implementation of Generator.
         assert_eq!(gen.salt, 5919258029671157411);
     }

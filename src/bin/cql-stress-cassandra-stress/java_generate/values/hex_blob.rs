@@ -76,7 +76,7 @@ mod tests {
             Some(Box::new(FixedDistribution::new(10))),
         );
         let hex_blob = HexBlob;
-        let mut gen = Generator::new(hex_blob, config);
+        let mut gen = Generator::new(Box::new(hex_blob), config);
 
         // -pop seq=1..5
         // Samples from this distrubtion are the seeds to the partition key generator.
@@ -134,7 +134,7 @@ mod tests {
             Some(Box::new(FixedDistribution::new(50))),
         );
         let hex_blob = HexBlob;
-        let mut gen = Generator::new(hex_blob, config);
+        let mut gen = Generator::new(Box::new(hex_blob), config);
 
         // -pop seq=1..5
         // Samples from this distrubtion are the seeds to the partition key generator.
