@@ -20,6 +20,7 @@ use crate::settings::command::print_help;
 
 use self::command::parse_command;
 use self::option::ColumnOption;
+use self::option::ModeOption;
 use self::option::NodeOption;
 use self::option::PopulationOption;
 use self::option::RateOption;
@@ -30,6 +31,7 @@ pub struct CassandraStressSettings {
     pub command_params: CommandParams,
     pub node: NodeOption,
     pub rate: RateOption,
+    pub mode: ModeOption,
     pub schema: SchemaOption,
     pub column: ColumnOption,
     pub population: PopulationOption,
@@ -40,6 +42,7 @@ impl CassandraStressSettings {
         println!("******************** Stress Settings ********************");
         self.command_params.print_settings(&self.command);
         self.rate.print_settings();
+        self.mode.print_settings();
         self.node.print_settings();
         self.schema.print_settings();
         self.column.print_settings();
@@ -162,6 +165,7 @@ where
 
         let node = NodeOption::parse(&mut payload)?;
         let rate = RateOption::parse(&mut payload)?;
+        let mode = ModeOption::parse(&mut payload)?;
         let schema = SchemaOption::parse(&mut payload)?;
         let column = ColumnOption::parse(&mut payload)?;
 
@@ -199,6 +203,7 @@ where
                 command_params,
                 node,
                 rate,
+                mode,
                 schema,
                 column,
                 population,

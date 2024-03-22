@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
+use scylla::{frame::Compression, transport::session::PoolSize};
 
 use crate::java_generate::distribution::{
     fixed::FixedDistributionFactory, normal::NormalDistributionFactory,
@@ -259,6 +260,41 @@ impl<T: Parsable> Parsable for Range<T> {
         };
 
         Ok((from, to))
+    }
+}
+
+impl Parsable for Option<Compression> {
+    type Parsed = Option<Compression>;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        match s {
+            "none" => Ok(None),
+            "lz4" => Ok(Some(Compression::Lz4)),
+            "snappy" => Ok(Some(Compression::Snappy)),
+            _ => Err(anyhow::anyhow!("Invalid compression algorithm: {}. Valid compression algorithms: none, lz4, snappy.", s))
+        }
+    }
+}
+
+pub struct ConnectionsPerHost;
+
+impl Parsable for ConnectionsPerHost {
+    type Parsed = PoolSize;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let value = <NonZeroUsize as Parsable>::parse(s)?;
+        Ok(PoolSize::PerHost(value))
+    }
+}
+
+pub struct ConnectionsPerShard;
+
+impl Parsable for ConnectionsPerShard {
+    type Parsed = PoolSize;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let value = <NonZeroUsize as Parsable>::parse(s)?;
+        Ok(PoolSize::PerShard(value))
     }
 }
 

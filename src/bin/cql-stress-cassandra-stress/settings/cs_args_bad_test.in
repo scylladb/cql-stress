@@ -15,7 +15,6 @@ cassandra-stress read -schema replication(factor==123)
 cassandra-stress read -schema replication(factor=1,=)
 cassandra-stress counter_write cl=QUORUM duration=20m -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3)' no-warmup
 cassandra-stress write -rate keyspace=keyspace2
-cassandra-stress counter_write no-warmup cl=ALL duration=20m -schema replication(replication_factor=3) keyspace=keyspace2 -node shard-connection-count=0
 cassandra-stress write -col size=FIXED(1..10)
 cassandra-stress write -col size=UNIFORM(50)
 cassandra-stress write -col size=SEQ(1..10,50)
@@ -26,6 +25,14 @@ cassandra-stress write -pop dist=SEQ(1..10) seq=1..10
 cassandra-stress write -pop seq=aa..bb
 cassandra-stress write -pop seq=1.10
 cassandra-stress write add=FIXED(10)
+cassandra-stress write -mode connectionsPerHost=3 connectionsPerShard=3
+cassandra-stress write -mode connectionPerShard=0
+cassandra-stress write -mode connectionPerShard=-1
+cassandra-stress write -mode compression=foo
+
+# One of the user/password is set, when the other one is not specified
+cassandra-stress write -mode user=cassandra
+cassandra-stress write -mode password=cassandra
 
 # Keysize must be a positive number.
 cassandra-stress write keysize=0

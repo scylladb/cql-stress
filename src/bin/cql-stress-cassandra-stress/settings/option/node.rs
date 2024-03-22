@@ -1,7 +1,6 @@
 use std::{
     fs::File,
     io::{self, BufRead},
-    num::NonZeroUsize,
     sync::Arc,
 };
 
@@ -18,7 +17,6 @@ use crate::settings::{
 
 pub struct NodeOption {
     pub nodes: Vec<String>,
-    pub shard_connection_count: NonZeroUsize,
     pub whitelist: bool,
     pub datacenter: Option<String>,
 }
@@ -45,14 +43,12 @@ impl NodeOption {
     pub fn print_settings(&self) {
         println!("Node:");
         println!("  Nodes: {:?}", self.nodes);
-        println!("  Shard connection count: {}", self.shard_connection_count);
         println!("  Is White List: {}", self.whitelist);
         println!("  Datacenter: {:?}", self.datacenter);
     }
 
     fn from_handles(handles: NodeParamHandles) -> Result<NodeOption> {
         let datacenter = handles.datacenter.get();
-        let shard_connection_count = handles.shard_connection_count.get().unwrap();
         let whitelist = handles.whitelist.get().is_some();
         let file = handles.file.get();
         let nodes = handles.nodes.get();
@@ -66,7 +62,6 @@ impl NodeOption {
 
         Ok(Self {
             nodes,
-            shard_connection_count,
             whitelist,
             datacenter,
         })
@@ -94,7 +89,6 @@ impl NodeOption {
 
 struct NodeParamHandles {
     datacenter: SimpleParamHandle<String>,
-    shard_connection_count: SimpleParamHandle<NonZeroUsize>,
     whitelist: SimpleParamHandle<bool>,
     file: SimpleParamHandle<String>,
     nodes: SimpleParamHandle<CommaDelimitedList>,
@@ -107,12 +101,6 @@ fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
         "datacenter=",
         None,
         "Preferred datacenter for the default load balancing policy",
-        false,
-    );
-    let shard_connection_count = parser.simple_param(
-        "shard-connection-count=",
-        Some("1"),
-        "number of connections per shard",
         false,
     );
     let whitelist = parser.simple_param(
@@ -130,17 +118,16 @@ fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
     );
 
     // $ ./cassandra-stress help -node
-    // Usage: -node [datacenter=?] [shard-connection-count=?] [whitelist] []
+    // Usage: -node [datacenter=?] [whitelist] []
     //  OR
-    // Usage: -node [datacenter=?] [shard-connection-count=?] [whitelist] [file=?]
-    parser.group(&[&datacenter, &shard_connection_count, &whitelist, &nodes]);
-    parser.group(&[&datacenter, &shard_connection_count, &whitelist, &file]);
+    // Usage: -node [datacenter=?] [whitelist] [file=?]
+    parser.group(&[&datacenter, &whitelist, &nodes]);
+    parser.group(&[&datacenter, &whitelist, &file]);
 
     (
         parser,
         NodeParamHandles {
             datacenter,
-            shard_connection_count,
             whitelist,
             file,
             nodes,
@@ -160,7 +147,6 @@ fn read_nodes_from_file(filename: &str) -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
 
     use node::NodeOption;
 
@@ -177,7 +163,6 @@ mod tests {
 
         let params = NodeOption::from_handles(handles).unwrap();
         assert_eq!(None, params.datacenter);
-        assert_eq!(NonZeroUsize::new(1).unwrap(), params.shard_connection_count);
         assert!(params.whitelist);
         assert_eq!(vec!["127.0.0.1", "localhost", "192.168.0.1"], params.nodes);
     }

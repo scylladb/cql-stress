@@ -1,4 +1,5 @@
 mod column;
+mod mode;
 mod node;
 mod population;
 mod rate;
@@ -7,6 +8,7 @@ mod schema;
 use anyhow::Result;
 
 pub use column::ColumnOption;
+pub use mode::ModeOption;
 pub use node::NodeOption;
 pub use population::PopulationOption;
 pub use rate::RateOption;
@@ -20,6 +22,7 @@ impl Options {
         [
             (NodeOption::CLI_STRING, NodeOption::description()),
             (RateOption::CLI_STRING, RateOption::description()),
+            (ModeOption::CLI_STRING, ModeOption::description()),
             (SchemaOption::CLI_STRING, SchemaOption::description()),
             (ColumnOption::CLI_STRING, ColumnOption::description()),
             (
@@ -44,6 +47,7 @@ impl Options {
             SchemaOption::CLI_STRING => SchemaOption::print_help(),
             ColumnOption::CLI_STRING => ColumnOption::print_help(),
             PopulationOption::CLI_STRING => PopulationOption::print_help(),
+            ModeOption::CLI_STRING => ModeOption::print_help(),
             _ => return Err(anyhow::anyhow!("Invalid option provided to command help")),
         }
 
