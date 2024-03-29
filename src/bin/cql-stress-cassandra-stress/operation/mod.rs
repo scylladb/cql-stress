@@ -2,6 +2,8 @@ mod counter_write;
 mod mixed;
 mod read;
 mod row_generator;
+#[cfg(feature = "user-profile")]
+mod user;
 mod write;
 
 use anyhow::Result;
@@ -21,6 +23,8 @@ use scylla::{
     frame::response::result::{CqlValue, Row},
     QueryResult,
 };
+#[cfg(feature = "user-profile")]
+pub use user::UserOperationFactory;
 
 use crate::settings::CassandraStressSettings;
 use crate::stats::ShardedStats;
