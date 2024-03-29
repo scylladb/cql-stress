@@ -227,7 +227,7 @@ fn recompute_seed(seed: i64, partition_key: &CqlValue) -> i64 {
         CqlValue::Blob(key) => {
             let mut wrapped = Wrapping(seed);
             for byte in key {
-                wrapped = (wrapped * Wrapping(31)) + Wrapping(*byte as i64);
+                wrapped = (wrapped * Wrapping(31)) + Wrapping((*byte as i8) as i64);
             }
             wrapped.0
         }
