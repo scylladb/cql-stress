@@ -7,6 +7,8 @@ use crate::{
     },
     settings::CassandraStressSettings,
 };
+#[cfg(feature = "user-profile")]
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::recompute_seed;
@@ -78,6 +80,40 @@ pub struct RowGenerator {
     pk_seed_distribution: Arc<dyn Distribution>,
     pk_generator: Generator,
     column_generators: Vec<Generator>,
+    // Map column name to the index of generated value in resulting vector.
+    #[cfg(feature = "user-profile")]
+    index_map: HashMap<String, usize>,
+}
+
+impl RowGenerator {
+    pub fn new(
+        pk_seed_distribution: Arc<dyn Distribution>,
+        pk_generator: Generator,
+        column_generators: Vec<Generator>,
+    ) -> Self {
+        #[cfg(feature = "user-profile")]
+        let index_map = HashMap::from_iter(
+            std::iter::once(&pk_generator)
+                .chain(column_generators.iter())
+                .map(|generator| generator.get_col_name().to_owned())
+                .enumerate()
+                .map(|(i, col)| (col, i)),
+        );
+
+        Self {
+            pk_seed_distribution,
+            pk_generator,
+            column_generators,
+            #[cfg(feature = "user-profile")]
+            index_map,
+        }
+    }
+
+    /// Returns the index of corresponding column's value in generated rows.
+    #[cfg(feature = "user-profile")]
+    pub fn row_index_of_column_with_name(&self, name: &str) -> Option<usize> {
+        self.index_map.get(name).copied()
+    }
 }
 
 pub struct RowGeneratorFactory {
@@ -155,10 +191,10 @@ impl RowGeneratorFactory {
             })
             .collect();
 
-        RowGenerator {
-            pk_seed_distribution: Arc::clone(&self.pk_seed_distribution),
+        RowGenerator::new(
+            Arc::clone(&self.pk_seed_distribution),
             pk_generator,
             column_generators,
-        }
+        )
     }
 }
