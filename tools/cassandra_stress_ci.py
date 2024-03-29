@@ -52,3 +52,9 @@ def test_user_blob_type(default_runtime_args, scylla_docker_node,
                         cassandra_stress, cql_stress):
     run_user(runtime_args=default_runtime_args, type_name="blob",
              node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
+
+
+def test_user_text_type(default_runtime_args, scylla_docker_node,
+                        cassandra_stress, cql_stress):
+    run_user(runtime_args=default_runtime_args, type_name="text",
+             node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)

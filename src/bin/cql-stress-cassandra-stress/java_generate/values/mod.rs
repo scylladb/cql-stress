@@ -12,6 +12,9 @@ use anyhow::Result;
 pub mod blob;
 pub mod hex_blob;
 
+#[cfg(feature = "user-profile")]
+pub mod text;
+
 pub use blob::Blob;
 pub use hex_blob::HexBlob;
 
@@ -54,10 +57,12 @@ impl Generator {
         typ: &CqlType,
     ) -> Result<Box<dyn ValueGeneratorFactory>> {
         use self::blob::BlobFactory;
+        use text::TextFactory;
 
         match typ {
             CqlType::Native(native_type) => match native_type {
                 scylla::transport::topology::NativeType::Blob => Ok(Box::new(BlobFactory)),
+                scylla::transport::topology::NativeType::Text => Ok(Box::new(TextFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type

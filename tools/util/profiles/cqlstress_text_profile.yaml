@@ -1,0 +1,19 @@
+table: test_table
+
+table_definition: |
+  CREATE TABLE IF NOT EXISTS test_table (
+    pkey blob PRIMARY KEY,
+    c1 text,
+    c2 text,
+    c3 text
+   );
+
+keyspace: cqlstress_text_keyspace
+
+keyspace_definition: |
+  CREATE KEYSPACE IF NOT EXISTS cqlstress_text_keyspace 
+  WITH replication = { 'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
+
+queries:
+  test_query:
+    cql: INSERT INTO cqlstress_text_keyspace.test_table (pkey, c1, c2, c3) VALUES (?, ?, ?, ?)
