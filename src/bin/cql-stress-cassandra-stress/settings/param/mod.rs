@@ -105,7 +105,7 @@ impl<P: ParamImpl> GenericParam for TypedParam<P> {
 
     fn try_match(&self, arg: &str) -> bool {
         // Common logic for all types of parameters.
-        arg.to_lowercase().starts_with(self.prefix)
+        arg.to_lowercase().starts_with(&self.prefix.to_lowercase())
     }
 
     fn set_satisfied(&mut self) {
