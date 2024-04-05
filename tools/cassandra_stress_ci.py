@@ -82,3 +82,7 @@ def test_user_bigint_type(default_runtime_args, scylla_docker_node,
                           cassandra_stress, cql_stress):
     run_user(runtime_args=default_runtime_args, type_name="bigint",
              node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
+
+
+# Test for booleans is missing, since we are not compatible with original c-s.
+# C-s has a bug and always generates `true` value.
