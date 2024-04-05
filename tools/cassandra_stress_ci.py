@@ -86,3 +86,15 @@ def test_user_bigint_type(default_runtime_args, scylla_docker_node,
 
 # Test for booleans is missing, since we are not compatible with original c-s.
 # C-s has a bug and always generates `true` value.
+
+
+def test_user_float_type(default_runtime_args, scylla_docker_node,
+                         cassandra_stress, cql_stress):
+    run_user(runtime_args=default_runtime_args, type_name="float",
+             node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
+
+
+def test_user_double_type(default_runtime_args, scylla_docker_node,
+                          cassandra_stress, cql_stress):
+    run_user(runtime_args=default_runtime_args, type_name="double",
+             node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
