@@ -1,9 +1,13 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use cql_stress::distribution::{parse_description, SyntaxFlavor};
 
 use crate::{
     java_generate::distribution::DistributionFactory,
     settings::{
-        param::{types::CommaDelimitedList, ParamsParser, SimpleParamHandle},
+        param::{
+            types::{CommaDelimitedList, Parsable},
+            ParamsParser, SimpleParamHandle,
+        },
         ParsePayload,
     },
 };
@@ -57,9 +61,43 @@ impl ColumnOption {
     }
 }
 
+/// A type for parsing `-col n=` parameter.
+///
+/// In cassandra-stress, CLI originally accepts a distribution.
+/// However, it only supports FIXED(?) distribution. Other distributions
+/// are supported only for thrift mode, which is not supported by the
+/// rust driver.
+///
+/// It would make much more sense to accept simply a u64 value instead of distribution.
+/// OTOH, we want cql-stress CLI to be compatible with original c-s CLI.
+/// This is why this type is introduced, so the users can choose between
+/// providing either u64 value or FIXED(?) distribution.
+struct ColumnCount;
+
+impl Parsable for ColumnCount {
+    type Parsed = u64;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        let parse_u64_result = u64::parse(s);
+        if parse_u64_result.is_ok() {
+            return parse_u64_result;
+        }
+
+        || -> Result<u64, anyhow::Error> {
+            let s = &s.to_lowercase();
+            let description = parse_description(s, SyntaxFlavor::Classic)
+                .context("Failed to parse distribution description.")?;
+            anyhow::ensure!(description.name == "fixed", "Expected FIXED distribution.");
+            description.check_argument_count(1)?;
+            u64::parse(description.args[0]).context("Failed to parse u64 value")
+        }()
+        .context("Invalid value. Available values are either <u64> or FIXED(<u64>).")
+    }
+}
+
 struct ColumnParamHandles {
     names: SimpleParamHandle<CommaDelimitedList>,
-    columns_count: SimpleParamHandle<u64>,
+    columns_count: SimpleParamHandle<ColumnCount>,
     size_distribution: SimpleParamHandle<Box<dyn DistributionFactory>>,
 }
 
