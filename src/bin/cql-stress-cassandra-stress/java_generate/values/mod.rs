@@ -17,6 +17,8 @@ pub mod boolean;
 #[cfg(feature = "user-profile")]
 pub mod float;
 #[cfg(feature = "user-profile")]
+pub mod inet;
+#[cfg(feature = "user-profile")]
 pub mod int;
 #[cfg(feature = "user-profile")]
 pub mod text;
@@ -65,6 +67,7 @@ impl Generator {
         use self::blob::BlobFactory;
         use boolean::BooleanFactory;
         use float::{DoubleFactory, FloatFactory};
+        use inet::InetFactory;
         use int::{BigIntFactory, IntFactory, SmallIntFactory, TinyIntFactory};
         use text::TextFactory;
 
@@ -79,6 +82,7 @@ impl Generator {
                 scylla::transport::topology::NativeType::Boolean => Ok(Box::new(BooleanFactory)),
                 scylla::transport::topology::NativeType::Float => Ok(Box::new(FloatFactory)),
                 scylla::transport::topology::NativeType::Double => Ok(Box::new(DoubleFactory)),
+                scylla::transport::topology::NativeType::Inet => Ok(Box::new(InetFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type
