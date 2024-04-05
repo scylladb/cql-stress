@@ -58,3 +58,27 @@ def test_user_text_type(default_runtime_args, scylla_docker_node,
                         cassandra_stress, cql_stress):
     run_user(runtime_args=default_runtime_args, type_name="text",
              node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
+
+
+def test_user_tinyint_type(default_runtime_args, scylla_docker_node,
+                           cassandra_stress, cql_stress):
+    run_user(runtime_args=default_runtime_args, type_name="tinyint",
+             node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
+
+
+def test_user_smallint_type(default_runtime_args, scylla_docker_node,
+                            cassandra_stress, cql_stress):
+    run_user(runtime_args=default_runtime_args, type_name="smallint",
+             node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
+
+
+def test_user_int_type(default_runtime_args, scylla_docker_node,
+                       cassandra_stress, cql_stress):
+    run_user(runtime_args=default_runtime_args, type_name="int",
+             node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)
+
+
+def test_user_bigint_type(default_runtime_args, scylla_docker_node,
+                          cassandra_stress, cql_stress):
+    run_user(runtime_args=default_runtime_args, type_name="bigint",
+             node=scylla_docker_node, cs=cassandra_stress, cql_stress=cql_stress)

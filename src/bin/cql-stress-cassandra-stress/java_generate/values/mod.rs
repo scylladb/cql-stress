@@ -13,6 +13,8 @@ pub mod blob;
 pub mod hex_blob;
 
 #[cfg(feature = "user-profile")]
+pub mod int;
+#[cfg(feature = "user-profile")]
 pub mod text;
 
 pub use blob::Blob;
@@ -57,12 +59,17 @@ impl Generator {
         typ: &CqlType,
     ) -> Result<Box<dyn ValueGeneratorFactory>> {
         use self::blob::BlobFactory;
+        use int::{BigIntFactory, IntFactory, SmallIntFactory, TinyIntFactory};
         use text::TextFactory;
 
         match typ {
             CqlType::Native(native_type) => match native_type {
                 scylla::transport::topology::NativeType::Blob => Ok(Box::new(BlobFactory)),
                 scylla::transport::topology::NativeType::Text => Ok(Box::new(TextFactory)),
+                scylla::transport::topology::NativeType::BigInt => Ok(Box::new(BigIntFactory)),
+                scylla::transport::topology::NativeType::Int => Ok(Box::new(IntFactory)),
+                scylla::transport::topology::NativeType::SmallInt => Ok(Box::new(SmallIntFactory)),
+                scylla::transport::topology::NativeType::TinyInt => Ok(Box::new(TinyIntFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type
