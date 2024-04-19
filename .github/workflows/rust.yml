@@ -25,10 +25,12 @@ jobs:
     - uses: actions/checkout@v2
     - name: Format check
       run: cargo fmt --verbose --all -- --check
-    - name: Clippy check
+    - name: Clippy check with no features
       run: cargo clippy --verbose --tests -- -D warnings
+    - name: Clippy check with `user-profile` feature
+      run: cargo clippy --verbose --tests --features "user-profile" -- -D warnings
     - name: Build
-      run: cargo build --verbose --tests
+      run: cargo build --verbose --tests --features "user-profile"
     - name: Run tests
       # test threads must be one because else database tests will run in parallel and will result in flaky tests
       run: cargo test --verbose -- --test-threads=1
