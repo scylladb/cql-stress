@@ -165,7 +165,7 @@ fn prepare_parser(
     for group in counter_payload.groups.iter_mut() {
         group.push(Box::new(operation_ratio.clone()));
         group.push(Box::new(clustering.clone()));
-        parser.group(&group.iter().map(|e| e.as_ref()).collect::<Vec<_>>())
+        parser.group_iter(group.iter().map(|e| e.as_ref()))
     }
 
     (
