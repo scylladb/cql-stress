@@ -163,6 +163,7 @@ async fn prepare_run(
 
 async fn create_schema(session: &Session, settings: &CassandraStressSettings) -> Result<()> {
     match settings.command {
+        #[cfg(feature = "user-profile")]
         Command::User => {
             // 'user' command provided. This unwrap is safe.
             settings

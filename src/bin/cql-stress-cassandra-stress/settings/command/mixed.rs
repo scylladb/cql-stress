@@ -138,6 +138,7 @@ impl MixedParams {
                 operation_ratio: mixed_handles.operation_ratio.get().unwrap(),
                 clustering: mixed_handles.clustering.get().unwrap(),
             }),
+            #[cfg(feature = "user-profile")]
             user: None,
         })
     }
