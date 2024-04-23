@@ -29,6 +29,8 @@ cassandra-stress write -mode connectionsPerHost=3 connectionsPerShard=3
 cassandra-stress write -mode connectionPerShard=0
 cassandra-stress write -mode connectionPerShard=-1
 cassandra-stress write -mode compression=foo
+cassandra-stress write -col n=UNIFORM(1..10)
+cassandra-stress write -col n=FIXED(1..5)
 
 # One of the user/password is set, when the other one is not specified
 cassandra-stress write -mode user=cassandra
