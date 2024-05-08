@@ -10,6 +10,11 @@ The `scylla-bench` frontend is feature-complete, `cassandra-stress` is a _work i
 `cql-stress` is not published on crates.io yet, therefore in order to use it you need to clone it and build from source.
 See the [Development](#development) section for more details.
 
+## Crate features
+
+List of the crate features:
+- `user-profile` - enables support for `user` command and custom user profiles in `cassandra-stress` frontend. This feature is enabled by default. To disable it, pass `--no-default-features` flag when building the tool.
+
 ### Scylla Bench
 
 See the documentation of the original [`scylla-bench`](https://github.com/scylladb/scylla-bench/blob/master/README.md#usage) for a comprehensive explanation of the most important parameters.
@@ -17,7 +22,36 @@ To see a list of all the parameters currently supported by the tool, use `cql-st
 
 ### Cassandra Stress
 
-(Work in progress)
+See the documentation of the original [`cassandra-stress`](https://cassandra.apache.org/doc/stable/cassandra/tools/cassandra_stress.html) for a comprehensive explanation of the most important commands and options.
+
+To see a list of all commands and options currently supported by the tool, use `cql-stress-cassandra-stress help`. To see a list of parameters supported for a given command/option, use `cql-stress-cassandra-stress help <command/option>`.
+
+#### Populating the cluster
+
+To populate a local cluster, make use of `write` command:
+```
+cql-stress-cassandra-stress write n=1000000 -pop seq=1..1000000 -rate threads=20 -node 127.0.0.1
+```
+
+Since some of the options and parameters were not provided, the tool will make use of some default values. This will result in:
+- creating a `keyspace1` keyspace (if not exists)
+- creating a `keyspace1.standard1` table (if not exists)
+- populating the table with 1000000 generated rows
+
+#### Validating cluster contents after write
+
+To validate that the data inserted in the previous step is correct, make use of `read` command:
+```
+cql-stress-cassandra-stress read n=1000000 -pop seq=1..1000000 -rate threads=20 -node 127.0.0.1
+```
+
+#### User profiles
+
+Commands mentioned above are very limited. They do not, for example, allow to test other native types than `blob`.
+
+To test more complex schemas, make use of user profiles (`user` command). User profiles allow to define custom schemas and custom statements used to stress the database.
+
+To enable the `user` mode, the tool needs to be compiled with `user-profile` feature. This feature is enabled by default.
 
 ## Development
 
