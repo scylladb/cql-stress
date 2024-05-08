@@ -33,7 +33,7 @@ jobs:
       run: cargo build --verbose --tests --features "user-profile"
     - name: Run tests
       # test threads must be one because else database tests will run in parallel and will result in flaky tests
-      run: cargo test --verbose -- --test-threads=1
+      run: cargo test --verbose --features "user-profile" -- --test-threads=1
     - name: Install python driver
       run: pip install scylla-driver
     - name: Install pytest
