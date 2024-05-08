@@ -174,3 +174,98 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles, UserParamHand
 
     (parser, common_handles, UserParamHandles { profile })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use crate::settings::{command::user::UserProfile, param::types::Parsable};
+
+    fn build_file_path(filename: &str) -> String {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("src/bin/cql-stress-cassandra-stress/settings/command/test_user_profile_yamls");
+        d.push(filename);
+        d.into_os_string().into_string().unwrap()
+    }
+
+    #[test]
+    fn minimal_user_profile_yaml_contents_test() {
+        let yaml_filepath = build_file_path("minimal_profile.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath).unwrap();
+        assert_eq!("foo", profile.keyspace);
+        assert_eq!("bar", profile.table);
+        assert_eq!(None, profile.keyspace_definition);
+        assert_eq!(None, profile.table_definition);
+
+        assert_eq!(1, profile.queries.len());
+        let query = profile.queries.get("baz").unwrap();
+        assert_eq!("select c1 from standard1 where pkey = ?", query.cql);
+        assert_eq!(None, query.consistency_level);
+        assert_eq!(None, query.serial_consistency_level);
+    }
+
+    #[test]
+    fn empty_queries_profile_yaml_contents_test() {
+        let yaml_filepath = build_file_path("empty_queries_profile.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath);
+        assert!(profile.is_err());
+    }
+
+    #[test]
+    fn missing_keyspace_profile_yaml_contents_test() {
+        let yaml_filepath = build_file_path("missing_keyspace_profile.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath);
+        assert!(profile.is_err());
+    }
+
+    #[test]
+    fn unknown_field_profile_yaml_contents_test() {
+        let yaml_filepath = build_file_path("unknown_field_profile.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath);
+        assert!(profile.is_err());
+    }
+
+    #[test]
+    fn unknown_query_field_profile_yaml_contents_test() {
+        let yaml_filepath = build_file_path("unknown_query_field_profile.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath);
+        assert!(profile.is_err());
+    }
+
+    #[test]
+    fn full_profile_yaml_contents_test() {
+        let yaml_filepath = build_file_path("full_profile.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath).unwrap();
+        assert_eq!("keyspace2", profile.keyspace);
+        assert!(profile.keyspace_definition.is_some());
+        assert_eq!("standard1", profile.table);
+        assert!(profile.table_definition.is_some());
+
+        assert_eq!(2, profile.queries.len());
+
+        let ins_query = profile.queries.get("ins").unwrap();
+        assert_eq!(
+            "insert into standard1 (pkey, ckey, c1) values (?, ?, ?)",
+            ins_query.cql
+        );
+        assert_eq!(Some("local".to_string()), ins_query.consistency_level);
+        assert_eq!(
+            Some("local_serial".to_string()),
+            ins_query.serial_consistency_level
+        );
+
+        let read_query = profile.queries.get("read").unwrap();
+        assert_eq!("select c1 from standard1 where pkey = ?", read_query.cql);
+        assert_eq!(Some("quorum".to_string()), read_query.consistency_level);
+        assert_eq!(
+            Some("serial".to_string()),
+            read_query.serial_consistency_level
+        );
+    }
+}

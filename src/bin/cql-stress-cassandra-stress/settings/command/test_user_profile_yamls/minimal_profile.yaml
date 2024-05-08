@@ -1,0 +1,6 @@
+# This file contains the minimal set of parameters required by the tool.
+keyspace: foo
+table: bar
+queries:
+  baz:
+    cql: select c1 from standard1 where pkey = ?

@@ -1,0 +1,2 @@
+# This file contains unknown parameter "foo_param", and so is invalid
+foo_param: keyspace1
