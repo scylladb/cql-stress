@@ -1,0 +1,4 @@
+# This file is invalid since it has an empty `queries` map.
+keyspace: foo
+table: bar
+queries:

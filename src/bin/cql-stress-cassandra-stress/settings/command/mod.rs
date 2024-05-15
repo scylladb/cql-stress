@@ -13,12 +13,16 @@ mod common;
 mod counter;
 mod help;
 mod mixed;
+#[cfg(feature = "user-profile")]
+mod user;
 
 use self::common::{parse_common_params, print_help_common};
 use self::counter::print_help_counter;
 use self::counter::CounterParams;
 use self::mixed::print_help_mixed;
 use self::mixed::MixedParams;
+#[cfg(feature = "user-profile")]
+use self::user::UserParams;
 pub use help::print_help;
 
 use super::ParsePayload;
@@ -37,6 +41,8 @@ pub enum Command {
     CounterWrite,
     CounterRead,
     Mixed,
+    #[cfg(feature = "user-profile")]
+    User,
 }
 
 impl Command {
@@ -51,6 +57,8 @@ impl Command {
             }
             Command::CounterWrite => Ok(Some(CounterParams::parse(self, payload)?)),
             Command::Mixed => Ok(Some(MixedParams::parse(self, payload)?)),
+            #[cfg(feature = "user-profile")]
+            Command::User => Ok(Some(UserParams::parse(self, payload)?)),
             Command::Help => {
                 parse_help_command(payload)?;
                 Ok(None)
@@ -69,6 +77,8 @@ impl Command {
             Command::CounterWrite => "Multiple concurrent updates of counters.",
             Command::CounterRead => "Multiple concurrent reads of counters. The cluster must first be populated by a counterwrite test.",
             Command::Mixed => "Interleaving of any basic commands, with configurable ratio and distribution - the cluster must first be populated by a write test.",
+            #[cfg(feature = "user-profile")]
+            Command::User => "Interleaving of user provided queries, with configurable ratio and distribution - the cluster must first be populated by a write test.",
             Command::Help => "Print help for a command or option",
         };
 
@@ -87,6 +97,8 @@ impl Command {
             Command::Read | Command::Write | Command::CounterRead => print_help_common(self.show()),
             Command::CounterWrite => print_help_counter(self.show()),
             Command::Mixed => print_help_mixed(self.show()),
+            #[cfg(feature = "user-profile")]
+            Command::User => UserParams::print_help(self.show()),
             Command::Help => help::print_help(),
         }
     }
@@ -97,6 +109,8 @@ pub struct CommandParams {
     pub common: CommonParams,
     pub counter: Option<CounterParams>,
     pub mixed: Option<MixedParams>,
+    #[cfg(feature = "user-profile")]
+    pub user: Option<UserParams>,
 }
 
 impl CommandParams {

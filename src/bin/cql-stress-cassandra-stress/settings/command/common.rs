@@ -385,6 +385,8 @@ pub fn parse_common_params(cmd: &Command, payload: &mut ParsePayload) -> Result<
         common: parse_with_handles(handles),
         counter: None,
         mixed: None,
+        #[cfg(feature = "user-profile")]
+        user: None,
     })
 }
 

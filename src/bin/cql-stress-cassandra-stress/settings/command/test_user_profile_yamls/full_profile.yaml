@@ -1,0 +1,24 @@
+# This file represents full set of supported parameters.
+keyspace: keyspace2
+
+keyspace_definition: |
+  CREATE KEYSPACE IF NOT EXISTS keyspace2 WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': 1};
+
+table: standard1
+
+table_definition:
+  CREATE TABLE IF NOT EXISTS standard1 (
+    pkey blob PRIMARY KEY,
+    ckey blob,
+    c1 blob
+   );
+
+queries:
+  ins:
+    cql: insert into standard1 (pkey, ckey, c1) values (?, ?, ?)
+    consistencyLevel: local
+    serialConsistencyLevel: local_serial
+  read:
+    cql: select c1 from standard1 where pkey = ?
+    consistencyLevel: quorum
+    serialConsistencyLevel: serial

@@ -1,0 +1,7 @@
+# This file contains the unknown parameter "foo" of "baz" query, and so is invalid
+keyspace: foo
+table: bar
+queries:
+  baz:
+    cql: select c1 from standard1 where pkey = ?
+    foo: local_serial

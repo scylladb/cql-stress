@@ -192,8 +192,13 @@ impl ParamsParser {
 
     /// Creates a new group of the parameters.
     pub fn group(&mut self, params: &[&dyn ParamHandle]) {
+        self.group_iter(params.iter().copied())
+    }
+
+    /// Creates a new group of the parameters.
+    pub fn group_iter<'a>(&mut self, params: impl IntoIterator<Item = &'a dyn ParamHandle>) {
         self.groups.push(ParamsGroup::new(
-            params.iter().map(|handle| handle.cell()).collect(),
+            params.into_iter().map(|handle| handle.cell()).collect(),
         ))
     }
 

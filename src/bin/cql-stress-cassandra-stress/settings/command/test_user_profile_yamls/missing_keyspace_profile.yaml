@@ -1,0 +1,5 @@
+# This file is invalid since it's missing a keyspace name.
+table: bar
+queries:
+  baz:
+    cql: select c1 from standard1 where pkey = ?
