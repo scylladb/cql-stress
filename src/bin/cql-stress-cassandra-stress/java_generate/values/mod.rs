@@ -96,6 +96,17 @@ pub trait ValueGenerator: Send + Sync + 'static {
     ) -> CqlValue;
 }
 
+/// This trait provides an infallible way to create a corresponding
+/// [`ValueGenerator`] once the native type is deduced from metadata.
+///
+/// - Why not just clone a ValueGenerator once created?
+/// Since we make use of trait objects, we cannot expect [`ValueGenerator`]
+/// to implement [`Clone`] as well.
+#[cfg(feature = "user-profile")]
+pub trait ValueGeneratorFactory: Send + Sync {
+    fn create(&self) -> Box<dyn ValueGenerator>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::{blob::Blob, Generator, GeneratorConfig};

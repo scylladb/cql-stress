@@ -42,6 +42,16 @@ impl ValueGenerator for HexBlob {
     }
 }
 
+#[cfg(feature = "user-profile")]
+pub struct HexBlobFactory;
+
+#[cfg(feature = "user-profile")]
+impl super::ValueGeneratorFactory for HexBlobFactory {
+    fn create(&self) -> Box<dyn ValueGenerator> {
+        Box::new(HexBlob)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::java_generate::{
