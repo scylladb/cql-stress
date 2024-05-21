@@ -8,6 +8,9 @@ pub type RngGen = Pcg64Mcg;
 
 pub trait Distribution: Send + Sync {
     fn get_u64(&self, rng: &mut RngGen) -> u64;
+
+    // TODO: Remove allow(dead_code) it when generator for floats is implemented.
+    #[allow(dead_code)]
     fn get_f64(&self, rng: &mut RngGen) -> f64 {
         self.get_u64(rng) as f64
     }
