@@ -39,6 +39,7 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 serde_yaml = {version = "0.8", optional = true }
 
 [features]
+default = ["user-profile"]
 user-profile = ["dep:serde", "dep:serde_yaml"]
 
 [dev-dependencies]
