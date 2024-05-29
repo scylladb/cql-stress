@@ -22,6 +22,8 @@ pub mod inet;
 pub mod int;
 #[cfg(feature = "user-profile")]
 pub mod text;
+#[cfg(feature = "user-profile")]
+pub mod varint;
 
 pub use blob::Blob;
 pub use hex_blob::HexBlob;
@@ -70,6 +72,7 @@ impl Generator {
         use inet::InetFactory;
         use int::{BigIntFactory, IntFactory, SmallIntFactory, TinyIntFactory};
         use text::TextFactory;
+        use varint::VarIntFactory;
 
         match typ {
             CqlType::Native(native_type) => match native_type {
@@ -83,6 +86,7 @@ impl Generator {
                 scylla::transport::topology::NativeType::Float => Ok(Box::new(FloatFactory)),
                 scylla::transport::topology::NativeType::Double => Ok(Box::new(DoubleFactory)),
                 scylla::transport::topology::NativeType::Inet => Ok(Box::new(InetFactory)),
+                scylla::transport::topology::NativeType::Varint => Ok(Box::new(VarIntFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type

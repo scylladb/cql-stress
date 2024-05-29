@@ -44,3 +44,5 @@ user-profile = ["dep:serde", "dep:serde_yaml"]
 
 [dev-dependencies]
 ntest = "0.8"
+num-bigint = "0.4"
+scylla = { version = "0.13.0", features = ["ssl", "num-bigint-04"] }
