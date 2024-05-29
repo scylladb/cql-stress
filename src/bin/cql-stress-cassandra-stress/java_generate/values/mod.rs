@@ -25,6 +25,8 @@ pub mod int;
 #[cfg(feature = "user-profile")]
 pub mod text;
 #[cfg(feature = "user-profile")]
+pub mod uuid;
+#[cfg(feature = "user-profile")]
 pub mod varint;
 
 pub use blob::Blob;
@@ -75,6 +77,7 @@ impl Generator {
         use inet::InetFactory;
         use int::{BigIntFactory, IntFactory, SmallIntFactory, TinyIntFactory};
         use text::TextFactory;
+        use uuid::UuidFactory;
         use varint::VarIntFactory;
 
         match typ {
@@ -91,6 +94,7 @@ impl Generator {
                 scylla::transport::topology::NativeType::Inet => Ok(Box::new(InetFactory)),
                 scylla::transport::topology::NativeType::Varint => Ok(Box::new(VarIntFactory)),
                 scylla::transport::topology::NativeType::Decimal => Ok(Box::new(DecimalFactory)),
+                scylla::transport::topology::NativeType::Uuid => Ok(Box::new(UuidFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type
