@@ -80,7 +80,7 @@ impl GeneratorConfig {
         let bytes = seed_str.as_bytes();
         let salt = Murmur3Partitioner.hash_one(bytes);
         Self {
-            salt: salt.value,
+            salt: salt.value(),
             identity_distribution,
             size_distribution,
         }
