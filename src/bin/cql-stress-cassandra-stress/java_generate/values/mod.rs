@@ -15,6 +15,8 @@ pub mod hex_blob;
 #[cfg(feature = "user-profile")]
 pub mod boolean;
 #[cfg(feature = "user-profile")]
+pub mod decimal;
+#[cfg(feature = "user-profile")]
 pub mod float;
 #[cfg(feature = "user-profile")]
 pub mod inet;
@@ -68,6 +70,7 @@ impl Generator {
     ) -> Result<Box<dyn ValueGeneratorFactory>> {
         use self::blob::BlobFactory;
         use boolean::BooleanFactory;
+        use decimal::DecimalFactory;
         use float::{DoubleFactory, FloatFactory};
         use inet::InetFactory;
         use int::{BigIntFactory, IntFactory, SmallIntFactory, TinyIntFactory};
@@ -87,6 +90,7 @@ impl Generator {
                 scylla::transport::topology::NativeType::Double => Ok(Box::new(DoubleFactory)),
                 scylla::transport::topology::NativeType::Inet => Ok(Box::new(InetFactory)),
                 scylla::transport::topology::NativeType::Varint => Ok(Box::new(VarIntFactory)),
+                scylla::transport::topology::NativeType::Decimal => Ok(Box::new(DecimalFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type
