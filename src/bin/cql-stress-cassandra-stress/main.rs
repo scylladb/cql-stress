@@ -20,6 +20,8 @@ use cql_stress::{
     sharded_stats::Stats as _,
     sharded_stats::StatsFactory as _,
 };
+#[cfg(feature = "user-profile")]
+use operation::UserOperationFactory;
 use operation::{
     CounterReadOperationFactory, CounterWriteOperationFactory, MixedOperationFactory,
     WriteOperationFactory,
@@ -226,6 +228,10 @@ async fn create_operation_factory(
         )),
         Command::Mixed => Ok(Arc::new(
             MixedOperationFactory::new(settings, session, workload_factory, stats).await?,
+        )),
+        #[cfg(feature = "user-profile")]
+        Command::User => Ok(Arc::new(
+            UserOperationFactory::new(settings, session, stats).await?,
         )),
         cmd => Err(anyhow::anyhow!(
             "Runtime for command '{}' not implemented yet.",

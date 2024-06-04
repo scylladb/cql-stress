@@ -2,6 +2,8 @@ mod counter_write;
 mod mixed;
 mod read;
 mod row_generator;
+#[cfg(feature = "user-profile")]
+mod user;
 mod write;
 
 use anyhow::Result;
@@ -21,6 +23,8 @@ use scylla::{
     frame::response::result::{CqlValue, Row},
     QueryResult,
 };
+#[cfg(feature = "user-profile")]
+pub use user::UserOperationFactory;
 
 use crate::settings::CassandraStressSettings;
 use crate::stats::ShardedStats;
@@ -227,7 +231,7 @@ fn recompute_seed(seed: i64, partition_key: &CqlValue) -> i64 {
         CqlValue::Blob(key) => {
             let mut wrapped = Wrapping(seed);
             for byte in key {
-                wrapped = (wrapped * Wrapping(31)) + Wrapping(*byte as i64);
+                wrapped = (wrapped * Wrapping(31)) + Wrapping((*byte as i8) as i64);
             }
             wrapped.0
         }

@@ -7,6 +7,8 @@ use crate::{
     },
     settings::CassandraStressSettings,
 };
+#[cfg(feature = "user-profile")]
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::recompute_seed;
@@ -76,8 +78,42 @@ use super::recompute_seed;
 /// and then validate it using Java's implementation of c-s (and vice-versa).
 pub struct RowGenerator {
     pk_seed_distribution: Arc<dyn Distribution>,
-    pk_generator: Generator<HexBlob>,
-    column_generators: Vec<Generator<Blob>>,
+    pk_generator: Generator,
+    column_generators: Vec<Generator>,
+    // Map column name to the index of generated value in resulting vector.
+    #[cfg(feature = "user-profile")]
+    index_map: HashMap<String, usize>,
+}
+
+impl RowGenerator {
+    pub fn new(
+        pk_seed_distribution: Arc<dyn Distribution>,
+        pk_generator: Generator,
+        column_generators: Vec<Generator>,
+    ) -> Self {
+        #[cfg(feature = "user-profile")]
+        let index_map = HashMap::from_iter(
+            std::iter::once(&pk_generator)
+                .chain(column_generators.iter())
+                .map(|generator| generator.get_col_name().to_owned())
+                .enumerate()
+                .map(|(i, col)| (col, i)),
+        );
+
+        Self {
+            pk_seed_distribution,
+            pk_generator,
+            column_generators,
+            #[cfg(feature = "user-profile")]
+            index_map,
+        }
+    }
+
+    /// Returns the index of corresponding column's value in generated rows.
+    #[cfg(feature = "user-profile")]
+    pub fn row_index_of_column_with_name(&self, name: &str) -> Option<usize> {
+        self.index_map.get(name).copied()
+    }
 }
 
 pub struct RowGeneratorFactory {
@@ -126,7 +162,7 @@ impl RowGeneratorFactory {
     pub fn create(&self) -> RowGenerator {
         // See https://github.com/scylladb/scylla-tools-java/blob/master/tools/stress/src/org/apache/cassandra/stress/settings/SettingsCommandPreDefined.java#L77.
         let pk_generator = Generator::new(
-            HexBlob,
+            Box::new(HexBlob),
             GeneratorConfig::new(
                 "randomstrkey",
                 None,
@@ -134,6 +170,7 @@ impl RowGeneratorFactory {
                     self.settings.command_params.common.keysize.get() as i64,
                 ))),
             ),
+            String::from("key"),
         );
 
         let column_generators = self
@@ -143,20 +180,21 @@ impl RowGeneratorFactory {
             .iter()
             .map(|column| {
                 Generator::new(
-                    Blob::default(),
+                    Box::<Blob>::default(),
                     GeneratorConfig::new(
                         &format!("randomstr{}", column),
                         None,
                         Some(self.settings.column.size_distribution.create()),
                     ),
+                    column.to_owned(),
                 )
             })
             .collect();
 
-        RowGenerator {
-            pk_seed_distribution: Arc::clone(&self.pk_seed_distribution),
+        RowGenerator::new(
+            Arc::clone(&self.pk_seed_distribution),
             pk_generator,
             column_generators,
-        }
+        )
     }
 }

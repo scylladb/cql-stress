@@ -15,6 +15,9 @@ DOWNLOAD_DIRECTORY_NAME = os.path.join(ROOT_DIRECTORY, "cassandra-download")
 
 DEFAULT_TIMESTAMP_FORMAT = "%Y%m%d_%Hh%Mm%Ss"
 
+TEST_PROFILES_DIRECTORY = os.path.join(
+    ROOT_DIRECTORY, "tools", "util", "profiles")
+
 
 Keyspaces = namedtuple("Keyspaces", ["ks_cassandra", "ks_cqlstress"])
 
@@ -32,6 +35,17 @@ def prepare_args(command, node_ip, keyspace, runtime_args: CSCliRuntimeArguments
             "-schema", f"keyspace={keyspace}"]
 
 
+# Default query name used in test profiles.
+DEFAULT_TEST_QUERY_NAME = "test_query"
+
+
+def prepare_user_args(node_ip, profile_name, runtime_args: CSCliRuntimeArguments = DEFAULT_RUNTIME_ARGUMENTS):
+    return ["user", f"profile={profile_name}",
+            "no-warmup", f"n={runtime_args.workload_size}",
+            "-node", node_ip,
+            "-rate", f"threads={runtime_args.concurrency}"]
+
+
 def generate_random_keyspaces(timestamp_format=DEFAULT_TIMESTAMP_FORMAT):
     r = random.randint(0, 100000)
     now = datetime.now().strftime(timestamp_format)
@@ -47,6 +61,20 @@ class CSCliRunner:
     def run(self, command, node_ip, keyspace, runtime_args: CSCliRuntimeArguments):
         args = self.stress_cmd + \
             prepare_args(command, node_ip, keyspace, runtime_args)
+        subprocess.run(args=args, check=True)
+
+    def prepare_user_args(self, node_ip, profile_name, query_name=DEFAULT_TEST_QUERY_NAME, runtime_args: CSCliRuntimeArguments = DEFAULT_RUNTIME_ARGUMENTS):
+        full_profile_name = os.path.join(TEST_PROFILES_DIRECTORY, profile_name)
+        return ["user", f"profile={full_profile_name}", f"ops({query_name}=1)",
+                "no-warmup", f"n={runtime_args.workload_size}",
+                "-node", node_ip,
+                "-rate", f"threads={runtime_args.concurrency}",
+                f"-pop seq=1..{runtime_args.workload_size}"]
+
+    def run_user(self, node_ip, profile_name, runtime_args: CSCliRuntimeArguments):
+        args = self.stress_cmd + \
+            self.prepare_user_args(
+                node_ip=node_ip, profile_name=profile_name, runtime_args=runtime_args)
         subprocess.run(args=args, check=True)
 
 
@@ -86,6 +114,14 @@ class CassandraStress(CSCliRunner):
 
 class CqlStressCassandraStress(CSCliRunner):
     def __init__(self):
-        stress_cmd = ["cargo", "run", "--bin",
+        stress_cmd = ["cargo", "run", "--features", "user-profile", "--bin",
                       "cql-stress-cassandra-stress", "--"]
         super().__init__(stress_cmd=stress_cmd)
+
+    def prepare_user_args(self, node_ip, profile_name, query_name=DEFAULT_TEST_QUERY_NAME, runtime_args: CSCliRuntimeArguments = DEFAULT_RUNTIME_ARGUMENTS):
+        full_profile_name = os.path.join(TEST_PROFILES_DIRECTORY, profile_name)
+        return ["user", f"profile={full_profile_name}",
+                "no-warmup", f"n={runtime_args.workload_size}",
+                "-node", node_ip,
+                "-rate", f"threads={runtime_args.concurrency}",
+                f"-pop seq=1..{runtime_args.workload_size}"]

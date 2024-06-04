@@ -1,6 +1,7 @@
-use std::{collections::HashMap, fs::File};
+use std::{collections::HashMap, fs::File, sync::Arc};
 
 use anyhow::{Context, Result};
+use scylla::prepared_statement::PreparedStatement;
 use scylla::statement::{Consistency, SerialConsistency};
 use scylla::Session;
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,24 @@ pub struct QueryDefinition {
     pub cql: String,
     pub consistency: Option<Consistency>,
     pub serial_consistency: Option<SerialConsistency>,
+}
+
+impl QueryDefinition {
+    pub async fn to_prepared_statement(&self, session: &Arc<Session>) -> Result<PreparedStatement> {
+        let mut statement = session
+            .prepare(&*self.cql)
+            .await
+            .with_context(|| format!("Failed to prepare statement: {}", self.cql))?;
+
+        if let Some(consistency) = self.consistency {
+            statement.set_consistency(consistency);
+        }
+        if self.serial_consistency.is_some() {
+            statement.set_serial_consistency(self.serial_consistency);
+        }
+
+        Ok(statement)
+    }
 }
 
 impl Parsable for UserProfile {

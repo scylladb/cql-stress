@@ -37,6 +37,16 @@ impl ValueGenerator for Blob {
     }
 }
 
+#[cfg(feature = "user-profile")]
+pub struct BlobFactory;
+
+#[cfg(feature = "user-profile")]
+impl super::ValueGeneratorFactory for BlobFactory {
+    fn create(&self) -> Box<dyn ValueGenerator> {
+        Box::<Blob>::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::java_generate::{
@@ -74,7 +84,7 @@ mod tests {
             Some(Box::new(FixedDistribution::new(5))),
         );
         let blob = Blob::default();
-        let mut gen = Generator::new(blob, config);
+        let mut gen = Generator::new(Box::new(blob), config, String::from("C0"));
 
         // In cassandra-stress, the seed is obtained from the generated key.
         // Then, this seed is reused for every column in the row.
