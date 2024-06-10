@@ -174,7 +174,7 @@ impl UserOperationFactory {
         // We parsed a user command. This unwrap is safe.
         let user_profile = settings.command_params.user.as_ref().unwrap();
 
-        let query_definitions = &user_profile.queries;
+        let query_definitions = &user_profile.queries_payload;
         let cluster_data = session.get_cluster_data();
         let table_metadata = cluster_data
             .get_keyspace_info()
@@ -198,7 +198,7 @@ impl UserOperationFactory {
         );
 
         let mut statements_map = HashMap::new();
-        for (q_name, q_def) in query_definitions {
+        for (q_name, (q_def, _weight)) in query_definitions {
             statements_map.insert(
                 q_name.to_owned(),
                 q_def.to_prepared_statement(&session).await?,

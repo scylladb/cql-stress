@@ -6,6 +6,8 @@ use scylla::statement::{Consistency, SerialConsistency};
 use scylla::Session;
 use serde::{Deserialize, Serialize};
 
+use crate::java_generate::distribution::DistributionFactory;
+use crate::settings::param::types::RatioMap;
 use crate::settings::{
     param::{types::Parsable, ParamsParser, SimpleParamHandle},
     ParsePayload,
@@ -95,12 +97,18 @@ impl Parsable for UserProfile {
     }
 }
 
+/// Weight with which operation/query will be sampled.
+pub type OpWeight = f64;
+
 pub struct UserParams {
     pub keyspace: String,
     pub keyspace_definition: Option<String>,
     pub table: String,
     pub table_definition: Option<String>,
-    pub queries: HashMap<String, QueryDefinition>,
+    // Maps a query name to query definition and a ratio with which
+    // this query will be sampled.
+    pub queries_payload: HashMap<String, (QueryDefinition, OpWeight)>,
+    pub clustering: Arc<dyn DistributionFactory>,
 }
 
 impl UserParams {
@@ -147,18 +155,26 @@ impl UserParams {
             keyspace_definition,
             table,
             table_definition,
-            queries,
+            mut queries,
         } = handles.profile.get().unwrap();
+        let queries_ratio = handles.ratio.get().unwrap();
+        let clustering: Arc<dyn DistributionFactory> = handles.clustering.get().unwrap().into();
 
-        let queries = queries
+        let queries_payload = queries_ratio
             .into_iter()
-            .map(|(query_name, query_def)| {
-                let query_def = query_def.into_query_definition();
-                match query_def {
-                    Ok(query_def) => Ok((query_name, query_def)),
-                    Err(e) => Err(e.context("Failed to parse query definition")),
-                }
-            })
+            .map(
+                |(query_name, weight)| -> Result<(String, (QueryDefinition, OpWeight))> {
+                    let query_def = queries
+                        .remove(&query_name)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("Unrecognized query name in ratio map: {}", query_name)
+                        })?
+                        .into_query_definition()
+                        .context("Failed to parse query definition")?;
+
+                    Ok((query_name, (query_def, weight)))
+                },
+            )
             .collect::<Result<HashMap<_, _>, _>>()?;
 
         Ok(Self {
@@ -166,13 +182,16 @@ impl UserParams {
             keyspace_definition,
             table,
             table_definition,
-            queries,
+            queries_payload,
+            clustering,
         })
     }
 }
 
 struct UserParamHandles {
     profile: SimpleParamHandle<UserProfile>,
+    ratio: SimpleParamHandle<RatioMap>,
+    clustering: SimpleParamHandle<Box<dyn DistributionFactory>>,
 }
 
 fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles, UserParamHandles) {
@@ -186,20 +205,42 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles, UserParamHand
         "Specify the path to a yaml cql3 profile",
         true,
     );
+    let ratio = parser.simple_param("ops", None, "Specify the ratios for inserts/queries to perform; e.g. ops(insert=2,<query1>=1) will perform 2 inserts for each query1", true);
+    let clustering = parser.simple_param(
+        "clustering=",
+        Some("GAUSSIAN(1..10)"),
+        "Distribution clustering runs of operations of the same kind",
+        false,
+    );
 
     for group in groups.iter_mut() {
         group.push(Box::new(profile.clone()));
+        group.push(Box::new(ratio.clone()));
+        group.push(Box::new(clustering.clone()));
         parser.group_iter(group.iter().map(|e| e.as_ref()));
     }
 
-    (parser, common_handles, UserParamHandles { profile })
+    (
+        parser,
+        common_handles,
+        UserParamHandles {
+            profile,
+            ratio,
+            clustering,
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use crate::settings::{command::user::UserProfile, param::types::Parsable};
+    use scylla::statement::{Consistency, SerialConsistency};
+
+    use crate::settings::{
+        command::user::{prepare_parser, QueryDefinition, UserParams, UserProfile},
+        param::types::Parsable,
+    };
 
     fn build_file_path(filename: &str) -> String {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -287,5 +328,64 @@ mod tests {
             Some("serial".to_string()),
             read_query.serial_consistency_level
         );
+    }
+
+    #[test]
+    fn full_profile_yaml_default_values() {
+        let yaml_filepath = build_file_path("full_profile.yaml");
+        // full_profile.yaml defines two queries: 'ins' and 'read'.
+        // Parsing should fail since 'foo' is provided via ops() parameter.
+        let profile_arg = format!("profile={yaml_filepath}");
+        let args = vec![&profile_arg, "ops(ins=1,read=2)"];
+
+        let (parser, _common_handles, user_handles) = prepare_parser("user");
+        parser.parse(args).unwrap();
+
+        let user = UserParams::parse_with_handles(user_handles).unwrap();
+
+        assert_eq!(
+            "GAUSSIAN(1..10,mean=5.5,stdev=1.5)",
+            format!("{}", user.clustering)
+        );
+        assert_eq!(2, user.queries_payload.len());
+
+        let ins = user.queries_payload.get("ins").unwrap();
+        assert_eq!(
+            &(
+                QueryDefinition {
+                    cql: "insert into standard1 (pkey, ckey, c1) values (?, ?, ?)".to_owned(),
+                    consistency: Some(Consistency::LocalOne),
+                    serial_consistency: Some(SerialConsistency::LocalSerial)
+                },
+                1.0
+            ),
+            ins
+        );
+
+        let read = user.queries_payload.get("read").unwrap();
+        assert_eq!(
+            &(
+                QueryDefinition {
+                    cql: "select c1 from standard1 where pkey = ?".to_owned(),
+                    consistency: Some(Consistency::Quorum),
+                    serial_consistency: Some(SerialConsistency::Serial)
+                },
+                2.0
+            ),
+            read
+        );
+    }
+
+    #[test]
+    fn full_profile_yaml_unknown_query() {
+        let yaml_filepath = build_file_path("full_profile.yaml");
+        // full_profile.yaml defines two queries: 'ins' and 'read'.
+        // Parsing should fail since 'foo' is provided via ops() parameter.
+        let profile_arg = format!("profile={yaml_filepath}");
+        let args = vec![&profile_arg, "ops(ins=1,foo=2)"];
+
+        let (parser, _common_handles, user_handles) = prepare_parser("user");
+        parser.parse(args).unwrap();
+        assert!(UserParams::parse_with_handles(user_handles).is_err());
     }
 }
