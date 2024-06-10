@@ -12,6 +12,8 @@ mod test;
 pub use command::Command;
 pub use command::CommandParams;
 pub use command::MixedSubcommand;
+#[cfg(feature = "user-profile")]
+pub use command::OpWeight;
 pub use command::OperationRatio;
 pub use option::ThreadsInfo;
 use regex::Regex;

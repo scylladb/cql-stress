@@ -22,6 +22,8 @@ use self::counter::CounterParams;
 use self::mixed::print_help_mixed;
 use self::mixed::MixedParams;
 #[cfg(feature = "user-profile")]
+pub use self::user::OpWeight;
+#[cfg(feature = "user-profile")]
 use self::user::UserParams;
 pub use help::print_help;
 
