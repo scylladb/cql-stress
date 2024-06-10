@@ -60,26 +60,37 @@ impl CassandraStressSettings {
             return user.create_schema(session).await;
         }
 
-        session
-            .query(self.schema.construct_keyspace_creation_query(), ())
-            .await?;
+        if matches!(self.command, Command::Write | Command::CounterWrite) {
+            session
+                .query(self.schema.construct_keyspace_creation_query(), ())
+                .await?;
+        }
+
         session.use_keyspace(&self.schema.keyspace, true).await?;
-        session
-            .query(
-                self.schema
-                    .construct_table_creation_query(&self.column.columns),
-                (),
-            )
-            .await
-            .context("Failed to create standard table")?;
-        session
-            .query(
-                self.schema
-                    .construct_counter_table_creation_query(&self.column.columns),
-                (),
-            )
-            .await
-            .context("Failed to create counter table")?;
+
+        match self.command {
+            Command::Write => {
+                session
+                    .query(
+                        self.schema
+                            .construct_table_creation_query(&self.column.columns),
+                        (),
+                    )
+                    .await
+                    .context("Failed to create standard table")?;
+            }
+            Command::CounterWrite => {
+                session
+                    .query(
+                        self.schema
+                            .construct_counter_table_creation_query(&self.column.columns),
+                        (),
+                    )
+                    .await
+                    .context("Failed to create counter table")?;
+            }
+            _ => (),
+        }
 
         Ok(())
     }
