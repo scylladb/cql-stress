@@ -11,6 +11,8 @@ use cql_stress::configuration::Operation;
 use cql_stress::configuration::OperationContext;
 use cql_stress::configuration::OperationFactory;
 use cql_stress::make_runnable;
+#[cfg(feature = "user-profile")]
+use rand_distr::{Distribution as _, WeightedIndex};
 use scylla::Session;
 use std::future::Future;
 use std::num::Wrapping;
@@ -26,6 +28,8 @@ use scylla::{
 #[cfg(feature = "user-profile")]
 pub use user::UserOperationFactory;
 
+#[cfg(feature = "user-profile")]
+use crate::java_generate::distribution::{Distribution, DistributionFactory};
 use crate::settings::CassandraStressSettings;
 use crate::stats::ShardedStats;
 
@@ -308,5 +312,66 @@ impl RowValidator for ExistsRowValidator {
         // successfully extracting the first row from the query result.
         let _first_row = extract_first_row_from_query_result(&query_result)?;
         Ok(())
+    }
+}
+
+/// A sampler created based on a ratio map and a counter distribution.
+///
+/// How the sampler works?
+/// One iteration consists of:
+/// - sampling an item based on ratio map. `current_item_index` is sampled from `item_index_dist`.
+///   The item can then be retrieved via this index from `items` vector.
+/// - sampling a counter which says how many times to return the current item.
+///   The counter is sampled from `counter_dist` distribution.
+///
+/// The user then can sample the items via `sample` or `previous_sample` method.
+///
+/// The `sample` method will decrease the counter by 1, and return current item.
+/// If the counter reaches 0, new iteration starts.
+///
+/// The `previous_sample` method returns a current item without decreasing the counter.
+/// This is helpful when the user wants to, for example, retry an operation that was
+/// sampled before, but failed for some reason.
+#[cfg(feature = "user-profile")]
+struct OperationSampler<T> {
+    counter_dist: Box<dyn Distribution>,
+    items: Vec<T>,
+    item_index_dist: WeightedIndex<f64>,
+    current_item_remaining: u8,
+    current_item_index: usize,
+}
+
+#[cfg(feature = "user-profile")]
+impl<T> OperationSampler<T> {
+    pub fn new(
+        weights: impl Iterator<Item = (T, f64)>,
+        counter_dist_factory: &dyn DistributionFactory,
+    ) -> Self {
+        let (items, weights): (Vec<_>, Vec<_>) = weights.unzip();
+        // We verify the ratio properties during parsing.
+        let item_index_dist = WeightedIndex::new(weights).unwrap_or_else(|err| {
+            panic!("Failed to create a WeightedIntex from provided ratios: {err}")
+        });
+
+        Self {
+            counter_dist: counter_dist_factory.create(),
+            items,
+            item_index_dist,
+            current_item_remaining: 0,
+            current_item_index: 0,
+        }
+    }
+
+    pub fn sample(&mut self) -> &T {
+        if self.current_item_remaining == 0 {
+            self.current_item_index = self.item_index_dist.sample(&mut rand::thread_rng());
+            self.current_item_remaining = (self.counter_dist.next_i64() as u8).max(1);
+        }
+        self.current_item_remaining -= 1;
+        &self.items[self.current_item_index]
+    }
+
+    pub fn previous_sample(&self) -> &T {
+        &self.items[self.current_item_index]
     }
 }
