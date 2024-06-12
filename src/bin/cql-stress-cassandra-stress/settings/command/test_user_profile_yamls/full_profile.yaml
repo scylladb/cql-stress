@@ -16,7 +16,7 @@ table_definition:
 queries:
   ins:
     cql: insert into standard1 (pkey, ckey, c1) values (?, ?, ?)
-    consistencyLevel: local
+    consistencyLevel: local_one
     serialConsistencyLevel: local_serial
   read:
     cql: select c1 from standard1 where pkey = ?

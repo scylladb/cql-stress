@@ -274,7 +274,7 @@ mod tests {
             "insert into standard1 (pkey, ckey, c1) values (?, ?, ?)",
             ins_query.cql
         );
-        assert_eq!(Some("local".to_string()), ins_query.consistency_level);
+        assert_eq!(Some("local_one".to_string()), ins_query.consistency_level);
         assert_eq!(
             Some("local_serial".to_string()),
             ins_query.serial_consistency_level
