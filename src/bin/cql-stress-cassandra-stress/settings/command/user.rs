@@ -54,6 +54,7 @@ impl QueryDefinitionYaml {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryDefinition {
     pub cql: String,
     pub consistency: Option<Consistency>,
