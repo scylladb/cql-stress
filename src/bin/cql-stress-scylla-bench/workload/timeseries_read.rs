@@ -28,7 +28,8 @@ struct TimeseriesRead {
 
 #[derive(Clone)]
 pub struct TimeseriesReadConfig {
-    pub partition_offset: i64,
+    // FIXME: why is this not used??
+    pub _partition_offset: i64,
     pub pks_per_generation: u64,
     pub cks_per_pk: u64,
     pub start_nanos: u64,

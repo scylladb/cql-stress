@@ -302,7 +302,7 @@ fn create_workload_factory(args: &ScyllaBenchArgs) -> Result<Box<dyn WorkloadFac
         }
         (WorkloadType::Timeseries, Mode::Write) => {
             let tsw_config = TimeseriesWriteConfig {
-                partition_offset: args.partition_offset,
+                _partition_offset: args.partition_offset,
                 pks_per_generation: args.partition_count,
                 cks_per_pk: args.clustering_row_count,
                 start_nanos: args.start_timestamp,
@@ -313,7 +313,7 @@ fn create_workload_factory(args: &ScyllaBenchArgs) -> Result<Box<dyn WorkloadFac
         (WorkloadType::Timeseries, Mode::Read) => {
             let period = 1_000_000_000 / args.write_rate;
             let tsr_config = TimeseriesReadConfig {
-                partition_offset: args.partition_offset,
+                _partition_offset: args.partition_offset,
                 pks_per_generation: args.partition_count,
                 cks_per_pk: args.clustering_row_count,
                 start_nanos: args.start_timestamp,
