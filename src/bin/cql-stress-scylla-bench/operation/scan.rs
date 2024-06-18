@@ -91,7 +91,7 @@ impl ScanOperation {
         let calc_bound = |idx: u64| {
             let shifted = (idx as u128) << 64;
             let biased = shifted / self.args.range_count as u128;
-            biased as i64 + std::i64::MIN
+            biased as i64 + i64::MIN
         };
 
         let range_begin = calc_bound(range_idx);

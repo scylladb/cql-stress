@@ -352,8 +352,6 @@ mod tests {
 
     #[test]
     fn test_parse_uint_good() {
-        use std::{u32, u64};
-
         let tests_32: &[(&str, u32)] = &[
             // Zeros
             ("0", 0),
@@ -402,8 +400,6 @@ mod tests {
 
     #[test]
     fn test_parse_uint_bad() {
-        use std::u64;
-
         let tests_32: &[&str] = &[
             // Invalid characters
             "abcd",
@@ -444,8 +440,6 @@ mod tests {
 
     #[test]
     fn test_parse_int_good() {
-        use std::i32;
-
         let tests_32: &[(&str, i32)] = &[
             // Zero
             ("0", 0),
