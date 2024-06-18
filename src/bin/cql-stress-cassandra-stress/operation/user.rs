@@ -13,15 +13,16 @@ use anyhow::Result;
 
 use crate::{
     java_generate::{
-        distribution::Distribution,
+        distribution::{Distribution, DistributionFactory},
         values::{Generator, GeneratorConfig, ValueGeneratorFactory},
     },
-    settings::CassandraStressSettings,
+    settings::{CassandraStressSettings, OpWeight},
     stats::ShardedStats,
 };
 
 use super::{
     row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,
+    OperationSampler,
 };
 
 const SEED_STR: &str = "seed for stress";
@@ -70,49 +71,8 @@ impl CassandraStressOperationFactory for UserDefinedOperationFactory {
     }
 }
 
-/// A struct that samples the operations.
-/// TODO: For now, this is a simple round-robin sampler.
-///       Adjust it, when `ops()` and `clustering=` parameters are supported.
-///       This will need to be somehow unified with the sampler of `mixed` operation.
-///       I think the sampler could cache the row associated with current operation as well.
-struct OperationSampler {
-    op_map: HashMap<String, UserDefinedOperation>,
-    op_keys: Vec<String>,
-    current_operation_index: usize,
-}
-
-impl OperationSampler {
-    fn from_operation_map(op_map: HashMap<String, UserDefinedOperation>) -> Self {
-        let op_keys = op_map.keys().cloned().collect::<Vec<_>>();
-        let current_operation_index = 0;
-
-        Self {
-            op_map,
-            op_keys,
-            current_operation_index,
-        }
-    }
-
-    fn sample(&mut self) -> &UserDefinedOperation {
-        // op_keys is a vector of keys of op_map. This unwrap is safe.
-        let sample = self
-            .op_map
-            .get(&self.op_keys[self.current_operation_index])
-            .unwrap();
-        self.current_operation_index = (self.current_operation_index + 1) % self.op_keys.len();
-        sample
-    }
-
-    fn sample_cached(&self) -> &UserDefinedOperation {
-        // op_keys is a vector of keys of op_map. This unwrap is safe.
-        self.op_map
-            .get(&self.op_keys[self.current_operation_index])
-            .unwrap()
-    }
-}
-
 pub struct UserOperation {
-    sampler: OperationSampler,
+    sampler: OperationSampler<UserDefinedOperation>,
     workload: RowGenerator,
     stats: Arc<ShardedStats>,
     max_operations: Option<u64>,
@@ -130,7 +90,7 @@ impl UserOperation {
         }
 
         let (op, row) = match &mut self.cached_row {
-            Some(cached_row) => (self.sampler.sample_cached(), cached_row),
+            Some(cached_row) => (self.sampler.previous_sample(), cached_row),
             None => {
                 let op = self.sampler.sample();
                 let row = self.cached_row.insert(op.generate_row(&mut self.workload));
@@ -159,10 +119,11 @@ pub struct UserOperationFactory {
     pk_seed_distribution: Arc<dyn Distribution>,
     stats: Arc<ShardedStats>,
     table_metadata: Table,
-    statements_map: HashMap<String, PreparedStatement>,
+    queries_payload: HashMap<String, (PreparedStatement, OpWeight)>,
     pk_generator_factory: Box<dyn ValueGeneratorFactory>,
     column_generator_factories: Vec<Box<dyn ValueGeneratorFactory>>,
     max_operations: Option<u64>,
+    clustering: Arc<dyn DistributionFactory>,
 }
 
 impl UserOperationFactory {
@@ -174,7 +135,7 @@ impl UserOperationFactory {
         // We parsed a user command. This unwrap is safe.
         let user_profile = settings.command_params.user.as_ref().unwrap();
 
-        let query_definitions = &user_profile.queries;
+        let query_definitions = &user_profile.queries_payload;
         let cluster_data = session.get_cluster_data();
         let table_metadata = cluster_data
             .get_keyspace_info()
@@ -197,11 +158,11 @@ impl UserOperationFactory {
             "Compound partition keys are not yet supported by the tool!"
         );
 
-        let mut statements_map = HashMap::new();
-        for (q_name, q_def) in query_definitions {
-            statements_map.insert(
+        let mut queries_payload = HashMap::new();
+        for (q_name, (q_def, weight)) in query_definitions {
+            queries_payload.insert(
                 q_name.to_owned(),
-                q_def.to_prepared_statement(&session).await?,
+                (q_def.to_prepared_statement(&session).await?, *weight),
             );
         }
 
@@ -235,10 +196,11 @@ impl UserOperationFactory {
             pk_seed_distribution,
             stats,
             table_metadata,
-            statements_map,
+            queries_payload,
             max_operations,
             pk_generator_factory,
             column_generator_factories,
+            clustering: user_profile.clustering.clone(),
         })
     }
 
@@ -277,10 +239,10 @@ impl OperationFactory for UserOperationFactory {
     fn create(&self) -> Box<dyn Operation> {
         let workload = self.create_workload();
 
-        let operations_map: HashMap<String, UserDefinedOperation> =
-            self.statements_map
+        let weights_iter =
+            self.queries_payload
                 .iter()
-                .map(|(op_name, stmt)| {
+                .map(|(_op_name, (stmt, weight))| {
                     let variable_metadata = stmt.get_variable_col_specs();
                     let argument_index = variable_metadata
                         .iter()
@@ -291,17 +253,16 @@ impl OperationFactory for UserOperationFactory {
                         })
                         .collect::<Vec<_>>();
                     (
-                        op_name.clone(),
                         UserDefinedOperation {
                             session: Arc::clone(&self.session),
                             statement: stmt.clone(),
                             argument_index,
                         },
+                        *weight,
                     )
-                })
-                .collect::<HashMap<_, _>>();
+                });
 
-        let sampler = OperationSampler::from_operation_map(operations_map);
+        let sampler = OperationSampler::new(weights_iter, self.clustering.as_ref());
 
         Box::new(UserOperation {
             workload,

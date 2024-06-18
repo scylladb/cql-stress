@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     marker::PhantomData,
     num::{NonZeroU32, NonZeroUsize},
     time::Duration,
@@ -298,9 +299,85 @@ impl Parsable for ConnectionsPerShard {
     }
 }
 
+/// A ratio map which should match the following pattern:
+/// (<item1>=<f64>,<item2>=<f64>,...,<item_n>=<f64>)
+///
+/// Requirements:
+/// - Items have to be unique -> "(foo=1,foo=2)" parsing should fail
+/// - User needs to specify at least one item's ratio -> "()" parsing should fail
+/// - Weights cannot be negative -> "(foo=-1)" parsing should fail
+/// - Weights cannot sum up to 0 -> "(foo=0,bar=0)" parsing should fail
+///
+/// Last 3 requirements are introduced so creating a [rand_distr::WeightedIndex] with
+/// [rand_distr::WeightedIndex::new] from iterator of f64 values does not fail.
+pub struct RatioMap;
+
+impl RatioMap {
+    fn parse_item_weight(s: &str) -> Result<(&str, f64)> {
+        let (item, weight) = {
+            let mut iter = s.split('=').fuse();
+            match (iter.next(), iter.next(), iter.next()) {
+                (Some(cmd), Some(w), None) => (cmd, w),
+                _ => anyhow::bail!("Item weight specification should match pattern <item>=<f64>"),
+            }
+        };
+
+        let weight = weight.parse::<f64>()?;
+        anyhow::ensure!(weight >= 0f64, "Item weight cannot be negative: {}", weight);
+
+        Ok((item, weight))
+    }
+
+    fn do_parse(s: &str) -> Result<HashMap<String, f64>> {
+        // Remove wrapping parentheses.
+        let arg = {
+            let mut chars = s.chars();
+            anyhow::ensure!(
+                chars.next() == Some('(') && chars.next_back() == Some(')'),
+                "List of item weights should be wrapped with parentheses",
+            );
+            chars.as_str()
+        };
+
+        // A set to ensure that items are unique.
+        let mut item_set = HashSet::<&str>::new();
+        // Verify that sum of weights is non-zero.
+        let mut sum = 0f64;
+        let weights_map = arg
+            .split(',')
+            .map(|s| -> Result<(String, f64)> {
+                let (item, weight) = Self::parse_item_weight(s)?;
+                anyhow::ensure!(
+                    !item_set.contains(item),
+                    "'{}' item has been specified more than once",
+                    item
+                );
+                sum += weight;
+                item_set.insert(item);
+                Ok((item.to_owned(), weight))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+
+        anyhow::ensure!(!weights_map.is_empty(), "Ratio map is empty.");
+        anyhow::ensure!(sum > 0f64, "Weights cannot sum up to 0.");
+
+        Ok(weights_map)
+    }
+}
+
+impl Parsable for RatioMap {
+    type Parsed = HashMap<String, f64>;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        Self::do_parse(s).with_context(|| format!("Invalid ratio specification: {}", s))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::java_generate::distribution::DistributionFactory;
+    use crate::{
+        java_generate::distribution::DistributionFactory, settings::param::types::RatioMap,
+    };
 
     use super::Parsable;
 
@@ -396,6 +473,28 @@ mod tests {
         ];
         for input in bad_test_cases {
             assert!(DistributionTestType::parse(input).is_err());
+        }
+    }
+
+    #[test]
+    fn ratio_map_param_test() {
+        let good_test_cases = ["(foo=1)", "(foo=1.2,bar=21,baz=0.5)", "(foo=1,bar=0)"];
+        for input in good_test_cases {
+            assert!(RatioMap::parse(input).is_ok())
+        }
+
+        let bad_test_cases = [
+            "()",
+            "(foo=1=2)",
+            "(foo=1,foo=2)",
+            "(foo=bar)",
+            "(foo=1",
+            "foo=1)",
+            "(foo=0,bar=0)",
+            "(foo=-1.2)",
+        ];
+        for input in bad_test_cases {
+            assert!(RatioMap::parse(input).is_err())
         }
     }
 }
