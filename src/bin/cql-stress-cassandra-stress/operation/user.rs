@@ -183,23 +183,27 @@ impl UserOperationFactory {
             "Compound partition keys are not yet supported by the tool!"
         );
 
-        let mut queries_payload = HashMap::new();
-        for (q_name, (q_def, weight)) in query_definitions {
-            queries_payload.insert(
-                q_name.to_owned(),
-                (q_def.to_prepared_statement(&session).await?, *weight),
-            );
-        }
-        // Handle 'insert' operation separately.
-        if let Some(insert_weight) = &user_profile.insert_operation_weight {
-            let insert_statement =
-                Self::prepare_insert_statement(&session, &user_profile.table, &table_metadata)
-                    .await?;
-            queries_payload.insert(
-                PREDEFINED_INSERT_OPERATION.to_owned(),
-                (insert_statement, *insert_weight),
-            );
-        }
+        let queries_payload = {
+            let mut queries_payload = HashMap::new();
+            for (q_name, (q_def, weight)) in query_definitions {
+                queries_payload.insert(
+                    q_name.to_owned(),
+                    (q_def.to_prepared_statement(&session).await?, *weight),
+                );
+            }
+            // Handle 'insert' operation separately.
+            if let Some(insert_weight) = &user_profile.insert_operation_weight {
+                let insert_statement =
+                    Self::prepare_insert_statement(&session, &user_profile.table, &table_metadata)
+                        .await?;
+                queries_payload.insert(
+                    PREDEFINED_INSERT_OPERATION.to_owned(),
+                    (insert_statement, *insert_weight),
+                );
+            }
+
+            queries_payload
+        };
 
         let pk_seed_distribution = settings.population.pk_seed_distribution.create().into();
         let max_operations = settings.command_params.common.operation_count;
