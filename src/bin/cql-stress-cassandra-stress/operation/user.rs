@@ -202,6 +202,18 @@ impl UserOperationFactory {
                 );
             }
 
+            println!("\n========================");
+            println!("Operations to be performed and their sample ratio weights:\n");
+            for (q_name, (statement, q_weight)) in queries_payload.iter() {
+                println!(
+                    "- {}: {{ 'cql': '{}', 'weight': {} }}",
+                    q_name,
+                    statement.get_statement(),
+                    q_weight
+                );
+            }
+            println!("========================\n");
+
             queries_payload
         };
 
