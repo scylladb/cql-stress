@@ -317,6 +317,15 @@ mod tests {
     }
 
     #[test]
+    fn insert_query_profile_yaml_contents_test() {
+        // 'insert' is a reserved name for an operation. Parsing should fail.
+        let yaml_filepath = build_file_path("insert_query_profile.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath);
+        assert!(profile.is_err());
+    }
+
+    #[test]
     fn full_profile_yaml_contents_test() {
         let yaml_filepath = build_file_path("full_profile.yaml");
 
