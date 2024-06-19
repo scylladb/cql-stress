@@ -12,6 +12,23 @@ use anyhow::Result;
 pub mod blob;
 pub mod hex_blob;
 
+#[cfg(feature = "user-profile")]
+pub mod boolean;
+#[cfg(feature = "user-profile")]
+pub mod decimal;
+#[cfg(feature = "user-profile")]
+pub mod float;
+#[cfg(feature = "user-profile")]
+pub mod inet;
+#[cfg(feature = "user-profile")]
+pub mod int;
+#[cfg(feature = "user-profile")]
+pub mod text;
+#[cfg(feature = "user-profile")]
+pub mod uuid;
+#[cfg(feature = "user-profile")]
+pub mod varint;
+
 pub use blob::Blob;
 pub use hex_blob::HexBlob;
 
@@ -54,10 +71,30 @@ impl Generator {
         typ: &CqlType,
     ) -> Result<Box<dyn ValueGeneratorFactory>> {
         use self::blob::BlobFactory;
+        use boolean::BooleanFactory;
+        use decimal::DecimalFactory;
+        use float::{DoubleFactory, FloatFactory};
+        use inet::InetFactory;
+        use int::{BigIntFactory, IntFactory, SmallIntFactory, TinyIntFactory};
+        use text::TextFactory;
+        use uuid::UuidFactory;
+        use varint::VarIntFactory;
 
         match typ {
             CqlType::Native(native_type) => match native_type {
                 scylla::transport::topology::NativeType::Blob => Ok(Box::new(BlobFactory)),
+                scylla::transport::topology::NativeType::Text => Ok(Box::new(TextFactory)),
+                scylla::transport::topology::NativeType::BigInt => Ok(Box::new(BigIntFactory)),
+                scylla::transport::topology::NativeType::Int => Ok(Box::new(IntFactory)),
+                scylla::transport::topology::NativeType::SmallInt => Ok(Box::new(SmallIntFactory)),
+                scylla::transport::topology::NativeType::TinyInt => Ok(Box::new(TinyIntFactory)),
+                scylla::transport::topology::NativeType::Boolean => Ok(Box::new(BooleanFactory)),
+                scylla::transport::topology::NativeType::Float => Ok(Box::new(FloatFactory)),
+                scylla::transport::topology::NativeType::Double => Ok(Box::new(DoubleFactory)),
+                scylla::transport::topology::NativeType::Inet => Ok(Box::new(InetFactory)),
+                scylla::transport::topology::NativeType::Varint => Ok(Box::new(VarIntFactory)),
+                scylla::transport::topology::NativeType::Decimal => Ok(Box::new(DecimalFactory)),
+                scylla::transport::topology::NativeType::Uuid => Ok(Box::new(UuidFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type

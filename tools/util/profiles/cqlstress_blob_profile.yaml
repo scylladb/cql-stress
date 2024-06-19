@@ -12,7 +12,7 @@ keyspace: cqlstress_blob_keyspace
 
 keyspace_definition: |
   CREATE KEYSPACE IF NOT EXISTS cqlstress_blob_keyspace 
-  WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': 1};
+  WITH replication = { 'class': 'NetworkTopologyStrategy', 'replication_factor': 1};
 
 queries:
   test_query:
