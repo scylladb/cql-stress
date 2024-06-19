@@ -22,7 +22,7 @@ struct TimeseriesWrite {
 
 #[derive(Clone)]
 pub struct TimeseriesWriteConfig {
-    pub partition_offset: i64,
+    pub _partition_offset: i64,
     pub pks_per_generation: u64,
     pub cks_per_pk: u64,
     pub start_nanos: u64,
