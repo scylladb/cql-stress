@@ -81,6 +81,8 @@ impl QueryDefinition {
     }
 }
 
+pub const PREDEFINED_INSERT_OPERATION: &str = "insert";
+
 impl Parsable for UserProfile {
     type Parsed = Self;
 
@@ -92,6 +94,10 @@ impl Parsable for UserProfile {
         anyhow::ensure!(
             !profile.queries.is_empty(),
             "'queries' map cannot be empty. Please define at least one query."
+        );
+        anyhow::ensure!(
+            !profile.queries.contains_key(PREDEFINED_INSERT_OPERATION),
+            "'{PREDEFINED_INSERT_OPERATION}' is a reserved name for the operation. See help message for user command for more details."
         );
         Ok(profile)
     }
@@ -109,6 +115,7 @@ pub struct UserParams {
     // this query will be sampled.
     pub queries_payload: HashMap<String, (QueryDefinition, OpWeight)>,
     pub clustering: Arc<dyn DistributionFactory>,
+    pub insert_operation_weight: Option<OpWeight>,
 }
 
 impl UserParams {
@@ -157,8 +164,12 @@ impl UserParams {
             table_definition,
             mut queries,
         } = handles.profile.get().unwrap();
-        let queries_ratio = handles.ratio.get().unwrap();
+        let mut queries_ratio = handles.ratio.get().unwrap();
         let clustering: Arc<dyn DistributionFactory> = handles.clustering.get().unwrap().into();
+
+        // Handle the `insert` operation separately. This operation is not defined in the yaml file.
+        // Its behaviour is predefined by the tool.
+        let insert_operation_weight = queries_ratio.remove(PREDEFINED_INSERT_OPERATION);
 
         let queries_payload = queries_ratio
             .into_iter()
@@ -184,6 +195,7 @@ impl UserParams {
             table_definition,
             queries_payload,
             clustering,
+            insert_operation_weight,
         })
     }
 }
@@ -205,7 +217,13 @@ fn prepare_parser(cmd: &str) -> (ParamsParser, CommonParamHandles, UserParamHand
         "Specify the path to a yaml cql3 profile",
         true,
     );
-    let ratio = parser.simple_param("ops", None, "Specify the ratios for inserts/queries to perform; e.g. ops(insert=2,<query1>=1) will perform 2 inserts for each query1", true);
+    let ratio = parser.simple_param(
+        "ops",
+        None,
+        "Specify the ratios for inserts/queries to perform; e.g. ops(insert=2,<query1>=1) will perform 2 inserts for each query1. 
+        'insert' is a reserved name for an operation, thus query with such name cannot be defined in a profile yaml.",
+        true
+    );
     let clustering = parser.simple_param(
         "clustering=",
         Some("GAUSSIAN(1..10)"),
