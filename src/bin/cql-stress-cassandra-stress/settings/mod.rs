@@ -4,6 +4,7 @@ use std::iter::Iterator;
 mod command;
 mod option;
 mod param;
+use anyhow::Context;
 use anyhow::Result;
 
 #[cfg(test)]
@@ -17,6 +18,7 @@ pub use command::OpWeight;
 pub use command::OperationRatio;
 pub use option::ThreadsInfo;
 use regex::Regex;
+use scylla::Session;
 
 use crate::settings::command::print_help;
 
@@ -50,6 +52,47 @@ impl CassandraStressSettings {
         self.column.print_settings();
         self.population.print_settings();
         println!();
+    }
+
+    pub async fn create_schema(&self, session: &Session) -> Result<()> {
+        #[cfg(feature = "user-profile")]
+        if let Some(user) = &self.command_params.user {
+            return user.create_schema(session).await;
+        }
+
+        if matches!(self.command, Command::Write | Command::CounterWrite) {
+            session
+                .query(self.schema.construct_keyspace_creation_query(), ())
+                .await?;
+        }
+
+        session.use_keyspace(&self.schema.keyspace, true).await?;
+
+        match self.command {
+            Command::Write => {
+                session
+                    .query(
+                        self.schema
+                            .construct_table_creation_query(&self.column.columns),
+                        (),
+                    )
+                    .await
+                    .context("Failed to create standard table")?;
+            }
+            Command::CounterWrite => {
+                session
+                    .query(
+                        self.schema
+                            .construct_counter_table_creation_query(&self.column.columns),
+                        (),
+                    )
+                    .await
+                    .context("Failed to create counter table")?;
+            }
+            _ => (),
+        }
+
+        Ok(())
     }
 }
 

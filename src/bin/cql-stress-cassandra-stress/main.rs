@@ -138,7 +138,10 @@ async fn prepare_run(
     let session = builder.build().await?;
     let session = Arc::new(session);
 
-    create_schema(&session, &settings).await?;
+    settings
+        .create_schema(&session)
+        .await
+        .context("Failed to create schema")?;
 
     let duration = settings.command_params.common.duration;
 
@@ -161,50 +164,6 @@ async fn prepare_run(
         // TODO: adjust when -errors option is supported
         max_retries_per_op: 9,
     })
-}
-
-async fn create_schema(session: &Session, settings: &CassandraStressSettings) -> Result<()> {
-    match settings.command {
-        #[cfg(feature = "user-profile")]
-        Command::User => {
-            // 'user' command provided. This unwrap is safe.
-            settings
-                .command_params
-                .user
-                .as_ref()
-                .unwrap()
-                .create_schema(session)
-                .await?;
-        }
-        _ => {
-            session
-                .query(settings.schema.construct_keyspace_creation_query(), ())
-                .await?;
-            session
-                .use_keyspace(&settings.schema.keyspace, true)
-                .await?;
-            session
-                .query(
-                    settings
-                        .schema
-                        .construct_table_creation_query(&settings.column.columns),
-                    (),
-                )
-                .await
-                .context("Failed to create standard table")?;
-            session
-                .query(
-                    settings
-                        .schema
-                        .construct_counter_table_creation_query(&settings.column.columns),
-                    (),
-                )
-                .await
-                .context("Failed to create counter table")?;
-        }
-    }
-
-    Ok(())
 }
 
 async fn create_operation_factory(
