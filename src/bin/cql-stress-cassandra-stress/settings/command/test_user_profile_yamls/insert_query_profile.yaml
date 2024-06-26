@@ -1,0 +1,7 @@
+# This file contains an 'insert' query, thus it's invalid.
+# This is a reserved name for an operation - the tool predefines its behaviour.
+keyspace: foo
+table: bar
+queries:
+  insert:
+    cql: select c1 from standard1 where pkey = ?
