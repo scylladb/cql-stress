@@ -19,6 +19,12 @@ impl<T: Copy> EnumeratedDistribution<T> {
     }
 }
 
+impl<T: PartialEq + Eq> EnumeratedDistribution<T> {
+    pub fn contains(&self, t: &T) -> bool {
+        self.items.iter().any(|(item, _weight)| item == t)
+    }
+}
+
 impl<T: std::fmt::Display> std::fmt::Display for EnumeratedDistribution<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
