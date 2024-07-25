@@ -51,6 +51,12 @@ Commands mentioned above are very limited. They do not, for example, allow to te
 
 To test more complex schemas, make use of user profiles (`user` command). User profiles allow to define custom schemas and custom statements used to stress the database.
 
+Users can define custom statements via user profile yaml file. See the exemplary yaml files under `tools/util/profiles`. The path to profile file can be provided via `profile=` parameter of `user` command.
+
+Notice that the tool reserves an `insert` operation name and predefines the behaviour
+of this operation. User can execute this operation (with a given sample ratio weight)
+by providing it to `ops()` parameter along with other operations defined by the user in the yaml file. This operation will simply generate and insert a full row to the stressed table. It's analogous to `write` command - the only difference is that it operates on the custom schema.
+
 To enable the `user` mode, the tool needs to be compiled with `user-profile` feature. This feature is enabled by default.
 
 ## Development

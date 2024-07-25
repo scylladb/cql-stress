@@ -13,9 +13,9 @@ mod test;
 pub use command::Command;
 pub use command::CommandParams;
 pub use command::MixedSubcommand;
-#[cfg(feature = "user-profile")]
-pub use command::OpWeight;
 pub use command::OperationRatio;
+#[cfg(feature = "user-profile")]
+pub use command::{OpWeight, PREDEFINED_INSERT_OPERATION};
 pub use option::ThreadsInfo;
 use regex::Regex;
 use scylla::Session;
