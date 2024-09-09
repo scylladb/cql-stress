@@ -35,6 +35,7 @@ use super::recompute_seed;
 /// In c-s, there are only two deterministic distributions:
 /// - FIXED
 /// - SEQ
+///
 /// We call a distribution non-deterministic if the values it samples in each run may differ. It's the case
 /// for all of the distributions that depend on some RNG (which is by default seeded with current time in millis)
 /// e.g. UniformDistribution, GaussianDistribution (not yet implemented).

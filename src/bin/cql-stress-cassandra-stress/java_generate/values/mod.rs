@@ -180,6 +180,7 @@ pub trait ValueGenerator: Send + Sync + 'static {
 /// [`ValueGenerator`] once the native type is deduced from metadata.
 ///
 /// - Why not just clone a ValueGenerator once created?
+///
 /// Since we make use of trait objects, we cannot expect [`ValueGenerator`]
 /// to implement [`Clone`] as well.
 #[cfg(feature = "user-profile")]
