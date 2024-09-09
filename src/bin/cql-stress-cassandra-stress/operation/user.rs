@@ -9,14 +9,14 @@ use scylla::{
     transport::topology::Table, Session,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::{
     java_generate::{
         distribution::{Distribution, DistributionFactory},
         values::{Generator, GeneratorConfig, ValueGeneratorFactory},
     },
-    settings::{CassandraStressSettings, OpWeight},
+    settings::{CassandraStressSettings, OpWeight, PREDEFINED_INSERT_OPERATION},
     stats::ShardedStats,
 };
 
@@ -127,6 +127,31 @@ pub struct UserOperationFactory {
 }
 
 impl UserOperationFactory {
+    async fn prepare_insert_statement(
+        session: &Arc<Session>,
+        table_name: &str,
+        table_metadata: &Table,
+    ) -> Result<PreparedStatement> {
+        let column_names = table_metadata
+            .columns
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+
+        let column_list_str = column_names.join(", ");
+        let column_values_str = std::iter::repeat("?")
+            .take(column_names.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let statement_str =
+            format!("INSERT INTO {table_name} ({column_list_str}) VALUES ({column_values_str})");
+        session
+            .prepare(statement_str)
+            .await
+            .context("Failed to prepare statement for 'insert' operation.")
+    }
+
     pub async fn new(
         settings: Arc<CassandraStressSettings>,
         session: Arc<Session>,
@@ -158,13 +183,39 @@ impl UserOperationFactory {
             "Compound partition keys are not yet supported by the tool!"
         );
 
-        let mut queries_payload = HashMap::new();
-        for (q_name, (q_def, weight)) in query_definitions {
-            queries_payload.insert(
-                q_name.to_owned(),
-                (q_def.to_prepared_statement(&session).await?, *weight),
-            );
-        }
+        let queries_payload = {
+            let mut queries_payload = HashMap::new();
+            for (q_name, (q_def, weight)) in query_definitions {
+                queries_payload.insert(
+                    q_name.to_owned(),
+                    (q_def.to_prepared_statement(&session).await?, *weight),
+                );
+            }
+            // Handle 'insert' operation separately.
+            if let Some(insert_weight) = &user_profile.insert_operation_weight {
+                let insert_statement =
+                    Self::prepare_insert_statement(&session, &user_profile.table, &table_metadata)
+                        .await?;
+                queries_payload.insert(
+                    PREDEFINED_INSERT_OPERATION.to_owned(),
+                    (insert_statement, *insert_weight),
+                );
+            }
+
+            println!("\n========================");
+            println!("Operations to be performed and their sample ratio weights:\n");
+            for (q_name, (statement, q_weight)) in queries_payload.iter() {
+                println!(
+                    "- {}: {{ 'cql': '{}', 'weight': {} }}",
+                    q_name,
+                    statement.get_statement(),
+                    q_weight
+                );
+            }
+            println!("========================\n");
+
+            queries_payload
+        };
 
         let pk_seed_distribution = settings.population.pk_seed_distribution.create().into();
         let max_operations = settings.command_params.common.operation_count;

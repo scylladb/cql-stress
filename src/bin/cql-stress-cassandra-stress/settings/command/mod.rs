@@ -22,9 +22,9 @@ use self::counter::CounterParams;
 use self::mixed::print_help_mixed;
 use self::mixed::MixedParams;
 #[cfg(feature = "user-profile")]
-pub use self::user::OpWeight;
-#[cfg(feature = "user-profile")]
 use self::user::UserParams;
+#[cfg(feature = "user-profile")]
+pub use self::user::{OpWeight, PREDEFINED_INSERT_OPERATION};
 pub use help::print_help;
 
 use super::ParsePayload;
