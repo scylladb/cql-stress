@@ -139,7 +139,7 @@ impl UserParams {
     pub async fn create_schema(&self, session: &Session) -> Result<()> {
         if let Some(keyspace_definition) = &self.keyspace_definition {
             session
-                .query(keyspace_definition.as_str(), ())
+                .query_unpaged(keyspace_definition.as_str(), ())
                 .await
                 .context("Failed to create keyspace based on user profile")?;
         }
@@ -147,7 +147,7 @@ impl UserParams {
 
         if let Some(table_definition) = &self.table_definition {
             session
-                .query(table_definition.as_str(), ())
+                .query_unpaged(table_definition.as_str(), ())
                 .await
                 .context("Failed to create table based on user profile")?;
         }

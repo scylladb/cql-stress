@@ -90,8 +90,9 @@ impl CounterUpdateOperation {
 
 impl CounterUpdateOperation {
     async fn write_single(&mut self, pk: i64, ck: i64) -> Result<()> {
+        // execute_npaged, since it's an UPDATE statement.
         self.session
-            .execute(
+            .execute_unpaged(
                 &self.statement,
                 (ck + 1, ck + 2, ck + 3, ck + 4, ck + 5, pk, ck),
             )

@@ -23,7 +23,8 @@ impl CassandraStressOperation for WriteOperation {
     type Factory = WriteOperationFactory;
 
     async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
-        let result = self.session.execute(&self.statement, &row).await;
+        // execute_unpaged, since it's an INSERT statement.
+        let result = self.session.execute_unpaged(&self.statement, &row).await;
 
         if let Err(err) = result.as_ref() {
             tracing::error!(
