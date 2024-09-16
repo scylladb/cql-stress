@@ -114,8 +114,9 @@ impl WriteOperation {
 impl WriteOperation {
     async fn write_single(&mut self, pk: i64, ck: i64) -> Result<()> {
         let data = self.generate_row(pk, ck);
+        // execute_unpaged, since it's an INSERT statement.
         self.session
-            .execute(&self.statement, (pk, ck, data))
+            .execute_unpaged(&self.statement, (pk, ck, data))
             .await?;
         Ok(())
     }

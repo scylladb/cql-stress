@@ -32,7 +32,10 @@ impl<V: RowValidator> ReadOperation<V> {
     async fn do_execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
         let pk = &row[0];
 
-        let result = self.session.execute(&self.statement, (pk,)).await;
+        // The tool works in a way, that it generates one row per partition.
+        // We make use of `execute_unpaged` here, since we filter the rows
+        // with `WHERE PK = ?`. It means, that the result will have AT MOST 1 row.
+        let result = self.session.execute_unpaged(&self.statement, (pk,)).await;
         if let Err(err) = result.as_ref() {
             tracing::error!(
                 error = %err,

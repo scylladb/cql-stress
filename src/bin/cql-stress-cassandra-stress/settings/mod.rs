@@ -62,7 +62,7 @@ impl CassandraStressSettings {
 
         if matches!(self.command, Command::Write | Command::CounterWrite) {
             session
-                .query(self.schema.construct_keyspace_creation_query(), ())
+                .query_unpaged(self.schema.construct_keyspace_creation_query(), ())
                 .await?;
         }
 
@@ -71,7 +71,7 @@ impl CassandraStressSettings {
         match self.command {
             Command::Write => {
                 session
-                    .query(
+                    .query_unpaged(
                         self.schema
                             .construct_table_creation_query(&self.column.columns),
                         (),
@@ -81,7 +81,7 @@ impl CassandraStressSettings {
             }
             Command::CounterWrite => {
                 session
-                    .query(
+                    .query_unpaged(
                         self.schema
                             .construct_counter_table_creation_query(&self.column.columns),
                         (),

@@ -12,10 +12,13 @@ pub mod sharded_stats;
 #[cfg(test)]
 mod tests {
     use crate::test_util::new_test_session;
+    use scylla::transport::PagingState;
 
     #[tokio::test]
     async fn test_can_connect() {
         let s = new_test_session().await;
-        s.query("SELECT * FROM system.local", ()).await.unwrap();
+        s.query_single_page("SELECT * FROM system.local", (), PagingState::start())
+            .await
+            .unwrap();
     }
 }

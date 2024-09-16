@@ -43,7 +43,11 @@ impl CassandraStressOperation for UserDefinedOperation {
             bound_row.push(&row[*i]);
         }
 
-        self.session.execute(&self.statement, bound_row).await?;
+        // User can provide a custom query here. In addition, we don't care
+        // about the result of this query. This is why we can use `execute_unpaged`.
+        self.session
+            .execute_unpaged(&self.statement, bound_row)
+            .await?;
 
         Ok(ControlFlow::Continue(()))
     }

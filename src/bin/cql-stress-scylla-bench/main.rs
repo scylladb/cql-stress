@@ -207,7 +207,7 @@ async fn create_schema(session: &Session, args: &ScyllaBenchArgs) -> Result<()> 
         {{'class': 'SimpleStrategy', 'replication_factor': {}}}",
         args.keyspace_name, args.replication_factor,
     );
-    session.query(create_keyspace_query_str, ()).await?;
+    session.query_unpaged(create_keyspace_query_str, ()).await?;
     session.use_keyspace(&args.keyspace_name, true).await?;
     session.await_schema_agreement().await?;
 
@@ -217,7 +217,7 @@ async fn create_schema(session: &Session, args: &ScyllaBenchArgs) -> Result<()> 
         WITH compression = {{ }}",
         args.table_name,
     );
-    let q1 = session.query(create_regular_table_query_str, ());
+    let q1 = session.query_unpaged(create_regular_table_query_str, ());
 
     let create_counter_table_query_str = format!(
         "CREATE TABLE IF NOT EXISTS {} \
@@ -225,7 +225,7 @@ async fn create_schema(session: &Session, args: &ScyllaBenchArgs) -> Result<()> 
         WITH compression = {{ }}",
         args.counter_table_name,
     );
-    let q2 = session.query(create_counter_table_query_str, ());
+    let q2 = session.query_unpaged(create_counter_table_query_str, ());
 
     future::try_join(q1, q2).await?;
     session.await_schema_agreement().await?;
