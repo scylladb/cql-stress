@@ -68,10 +68,10 @@ impl<W: AsyncWrite + Unpin> HistogramLogWriter<W> {
         self.writer.write_all("\"StartTimestamp\",\"Interval_Length\",\"Interval_Max\",\"Interval_Compressed_Histogram\"\n".as_bytes()).await
     }
 
-    pub async fn output_interval_histogram<'t>(
+    pub async fn output_interval_histogram(
         &mut self,
         histogram: &Histogram<u64>,
-        opts: HistogramLogOptions<'t>,
+        opts: HistogramLogOptions<'_>,
     ) -> Result<()> {
         const MS_TO_NS_RATIO: f64 = 1_000_000.0;
         let max_value = histogram.max() as f64 / MS_TO_NS_RATIO;
