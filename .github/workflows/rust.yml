@@ -29,6 +29,8 @@ jobs:
       run: cargo clippy --verbose --tests --no-default-features -- -D warnings
     - name: Clippy check with `user-profile` feature
       run: cargo clippy --verbose --tests --features "user-profile" -- -D warnings
+    - name: Clippy check with cfg(fetch_extended_version_info)
+      run: RUSTFLAGS="--cfg fetch_extended_version_info" cargo clippy --verbose --tests -- -D warnings
     - name: Build
       run: cargo build --verbose --tests --features "user-profile"
     - name: Run tests

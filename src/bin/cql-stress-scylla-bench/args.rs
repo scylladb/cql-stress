@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
+use cql_stress::version;
 use scylla::load_balancing::{DefaultPolicy, LoadBalancingPolicy};
 use scylla::statement::Consistency;
 
@@ -71,11 +72,16 @@ pub(crate) struct ScyllaBenchArgs {
     pub validate_data: bool,
 }
 
+pub(crate) enum ParseResult {
+    Config(Box<ScyllaBenchArgs>),
+    VersionDisplayed,
+}
+
 // Parses and validates scylla bench params.
 pub(crate) fn parse_scylla_bench_args<I, S>(
     mut args: I,
     print_usage_on_fail: bool,
-) -> Option<ScyllaBenchArgs>
+) -> Option<ParseResult>
 where
     I: Iterator<Item = S>,
     S: AsRef<str>,
@@ -276,10 +282,22 @@ where
         "write meaningful data and validate while reading",
     );
 
+    let version_json_flag = flag.bool_var("version-json", false, "Show version in json format");
+    let version_human_flag = flag.bool_var("version", false, "Show version (human readable)");
     let (parser, desc) = flag.build();
 
-    let result = move || -> Result<ScyllaBenchArgs> {
+    let result = move || -> Result<ParseResult> {
         parser.parse_args(args)?;
+
+        if version_json_flag.get() {
+            println!("{}", version::format_version_info_json());
+            return Ok(ParseResult::VersionDisplayed);
+        }
+
+        if version_human_flag.get() {
+            println!("{}", version::format_version_info_human());
+            return Ok(ParseResult::VersionDisplayed);
+        }
 
         let nodes = nodes.get().split(',').map(str::to_string).collect();
         let mode = parse_mode(&mode.get())?;
@@ -358,7 +376,7 @@ where
             ));
         }
 
-        Ok(ScyllaBenchArgs {
+        Ok(ParseResult::Config(Box::new(ScyllaBenchArgs {
             workload,
             consistency_level,
             replication_factor: replication_factor.get(),
@@ -405,11 +423,11 @@ where
             hdr_latency_sig_fig,
             hdr_latency_resolution,
             validate_data: validate_data.get(),
-        })
+        })))
     }();
 
     match result {
-        Ok(config) => Some(config),
+        Ok(parse_result) => Some(parse_result),
         Err(err) => {
             eprintln!("Failed to parse flags: {:?}", err);
             if print_usage_on_fail {

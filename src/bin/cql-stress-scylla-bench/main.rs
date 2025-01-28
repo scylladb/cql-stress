@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use args::ParseResult;
 use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
 use scylla::transport::session::PoolSize;
@@ -53,9 +54,11 @@ async fn main() -> Result<()> {
         );
     }
 
-    let sb_config = match args::parse_scylla_bench_args(std::env::args(), true) {
-        Some(sb_config) => sb_config,
-        None => return Err(anyhow::anyhow!("Failed to parse the CLI arguments")),
+    let parse_result = args::parse_scylla_bench_args(std::env::args(), true);
+    let sb_config = match parse_result {
+        Some(ParseResult::Config(config)) => *config,
+        Some(ParseResult::VersionDisplayed) => return Ok(()),
+        None => return Err(anyhow::anyhow!("Failed to parse CLI arguments")),
     };
     let sb_config = Arc::new(sb_config);
 

@@ -41,3 +41,5 @@ cassandra-stress read no-warmup cl=QUORUM duration=600M -rate threads=80 throttl
 
 cassandra-stress mixed ratio(read=1,write=1) clustering=FIXED(10)
 cassandra-stress mixed ratio(read=1)
+cassandra-stress version
+cassandra-stress version_json
