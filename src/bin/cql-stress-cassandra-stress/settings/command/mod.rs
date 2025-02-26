@@ -29,6 +29,7 @@ pub use help::print_help;
 
 use super::ParsePayload;
 use common::CommonParams;
+use cql_stress::version;
 use help::parse_help_command;
 pub use mixed::MixedSubcommand;
 pub use mixed::OperationRatio;
@@ -38,6 +39,8 @@ pub use mixed::OperationRatio;
 #[strum(ascii_case_insensitive)]
 pub enum Command {
     Help,
+    Version,
+    VersionJson,
     Write,
     Read,
     CounterWrite,
@@ -65,6 +68,14 @@ impl Command {
                 parse_help_command(payload)?;
                 Ok(None)
             }
+            Command::Version => {
+                println!("{}", version::format_version_info_human());
+                Ok(None)
+            }
+            Command::VersionJson => {
+                println!("{}", version::format_version_info_json());
+                Ok(None)
+            }
         }
     }
 
@@ -82,6 +93,8 @@ impl Command {
             #[cfg(feature = "user-profile")]
             Command::User => "Interleaving of user provided queries, with configurable ratio and distribution - the cluster must first be populated by a write test.",
             Command::Help => "Print help for a command or option",
+            Command::Version => "Print version information",
+            Command::VersionJson => "Print version information in json format",
         };
 
         println!("{:<20} : {}", self.show(), desc);
@@ -102,6 +115,12 @@ impl Command {
             #[cfg(feature = "user-profile")]
             Command::User => UserParams::print_help(self.show()),
             Command::Help => help::print_help(),
+            Command::Version => {
+                println!("{}", version::format_version_info_human());
+            }
+            Command::VersionJson => {
+                println!("{}", version::format_version_info_json());
+            }
         }
     }
 }
