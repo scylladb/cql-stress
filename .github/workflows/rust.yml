@@ -52,48 +52,35 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --bin cql-stress-cassandra-stress
-      - name: Build cql-stress-scylla-bench binary
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --bin cql-stress-scylla-bench
+          args: --profile dist --all
 
       - uses: actions/upload-artifact@v4
         with:
           name: cql-stress-cassandra-stress
-          path: "./target/release/cql-stress-cassandra-stress"
+          path: "./target/dist/cql-stress-cassandra-stress"
           if-no-files-found: error
           retention-days: 1
       - uses: actions/upload-artifact@v4
         with:
           name: cql-stress-scylla-bench
-          path: "./target/release/cql-stress-scylla-bench"
+          path: "./target/dist/cql-stress-scylla-bench"
           if-no-files-found: error
           retention-days: 1
   test:
     runs-on: ubuntu-24.04
-    services:
-      scylladb:
-        image: scylladb/scylla
-        ports:
-          - 9042:9042
-        options: >-
-          --name scylla-ci
-          --health-cmd "cqlsh --debug"
-          --health-interval 5s
-          --health-retries 10
-        volumes:
-          - ${{ github.workspace }}:/workspace
     steps:
     - uses: actions/checkout@v4
     - uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
         cache: true
+    - name: Start ScyllaDB
+      run: |
+        docker compose -f ./docker/scylla-test/compose.yml up -d --wait
+        until docker logs scylla_test 2>&1 | grep "Starting listening for CQL clients" > /dev/null; do sleep 0.2; done
     - uses: actions-rs/cargo@v1
       with:
         command: build
-        args: --release --tests --features "user-profile"
+        args: --tests --features "user-profile"
     - uses: actions-rs/cargo@v1
       with:
         command: test
@@ -101,26 +88,31 @@ jobs:
         args: --features "user-profile" -- --test-threads=1
 
   integration-tests:
-    needs: [build]
+    needs: [build, test]
+    cancel-timeout-minutes: 1
+    timeout-minutes: 20
     runs-on: ubuntu-24.04
-    services:
-      scylladb:
-        image: scylladb/scylla
-        ports:
-          - 9042:9042
-        options: >-
-          --name scylla-ci
-          --health-cmd "cqlsh --debug"
-          --health-interval 5s
-          --health-retries 10
-        volumes:
-          - ${{ github.workspace }}:/workspace
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.binary }}
+    strategy:
+      max-parallel: 2
+      matrix:
+        binary: [cql-stress-cassandra-stress]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
       - name: Install python driver
         run: pip install scylla-driver
       - name: Install pytest
         run: pip install -U pytest
+      - name: Start ScyllaDB
+        run: |
+          docker compose -f ./docker/scylla-test/compose.yml up -d --wait
+          until docker logs scylla_test 2>&1 | grep "Starting listening for CQL clients" > /dev/null; do sleep 0.2; done
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
       - name: C-S frontend tests
-        run: pytest -s ./tools/cassandra_stress_ci.py
+        run: |
+          mv ${{ matrix.binary }} /usr/local/bin
+          chmod +x /usr/local/bin/${{ matrix.binary }}
+          pytest -s ./tools/${{ matrix.binary }}-ci.py
