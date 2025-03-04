@@ -6,6 +6,31 @@ rust-version = "1.85.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "cql-stress-cassandra-stress"
+path = "src/bin/cql-stress-cassandra-stress/main.rs"
+
+[[bin]]
+name = "cql-stress-scylla-bench"
+path = "src/bin/cql-stress-scylla-bench/main.rs"
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+
+[profile.dist]
+inherits = "release"
+opt-level = 3
+overflow-checks = false
+debug = false
+strip = true
+debug-assertions = false
+
+[profile.dev-opt]
+inherits = "dev"
+opt-level = 2
+
 [dependencies]
 anyhow = "1.0.52"
 async-trait = "0.1.52"
@@ -62,4 +87,6 @@ scylla = { version = "1.0.0", features = [
 ] }
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fetch_extended_version_info)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(fetch_extended_version_info)',
+] }
