@@ -1,8 +1,7 @@
 use anyhow::Result;
 
-use crate::settings::{command::Command, option::Options};
-
 use super::ParsePayload;
+use crate::settings::{command::Command, option::Options};
 
 pub fn print_help() {
     println!("Usage:      cassandra-stress <command> [options]");

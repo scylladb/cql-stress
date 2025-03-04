@@ -1,46 +1,126 @@
-name: Rust
+name: Continuous integration
 
 on:
   push:
-    branches: [ master ]
+    branches:
+    - master
   pull_request:
-    branches: [ master ]
+    branches:
+    - master
 
 env:
   CARGO_TERM_COLOR: always
   PYTHONUNBUFFERED: "1"
 
 jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+          cache: true
+      - run: cargo check --all --all-targets
+      - run: cargo clippy --tests --no-default-features -- -D warnings
+      - name: Clippy check with `user-profile` feature
+        run: cargo clippy --tests --features "user-profile" -- -D warnings
+      - name: Clippy check with cfg(fetch_extended_version_info)
+        run: RUSTFLAGS="--cfg fetch_extended_version_info" cargo clippy --tests -- -D warnings
+  fmt:
+    name: Format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+          cache: true
+      - name: Rustfmt Check
+        uses: actions-rust-lang/rustfmt@v1
+
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+          cache: true
+      - name: Build cql-stress-cassandra-stress binary
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --bin cql-stress-cassandra-stress
+      - name: Build cql-stress-scylla-bench binary
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --bin cql-stress-scylla-bench
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cql-stress-cassandra-stress
+          path: "./target/release/cql-stress-cassandra-stress"
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cql-stress-scylla-bench
+          path: "./target/release/cql-stress-scylla-bench"
+          if-no-files-found: error
+          retention-days: 1
+  test:
+    runs-on: ubuntu-24.04
     services:
       scylladb:
         image: scylladb/scylla
         ports:
           - 9042:9042
-        options: --name scylla-ci --health-cmd "cqlsh --debug" --health-interval 5s --health-retries 10
+        options: >-
+          --name scylla-ci
+          --health-cmd "cqlsh --debug"
+          --health-interval 5s
+          --health-retries 10
         volumes:
           - ${{ github.workspace }}:/workspace
     steps:
-    - uses: actions/checkout@v2
-    - name: Format check
-      run: cargo fmt --verbose --all -- --check
-    - name: Clippy check with no features
-      run: cargo clippy --verbose --tests --no-default-features -- -D warnings
-    - name: Clippy check with `user-profile` feature
-      run: cargo clippy --verbose --tests --features "user-profile" -- -D warnings
-    - name: Clippy check with cfg(fetch_extended_version_info)
-      run: RUSTFLAGS="--cfg fetch_extended_version_info" cargo clippy --verbose --tests -- -D warnings
-    - name: Build
-      run: cargo build --verbose --tests --features "user-profile"
-    - name: Run tests
-      # test threads must be one because else database tests will run in parallel and will result in flaky tests
-      run: cargo test --verbose --features "user-profile" -- --test-threads=1
-    - name: Install python driver
-      run: pip install scylla-driver
-    - name: Install pytest
-      run: pip install -U pytest
-    - name: Build C-S frontend
-      run: cargo build --bin cql-stress-cassandra-stress
-    - name: C-S frontend tests
-      run: pytest -s ./tools/cassandra_stress_ci.py
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        cache: true
+    - uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release --tests --features "user-profile"
+    - uses: actions-rs/cargo@v1
+      with:
+        command: test
+        # test threads must be one because else database tests will run in parallel and will result in flaky tests
+        args: --features "user-profile" -- --test-threads=1
+
+  integration-tests:
+    needs: [build]
+    runs-on: ubuntu-24.04
+    services:
+      scylladb:
+        image: scylladb/scylla
+        ports:
+          - 9042:9042
+        options: >-
+          --name scylla-ci
+          --health-cmd "cqlsh --debug"
+          --health-interval 5s
+          --health-retries 10
+        volumes:
+          - ${{ github.workspace }}:/workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+      - name: Install python driver
+        run: pip install scylla-driver
+      - name: Install pytest
+        run: pip install -U pytest
+      - name: C-S frontend tests
+        run: pytest -s ./tools/cassandra_stress_ci.py
