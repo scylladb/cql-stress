@@ -5,6 +5,11 @@ on:
     tags:
       - "*"
 
+env:
+  RUSTFLAGS: "--cfg fetch_extended_version_info"
+  CARGO_TERM_COLOR: always
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   get_tag:
     runs-on: ubuntu-latest
@@ -59,35 +64,49 @@ jobs:
         uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Build Binary
+      - name: Build CQLStressScyllaBench Binary
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release
+          args: --profile dist --all
 
       - name: Set Binary Name
-        id: set_binary_name
         run: |
-          BIN_NAME="cql-stress-${{ needs.get_tag.outputs.tag }}-${{ matrix.os }}"
-          echo "BIN_NAME=$BIN_NAME" >> $GITHUB_ENV
-          echo "BIN_NAME=$BIN_NAME"
+          BIN_NAME_CS="cql-stress-cassandra-stress-${{ needs.get_tag.outputs.tag }}-${{ matrix.os }}"
+          BIN_NAME_SB="cql-stress-scylla-bench-${{ needs.get_tag.outputs.tag }}-${{ matrix.os }}"
+          echo "BIN_NAME_CS=$BIN_NAME_CS" >> $GITHUB_ENV
+          echo "BIN_NAME_CS=$BIN_NAME_CS"
+          echo "BIN_NAME_SB=$BIN_NAME_SB" >> $GITHUB_ENV
+          echo "BIN_NAME_SB=$BIN_NAME_SB"
+
+          mv ./target/dist/cql-stress-cassandra-stress ./target/dist/$BIN_NAME_CS
+          mv ./target/dist/cql-stress-scylla-bench ./target/dist/$BIN_NAME_SB
         shell: bash
 
       - name: Get Release Upload URL
-        id: get_upload_url
         run: |
-          UPLOAD_URL=$(gh release view ${{ inputs.version }} --json uploadUrl -q '.uploadUrl' | sed 's/{.*//')
-          echo "UPLOAD_URL=${UPLOAD_URL}?name=${{ env.BIN_NAME }}" >> $GITHUB_ENV
+          UPLOAD_URL=$(gh release view ${{ needs.get_tag.outputs.tag }} --json uploadUrl -q '.uploadUrl' | sed 's/{.*//')
+          echo "UPLOAD_URL=${UPLOAD_URL}?name=${{ needs.get_tag.outputs.tag }}" >> $GITHUB_ENV
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Release Asset
-        id: upload-release-asset-unix
+        id: upload-release-asset-cs
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ env.UPLOAD_URL }}
-          asset_path: ./target/release/cql-stress
-          asset_name: ${{ env.BIN_NAME }}
+          asset_path: ./target/dist/cql-stress-cassandra-stress
+          asset_name: ${{ env.BIN_NAME_CS }}
+          asset_content_type: application/octet-stream
+      - name: Upload Release Asset
+        id: upload-release-asset-sb
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ env.UPLOAD_URL }}
+          asset_path: ./target/dist/cql-stress-scylla-bench
+          asset_name: ${{ env.BIN_NAME_SB }}
           asset_content_type: application/octet-stream

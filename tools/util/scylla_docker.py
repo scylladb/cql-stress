@@ -7,7 +7,7 @@ ScyllaDockerNode = namedtuple("ScyllaDockerNode", ["ip", "port"])
 
 
 @contextmanager
-def scylla_docker(teardown_behavior, compose_yaml="docker/scylla_test/compose.yml"):
+def scylla_docker(teardown_behavior, compose_yaml="docker/scylla-test/compose.yml"):
     print("Setting up Scylla")
     print("Starting the container and waiting for it to be healthy")
 
