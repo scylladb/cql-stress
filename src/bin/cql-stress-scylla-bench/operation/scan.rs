@@ -3,10 +3,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
-use futures::TryStreamExt;
-use scylla::{prepared_statement::PreparedStatement, Session};
-
 use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
+use futures::TryStreamExt;
+use scylla::client::session::Session;
+use scylla::statement::prepared::PreparedStatement;
 
 use crate::args::ScyllaBenchArgs;
 use crate::operation::ReadContext;

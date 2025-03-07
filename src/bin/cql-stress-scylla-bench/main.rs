@@ -19,9 +19,10 @@ use anyhow::{Context, Result};
 use args::ParseResult;
 use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
-use scylla::transport::session::PoolSize;
-use scylla::ExecutionProfile;
-use scylla::{transport::Compression, Session, SessionBuilder};
+use scylla::client::execution_profile::ExecutionProfile;
+use scylla::client::session::Session;
+use scylla::client::session_builder::SessionBuilder;
+use scylla::client::{Compression, PoolSize};
 use tracing_subscriber::EnvFilter;
 
 use cql_stress::configuration::{Configuration, OperationFactory};
@@ -132,7 +133,7 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
 
     if args.tls_encryption {
         let ssl_ctx = generate_ssl_context(&args)?;
-        builder = builder.ssl_context(Some(ssl_ctx));
+        builder = builder.tls_context(Some(ssl_ctx));
     }
 
     if args.client_compression {

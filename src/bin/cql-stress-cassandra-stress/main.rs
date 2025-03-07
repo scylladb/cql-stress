@@ -26,7 +26,9 @@ use operation::{
     CounterReadOperationFactory, CounterWriteOperationFactory, MixedOperationFactory,
     WriteOperationFactory,
 };
-use scylla::{ExecutionProfile, Session, SessionBuilder};
+use scylla::client::execution_profile::ExecutionProfile;
+use scylla::client::session::Session;
+use scylla::client::session_builder::SessionBuilder;
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
 use std::{env, sync::Arc, time::Duration};
 use tracing_subscriber::EnvFilter;

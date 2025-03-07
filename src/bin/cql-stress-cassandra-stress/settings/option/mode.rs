@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use scylla::{frame::Compression, transport::session::PoolSize};
+use scylla::client::{Compression, PoolSize};
 
 use crate::settings::{
     param::{
@@ -151,12 +151,11 @@ fn prepare_parser() -> (ParamsParser, ModeParamHandles) {
 mod tests {
     use std::num::NonZeroUsize;
 
-    use scylla::{frame::Compression, transport::session::PoolSize};
-
     use crate::settings::option::{
         mode::{prepare_parser, Credentials},
         ModeOption,
     };
+    use scylla::client::{Compression, PoolSize};
 
     #[test]
     fn mode_good_params_test() {

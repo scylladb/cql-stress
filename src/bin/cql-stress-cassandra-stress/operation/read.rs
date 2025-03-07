@@ -1,9 +1,10 @@
 use std::{marker::PhantomData, ops::ControlFlow, sync::Arc};
 
-use anyhow::{Context, Result};
-use scylla::{frame::response::result::CqlValue, prepared_statement::PreparedStatement, Session};
-
 use crate::settings::CassandraStressSettings;
+use anyhow::{Context, Result};
+use scylla::client::session::Session;
+use scylla::statement::prepared::PreparedStatement;
+use scylla::value::CqlValue;
 
 use super::{
     row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,

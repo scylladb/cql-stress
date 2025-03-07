@@ -1,4 +1,4 @@
-use scylla::_macro_internal::CqlValue;
+use scylla::value::CqlValue;
 
 use crate::{
     java_generate::{

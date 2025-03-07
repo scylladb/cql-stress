@@ -4,10 +4,10 @@ use cql_stress::{
     configuration::{Operation, OperationContext, OperationFactory},
     make_runnable,
 };
-use scylla::{
-    frame::response::result::CqlValue, prepared_statement::PreparedStatement,
-    transport::topology::Table, Session,
-};
+use scylla::client::session::Session;
+use scylla::cluster::metadata::Table;
+use scylla::statement::prepared::PreparedStatement;
+use scylla::value::CqlValue;
 
 use anyhow::{Context, Result};
 
@@ -165,10 +165,9 @@ impl UserOperationFactory {
         let user_profile = settings.command_params.user.as_ref().unwrap();
 
         let query_definitions = &user_profile.queries_payload;
-        let cluster_data = session.get_cluster_data();
-        let table_metadata = cluster_data
-            .get_keyspace_info()
-            .get(&user_profile.keyspace)
+        let cluster_state = session.get_cluster_state();
+        let table_metadata = cluster_state
+            .get_keyspace(&user_profile.keyspace)
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Cannot find keyspace {} in cluster data.",
@@ -235,14 +234,14 @@ impl UserOperationFactory {
                         pk_name
                     )
                 })?
-                .type_,
+                .typ,
         )?;
         let column_generator_factories = table_metadata
             .columns
             .iter()
             .filter(|&(col_name, _col_def)| (*col_name != *pk_name))
             .map(|(_col_name, col_def)| {
-                Generator::new_generator_factory_from_cql_type(&col_def.type_)
+                Generator::new_generator_factory_from_cql_type(&col_def.typ)
             })
             .collect::<Result<Vec<_>, _>>()?;
 

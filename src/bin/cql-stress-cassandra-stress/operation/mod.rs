@@ -14,7 +14,7 @@ use cql_stress::configuration::OperationFactory;
 use cql_stress::make_runnable;
 #[cfg(feature = "user-profile")]
 use rand_distr::{Distribution as _, WeightedIndex};
-use scylla::Session;
+use scylla::client::session::Session;
 use std::future::Future;
 use std::num::Wrapping;
 use std::ops::ControlFlow;
@@ -22,10 +22,9 @@ use std::sync::Arc;
 
 pub use mixed::MixedOperationFactory;
 pub use row_generator::RowGeneratorFactory;
-use scylla::{
-    frame::response::result::{CqlValue, Row},
-    QueryResult,
-};
+use scylla::response::query_result::QueryResult;
+use scylla::value::{CqlValue, Row};
+
 #[cfg(feature = "user-profile")]
 pub use user::UserOperationFactory;
 

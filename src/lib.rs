@@ -13,7 +13,7 @@ pub mod version;
 #[cfg(test)]
 mod tests {
     use crate::test_util::new_test_session;
-    use scylla::transport::PagingState;
+    use scylla::response::PagingState;
 
     #[tokio::test]
     async fn test_can_connect() {

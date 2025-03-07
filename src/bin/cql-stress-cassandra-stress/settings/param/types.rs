@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
-use scylla::{frame::Compression, transport::session::PoolSize};
+use scylla::client::{Compression, PoolSize};
 
 use crate::java_generate::distribution::{
     fixed::FixedDistributionFactory, normal::NormalDistributionFactory,

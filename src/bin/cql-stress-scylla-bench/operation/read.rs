@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use futures::{stream, StreamExt, TryStreamExt};
-use scylla::frame::value::Counter;
-use scylla::{prepared_statement::PreparedStatement, Session};
+use scylla::client::session::Session;
+use scylla::statement::prepared::PreparedStatement;
+use scylla::value::Counter;
 
 use cql_stress::configuration::{make_runnable, Operation, OperationContext, OperationFactory};
 

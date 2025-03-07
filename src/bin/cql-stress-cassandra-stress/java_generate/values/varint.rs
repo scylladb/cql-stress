@@ -1,6 +1,5 @@
-use scylla::frame::{response::result::CqlValue, value::CqlVarint};
-
 use crate::java_generate::distribution::Distribution;
+use scylla::value::{CqlValue, CqlVarint};
 
 use super::{ValueGenerator, ValueGeneratorFactory};
 
