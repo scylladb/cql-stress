@@ -2,17 +2,17 @@ use anyhow::Result;
 use futures::Future;
 use std::{ops::ControlFlow, sync::Arc};
 
-use cql_stress::{
-    configuration::{Operation, OperationContext, OperationFactory},
-    make_runnable,
-};
-use scylla::{frame::response::result::CqlValue, Session};
-
 use crate::{
     java_generate::distribution::Distribution,
     settings::{CassandraStressSettings, MixedSubcommand, OperationRatio},
     stats::ShardedStats,
 };
+use cql_stress::{
+    configuration::{Operation, OperationContext, OperationFactory},
+    make_runnable,
+};
+use scylla::client::session::Session;
+use scylla::value::CqlValue;
 
 use super::{
     counter_write::{CounterWriteOperation, CounterWriteOperationFactory},

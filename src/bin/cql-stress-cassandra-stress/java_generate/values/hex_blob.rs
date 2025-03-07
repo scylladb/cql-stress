@@ -1,4 +1,4 @@
-use scylla::frame::response::result::CqlValue;
+use scylla::value::CqlValue;
 
 use super::ValueGenerator;
 use crate::java_generate::distribution::Distribution;
@@ -58,7 +58,7 @@ mod tests {
         distribution::{fixed::FixedDistribution, sequence::SeqDistribution, Distribution},
         values::{Generator, GeneratorConfig},
     };
-    use scylla::frame::response::result::CqlValue;
+    use scylla::value::CqlValue;
 
     use super::HexBlob;
 

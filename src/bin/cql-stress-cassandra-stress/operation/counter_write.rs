@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 
 use std::{ops::ControlFlow, sync::Arc};
 
-use scylla::frame::response::result::CqlValue;
-use scylla::frame::value::Counter;
-use scylla::{prepared_statement::PreparedStatement, Session};
+use scylla::client::session::Session;
+use scylla::statement::prepared::PreparedStatement;
+use scylla::value::{Counter, CqlValue};
 
 use crate::{java_generate::distribution::Distribution, settings::CassandraStressSettings};
 

@@ -18,7 +18,7 @@ pub use command::OperationRatio;
 pub use command::{OpWeight, PREDEFINED_INSERT_OPERATION};
 pub use option::ThreadsInfo;
 use regex::Regex;
-use scylla::Session;
+use scylla::client::session::Session;
 
 use crate::settings::command::print_help;
 

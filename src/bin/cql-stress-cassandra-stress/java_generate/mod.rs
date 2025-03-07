@@ -1,5 +1,6 @@
 pub mod distribution;
 pub mod faster_random;
+pub mod hasher;
 pub mod values;
 
 /// A structure wrapping [java_random::Random].

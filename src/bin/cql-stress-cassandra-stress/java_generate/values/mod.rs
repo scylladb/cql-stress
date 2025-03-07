@@ -1,10 +1,8 @@
 use super::distribution::{uniform::UniformDistribution, Distribution};
+use super::hasher::{calculate_token_for_partition_key, PartitionerName};
 #[cfg(feature = "user-profile")]
-use scylla::transport::topology::CqlType;
-use scylla::{
-    frame::response::result::CqlValue,
-    transport::partitioner::{Murmur3Partitioner, Partitioner},
-};
+use scylla::cluster::metadata::ColumnType;
+use scylla::value::CqlValue;
 
 #[cfg(feature = "user-profile")]
 use anyhow::Result;
@@ -68,7 +66,7 @@ impl Generator {
 
     #[cfg(feature = "user-profile")]
     pub fn new_generator_factory_from_cql_type(
-        typ: &CqlType,
+        typ: &ColumnType,
     ) -> Result<Box<dyn ValueGeneratorFactory>> {
         use self::blob::BlobFactory;
         use boolean::BooleanFactory;
@@ -81,35 +79,39 @@ impl Generator {
         use varint::VarIntFactory;
 
         match typ {
-            CqlType::Native(native_type) => match native_type {
-                scylla::transport::topology::NativeType::Blob => Ok(Box::new(BlobFactory)),
-                scylla::transport::topology::NativeType::Text => Ok(Box::new(TextFactory)),
-                scylla::transport::topology::NativeType::BigInt => Ok(Box::new(BigIntFactory)),
-                scylla::transport::topology::NativeType::Int => Ok(Box::new(IntFactory)),
-                scylla::transport::topology::NativeType::SmallInt => Ok(Box::new(SmallIntFactory)),
-                scylla::transport::topology::NativeType::TinyInt => Ok(Box::new(TinyIntFactory)),
-                scylla::transport::topology::NativeType::Boolean => Ok(Box::new(BooleanFactory)),
-                scylla::transport::topology::NativeType::Float => Ok(Box::new(FloatFactory)),
-                scylla::transport::topology::NativeType::Double => Ok(Box::new(DoubleFactory)),
-                scylla::transport::topology::NativeType::Inet => Ok(Box::new(InetFactory)),
-                scylla::transport::topology::NativeType::Varint => Ok(Box::new(VarIntFactory)),
-                scylla::transport::topology::NativeType::Decimal => Ok(Box::new(DecimalFactory)),
-                scylla::transport::topology::NativeType::Uuid => Ok(Box::new(UuidFactory)),
+            ColumnType::Native(native_type) => match native_type {
+                scylla::cluster::metadata::NativeType::Blob => Ok(Box::new(BlobFactory)),
+                scylla::cluster::metadata::NativeType::Text => Ok(Box::new(TextFactory)),
+                scylla::cluster::metadata::NativeType::BigInt => Ok(Box::new(BigIntFactory)),
+                scylla::cluster::metadata::NativeType::Int => Ok(Box::new(IntFactory)),
+                scylla::cluster::metadata::NativeType::SmallInt => Ok(Box::new(SmallIntFactory)),
+                scylla::cluster::metadata::NativeType::TinyInt => Ok(Box::new(TinyIntFactory)),
+                scylla::cluster::metadata::NativeType::Boolean => Ok(Box::new(BooleanFactory)),
+                scylla::cluster::metadata::NativeType::Float => Ok(Box::new(FloatFactory)),
+                scylla::cluster::metadata::NativeType::Double => Ok(Box::new(DoubleFactory)),
+                scylla::cluster::metadata::NativeType::Inet => Ok(Box::new(InetFactory)),
+                scylla::cluster::metadata::NativeType::Varint => Ok(Box::new(VarIntFactory)),
+                scylla::cluster::metadata::NativeType::Decimal => Ok(Box::new(DecimalFactory)),
+                scylla::cluster::metadata::NativeType::Uuid => Ok(Box::new(UuidFactory)),
                 _ => anyhow::bail!(
                     "Column type {:?} is not yet supported by the tool!",
                     native_type
                 ),
             },
-            CqlType::Collection { .. } => anyhow::bail!(
+            ColumnType::Collection { .. } => anyhow::bail!(
                 "Unsupported column type: {:?}. Collection types are not yet supported by the tool!",
                 typ
             ),
-            CqlType::Tuple(_) => anyhow::bail!(
+            ColumnType::Tuple(_) => anyhow::bail!(
                 "Unsupported column type: {:?}. Tuples are not yet supported by the tool!",
                 typ
             ),
-            CqlType::UserDefinedType { .. } => anyhow::bail!(
+            ColumnType::UserDefinedType { .. } => anyhow::bail!(
                 "Unsupported column type: {:?}. UDTs are not yet supported by the tool!",
+                typ
+            ),
+            &_ => anyhow::bail!(
+                "Unsupported column type: {:?}. Only native types are supported by the tool!",
                 typ
             ),
         }
@@ -158,7 +160,7 @@ impl GeneratorConfig {
         size_distribution: Option<Box<dyn Distribution>>,
     ) -> Self {
         let bytes = seed_str.as_bytes();
-        let salt = Murmur3Partitioner.hash_one(bytes);
+        let salt = calculate_token_for_partition_key(bytes, &PartitionerName::Murmur3).unwrap();
         Self {
             salt: salt.value(),
             identity_distribution,

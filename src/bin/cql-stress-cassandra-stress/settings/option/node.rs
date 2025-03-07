@@ -4,16 +4,13 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context, Result};
-use scylla::{
-    host_filter::{AllowListHostFilter, HostFilter},
-    load_balancing::{DefaultPolicy, LoadBalancingPolicy},
-};
-
 use crate::settings::{
     param::{types::CommaDelimitedList, ParamsParser, SimpleParamHandle},
     ParsePayload,
 };
+use anyhow::{Context, Result};
+use scylla::policies::host_filter::{AllowListHostFilter, HostFilter};
+use scylla::policies::load_balancing::{DefaultPolicy, LoadBalancingPolicy};
 
 pub struct NodeOption {
     pub nodes: Vec<String>,

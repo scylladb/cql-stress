@@ -1,4 +1,4 @@
-use scylla::frame::response::result::CqlValue;
+use scylla::value::CqlValue;
 
 use crate::java_generate::distribution::Distribution;
 

@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use cql_stress::version;
-use scylla::load_balancing::{DefaultPolicy, LoadBalancingPolicy};
+use scylla::policies::load_balancing::{DefaultPolicy, LoadBalancingPolicy};
 use scylla::statement::Consistency;
 
 use crate::distribution::{parse_distribution, Distribution, Fixed};

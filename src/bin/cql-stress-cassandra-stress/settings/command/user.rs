@@ -1,9 +1,9 @@
 use std::{collections::HashMap, fs::File, sync::Arc};
 
 use anyhow::{Context, Result};
-use scylla::prepared_statement::PreparedStatement;
+use scylla::client::session::Session;
+use scylla::statement::prepared::PreparedStatement;
 use scylla::statement::{Consistency, SerialConsistency};
-use scylla::Session;
 use serde::{Deserialize, Serialize};
 
 use crate::java_generate::distribution::DistributionFactory;

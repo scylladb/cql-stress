@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use scylla::frame::response::result::CqlValue;
+use scylla::value::CqlValue;
 
 use super::ValueGenerator;
 use crate::java_generate::distribution::Distribution;
@@ -53,7 +53,7 @@ mod tests {
         distribution::fixed::FixedDistribution,
         values::{Generator, GeneratorConfig},
     };
-    use scylla::frame::response::result::CqlValue;
+    use scylla::value::CqlValue;
 
     use super::Blob;
 
