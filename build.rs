@@ -116,6 +116,10 @@ fn get_git_info() -> Option<(String, String)> {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=Cargo.lock");
+    println!("cargo:rerun-if-changed=.git/HEAD");
+
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let (commit_date, sha) = get_git_info().unwrap_or_else(|| (UNKNOWN.into(), UNKNOWN.into()));
     let lockfile = Lockfile::load("Cargo.lock").unwrap();
@@ -174,8 +178,4 @@ fn main() {
         ),
     )
     .unwrap();
-
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=Cargo.lock");
-    println!("cargo:rerun-if-changed=.git/HEAD");
 }
