@@ -22,7 +22,7 @@ jobs:
         volumes:
           - ${{ github.workspace }}:/workspace
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Format check
       run: cargo fmt --verbose --all -- --check
     - name: Clippy check with no features
