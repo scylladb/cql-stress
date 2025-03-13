@@ -45,3 +45,5 @@ cassandra-stress mixed ratio(mixed=1)
 cassandra-stress mixed ratio()
 cassandra-stress read ratio(read=1,write=2)
 cassandra-stress read clustering=FIXED(2)
+
+cassandra-stress read -log interval=1h

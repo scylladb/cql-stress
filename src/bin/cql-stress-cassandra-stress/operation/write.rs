@@ -43,6 +43,10 @@ impl CassandraStressOperation for WriteOperation {
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {
         row_generator.generate_row()
     }
+
+    fn operation_tag(&self) -> &'static str {
+        "WRITE"
+    }
 }
 
 impl CassandraStressOperationFactory for WriteOperationFactory {

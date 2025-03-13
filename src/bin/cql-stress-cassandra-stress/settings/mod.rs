@@ -16,6 +16,7 @@ pub use command::MixedSubcommand;
 pub use command::OperationRatio;
 #[cfg(feature = "user-profile")]
 pub use command::{OpWeight, PREDEFINED_INSERT_OPERATION};
+pub use option::LogOption;
 pub use option::ThreadsInfo;
 use regex::Regex;
 use scylla::client::session::Session;
@@ -39,6 +40,7 @@ pub struct CassandraStressSettings {
     pub schema: SchemaOption,
     pub column: ColumnOption,
     pub population: PopulationOption,
+    pub log: LogOption,
 }
 
 impl CassandraStressSettings {
@@ -51,6 +53,7 @@ impl CassandraStressSettings {
         self.schema.print_settings();
         self.column.print_settings();
         self.population.print_settings();
+        self.log.print_settings();
         println!();
     }
 
@@ -213,6 +216,7 @@ where
         let mode = ModeOption::parse(&mut payload)?;
         let schema = SchemaOption::parse(&mut payload)?;
         let column = ColumnOption::parse(&mut payload)?;
+        let log = LogOption::parse(&mut payload)?;
 
         // The default distribution (if not specified) is SEQ(1..operation_count).
         // If operation_count is not specified, then the default is 1M.
@@ -252,6 +256,7 @@ where
                 schema,
                 column,
                 population,
+                log,
             },
         )))
     };

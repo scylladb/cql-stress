@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate async_trait;
 
+mod hdr_logger;
 mod java_generate;
 mod operation;
 mod settings;
@@ -20,6 +21,7 @@ use cql_stress::{
     sharded_stats::Stats as _,
     sharded_stats::StatsFactory as _,
 };
+use hdr_logger::HdrLogWriter;
 #[cfg(feature = "user-profile")]
 use operation::UserOperationFactory;
 use operation::{
@@ -30,7 +32,8 @@ use scylla::client::execution_profile::ExecutionProfile;
 use scylla::client::session::Session;
 use scylla::client::session_builder::SessionBuilder;
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
-use std::{env, sync::Arc, time::Duration};
+
+use std::{env, sync::Arc};
 use tracing_subscriber::EnvFilter;
 
 use settings::{CassandraStressParsingResult, CassandraStressSettings};
@@ -66,14 +69,22 @@ async fn main() -> Result<()> {
     let mut combined_stats = stats_factory.create();
 
     let (ctrl, run_finished) = cql_stress::run::run(run_config);
+    let mut hdr_log_writer = settings
+        .log
+        .hdr_file
+        .as_ref()
+        .map(|hdr_file| {
+            HdrLogWriter::new(hdr_file)
+                .with_context(|| format!("Failed to create HDR log file: {}", hdr_file.display()))
+        })
+        .transpose()?;
 
     // Run a background task waiting for a stop-signal (Ctrl+C).
     tokio::task::spawn(stop_on_signal(ctrl));
 
     let mut printer = StatsPrinter::new();
 
-    // TODO: change the interval based on -log option (when supported).
-    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    let mut ticker = tokio::time::interval(settings.log.interval);
 
     // Pin the future so it can be polled in tokio::select.
     tokio::pin!(run_finished);
@@ -89,6 +100,11 @@ async fn main() -> Result<()> {
                 let partial_stats = sharded_stats.get_combined_and_clear();
                 combined_stats.combine(&partial_stats);
                 printer.print_partial(&partial_stats);
+
+                // Write histogram data to HDR log file if enabled
+                if let Some(ref mut writer) = hdr_log_writer {
+                    let _ = writer.write_to_hdr_log(&partial_stats);
+                }
             }
             result = &mut run_finished => {
                 if result.is_ok() {
@@ -96,6 +112,11 @@ async fn main() -> Result<()> {
                     let partial_stats = sharded_stats.get_combined_and_clear();
                     combined_stats.combine(&partial_stats);
                     printer.print_summary(&combined_stats);
+
+                    // Final write to HDR log file before exiting
+                    if let Some(ref mut writer) = hdr_log_writer {
+                        let _ = writer.write_to_hdr_log(&partial_stats);
+                    }
                 }
                 return result.context("An error occurred during the benchmark");
             }

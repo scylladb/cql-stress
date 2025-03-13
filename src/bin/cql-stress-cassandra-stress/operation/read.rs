@@ -70,6 +70,10 @@ impl<V: RowValidator> CassandraStressOperation for ReadOperation<V> {
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {
         row_generator.generate_row()
     }
+
+    fn operation_tag(&self) -> &'static str {
+        V::operation_tag()
+    }
 }
 
 impl<V: RowValidator> CassandraStressOperationFactory for GenericReadOperationFactory<V> {

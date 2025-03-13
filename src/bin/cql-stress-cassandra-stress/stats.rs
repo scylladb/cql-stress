@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use cql_stress::{configuration::OperationContext, sharded_stats};
@@ -7,26 +7,64 @@ use tokio::time::Instant;
 
 use crate::settings::{CassandraStressSettings, ThreadsInfo};
 
+const HISTOGRAM_PRECISION: u8 = 3;
+
+/// A struct to hold different types of latency measurements
+struct LatencyMetrics {
+    /// Service time (now - actual_start_time)
+    service_time: u64,
+    /// Response time (now - scheduled_start_time)
+    response_time: Option<u64>,
+    /// Wait time (actual_start_time - scheduled_start_time)
+    wait_time: Option<u64>,
+}
+
 /// An interface for latency calculation logic.
 /// c-s can display either raw or coordinated-omission-fixed latencies.
 trait LatencyCalculator: Send + Sync {
-    fn calculate(&self, ctx: &OperationContext) -> u64;
+    /// Calculate different types of latency metrics
+    fn calculate(&self, ctx: &OperationContext) -> LatencyMetrics;
+
+    /// Returns the default latency value to be used for overall statistics
+    fn default_latency(&self, metrics: &LatencyMetrics) -> u64;
 }
 
 struct RawLatencyCalculator;
 struct CoordinatedOmissionFixedLatencyCalculator;
 
 impl LatencyCalculator for RawLatencyCalculator {
-    fn calculate(&self, ctx: &OperationContext) -> u64 {
+    fn calculate(&self, ctx: &OperationContext) -> LatencyMetrics {
         let now = Instant::now();
-        (now - ctx.actual_start_time).as_nanos() as u64
+        let service_time = (now - ctx.actual_start_time).as_nanos() as u64;
+
+        LatencyMetrics {
+            service_time,
+            response_time: None,
+            wait_time: None,
+        }
+    }
+
+    fn default_latency(&self, metrics: &LatencyMetrics) -> u64 {
+        metrics.service_time
     }
 }
 
 impl LatencyCalculator for CoordinatedOmissionFixedLatencyCalculator {
-    fn calculate(&self, ctx: &OperationContext) -> u64 {
+    fn calculate(&self, ctx: &OperationContext) -> LatencyMetrics {
         let now = Instant::now();
-        (now - ctx.scheduled_start_time).as_nanos() as u64
+        let service_time = (now - ctx.actual_start_time).as_nanos() as u64;
+        let response_time = (now - ctx.scheduled_start_time).as_nanos() as u64;
+        let wait_time = (ctx.actual_start_time - ctx.scheduled_start_time).as_nanos() as u64;
+
+        LatencyMetrics {
+            service_time,
+            response_time: Some(response_time),
+            wait_time: Some(wait_time),
+        }
+    }
+
+    fn default_latency(&self, metrics: &LatencyMetrics) -> u64 {
+        metrics.response_time.unwrap_or(metrics.service_time)
     }
 }
 
@@ -40,7 +78,8 @@ pub struct Stats {
     operations: u64,
     errors: u64,
     latency_calculator: Box<dyn LatencyCalculator>,
-    latency_histogram: Histogram<u64>,
+    latency_histogram: Histogram<u64>, // combined histograms across all tags
+    histograms: HashMap<String, Histogram<u64>>, // Map of tag to histogram
 }
 
 impl StatsFactory {
@@ -70,29 +109,64 @@ impl sharded_stats::StatsFactory for StatsFactory {
             // This cannot panic since 1 <= sigfig <= 5.
             // 3 is the recommended value, as well as used in Java's c-s implementation.
             // AFAIK, there is no c-s option which lets the user define this value.
-            latency_histogram: Histogram::new(3).unwrap(),
+            latency_histogram: Histogram::new(HISTOGRAM_PRECISION).unwrap(),
             latency_calculator: if self.coordinated_omission_fixed {
                 Box::new(CoordinatedOmissionFixedLatencyCalculator)
             } else {
                 Box::new(RawLatencyCalculator)
             },
+            histograms: HashMap::new(),
         }
     }
 }
 
 impl Stats {
-    pub fn account_operation<T, E>(&mut self, ctx: &OperationContext, result: &Result<T, E>) {
+    pub fn account_operation<T, E>(
+        &mut self,
+        ctx: &OperationContext,
+        result: &Result<T, E>,
+        tag: &str,
+    ) {
         self.operations += 1;
         match result {
             Ok(_) => {
-                self.latency_histogram
-                    .record(self.latency_calculator.calculate(ctx))
-                    .unwrap();
+                let metrics = self.latency_calculator.calculate(ctx);
+                let default_latency = self.latency_calculator.default_latency(&metrics);
+                self.latency_histogram.record(default_latency).unwrap();
+
+                let service_time_tag = format!("{}-st", tag);
+                let service_time_histogram = self
+                    .histograms
+                    .entry(service_time_tag)
+                    .or_insert_with(|| Histogram::new(HISTOGRAM_PRECISION).unwrap());
+                service_time_histogram.record(metrics.service_time).unwrap();
+
+                if let Some(response_time) = metrics.response_time {
+                    let response_time_tag = format!("{}-rt", tag);
+                    let response_time_histogram = self
+                        .histograms
+                        .entry(response_time_tag)
+                        .or_insert_with(|| Histogram::new(HISTOGRAM_PRECISION).unwrap());
+                    response_time_histogram.record(response_time).unwrap();
+                }
+
+                if let Some(wait_time) = metrics.wait_time {
+                    let wait_time_tag = format!("{}-wt", tag);
+                    let wait_time_histogram = self
+                        .histograms
+                        .entry(wait_time_tag)
+                        .or_insert_with(|| Histogram::new(HISTOGRAM_PRECISION).unwrap());
+                    wait_time_histogram.record(wait_time).unwrap();
+                }
             }
             Err(_) => {
                 self.errors += 1;
             }
         }
+    }
+
+    pub fn get_histograms(&self) -> &HashMap<String, Histogram<u64>> {
+        &self.histograms
     }
 
     fn op_rate(&self, interval_duration: Duration) -> f64 {
@@ -121,6 +195,7 @@ impl sharded_stats::Stats for Stats {
         self.operations = 0;
         self.errors = 0;
         self.latency_histogram.reset();
+        self.histograms.clear();
     }
 
     fn combine(&mut self, other: &Self) {
@@ -129,6 +204,13 @@ impl sharded_stats::Stats for Stats {
         self.latency_histogram
             .add(&other.latency_histogram)
             .unwrap();
+        for (tag, other_hist) in &other.histograms {
+            let hist = self
+                .histograms
+                .entry(tag.clone())
+                .or_insert_with(|| Histogram::new(HISTOGRAM_PRECISION).unwrap());
+            hist.add(other_hist).unwrap();
+        }
     }
 }
 
