@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use cql_stress::{configuration::OperationContext, sharded_stats};
@@ -40,7 +40,8 @@ pub struct Stats {
     operations: u64,
     errors: u64,
     latency_calculator: Box<dyn LatencyCalculator>,
-    latency_histogram: Histogram<u64>,
+    latency_histogram: Histogram<u64>, // combined histograms across all tags
+    histograms: HashMap<String, Histogram<u64>>, // Map of tag to histogram
 }
 
 impl StatsFactory {
@@ -76,23 +77,36 @@ impl sharded_stats::StatsFactory for StatsFactory {
             } else {
                 Box::new(RawLatencyCalculator)
             },
+            histograms: HashMap::new(),
         }
     }
 }
 
 impl Stats {
-    pub fn account_operation<T, E>(&mut self, ctx: &OperationContext, result: &Result<T, E>) {
+    pub fn account_operation<T, E>(
+        &mut self,
+        ctx: &OperationContext,
+        result: &Result<T, E>,
+        tag: &str,
+    ) {
         self.operations += 1;
         match result {
             Ok(_) => {
-                self.latency_histogram
-                    .record(self.latency_calculator.calculate(ctx))
-                    .unwrap();
+                let latency = self.latency_calculator.calculate(ctx);
+                let histogram = self
+                    .histograms
+                    .entry(tag.to_string())
+                    .or_insert_with(|| Histogram::new(3).unwrap());
+                histogram.record(latency).unwrap();
             }
             Err(_) => {
                 self.errors += 1;
             }
         }
+    }
+
+    pub fn get_histograms(&self) -> &HashMap<String, Histogram<u64>> {
+        &self.histograms
     }
 
     fn op_rate(&self, interval_duration: Duration) -> f64 {
@@ -121,14 +135,20 @@ impl sharded_stats::Stats for Stats {
         self.operations = 0;
         self.errors = 0;
         self.latency_histogram.reset();
+        self.histograms.clear();
     }
 
     fn combine(&mut self, other: &Self) {
         self.operations += other.operations;
         self.errors += other.errors;
-        self.latency_histogram
-            .add(&other.latency_histogram)
-            .unwrap();
+        for (tag, other_hist) in &other.histograms {
+            let hist = self
+                .histograms
+                .entry(tag.clone())
+                .or_insert_with(|| Histogram::new(3).unwrap());
+            hist.add(other_hist).unwrap();
+            self.latency_histogram.add(other_hist).unwrap();
+        }
     }
 }
 

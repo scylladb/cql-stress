@@ -54,6 +54,10 @@ impl CassandraStressOperation for CounterWriteOperation {
         values.push(pk);
         values
     }
+
+    fn operation_tag(&self) -> &'static str {
+        "counter_write"
+    }
 }
 
 impl CassandraStressOperationFactory for CounterWriteOperationFactory {
