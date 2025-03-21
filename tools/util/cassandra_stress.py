@@ -20,16 +20,25 @@ Keyspaces = namedtuple("Keyspaces", ["ks_cassandra", "ks_cqlstress"])
 
 
 CSCliRuntimeArguments = namedtuple("CSCliRuntimeArguments", [
-                                   "workload_size", "concurrency"])
+                                   "workload_size", "concurrency", "hdr_log_file", "log_interval"])
 DEFAULT_RUNTIME_ARGUMENTS = CSCliRuntimeArguments(
-    workload_size=100, concurrency=1)
+    workload_size=100, concurrency=1, hdr_log_file=None, log_interval=1)
 
 
 def prepare_args(command, node_ip, keyspace, runtime_args: CSCliRuntimeArguments = DEFAULT_RUNTIME_ARGUMENTS):
-    return [command, "no-warmup", f"n={runtime_args.workload_size}",
+    args = [command, "no-warmup", f"n={runtime_args.workload_size}",
             "-node", node_ip,
             "-rate", f"threads={runtime_args.concurrency}",
             "-schema", f"keyspace={keyspace}"]
+
+    # Add HDR logging options if specified
+    if runtime_args.hdr_log_file:
+        log_args = ["-log", f"hdrfile={runtime_args.hdr_log_file}"]
+        if runtime_args.log_interval != 1:  # Only add if not the default
+            log_args.append(f"interval={runtime_args.log_interval}")
+        args.extend(log_args)
+
+    return args
 
 
 # Default query name used in test profiles.

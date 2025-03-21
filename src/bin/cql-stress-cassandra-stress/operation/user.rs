@@ -106,7 +106,7 @@ impl UserOperation {
 
         self.stats
             .get_shard_mut()
-            .account_operation(ctx, &op_result);
+            .account_operation(ctx, &op_result, "");
 
         if op_result.is_ok() {
             // Operation was successful - we will generate new row

@@ -62,6 +62,9 @@ pub trait CassandraStressOperation: Sync + Send {
 
     fn execute(&self, row: &[CqlValue]) -> impl Future<Output = Result<ControlFlow<()>>> + Send;
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue>;
+    fn operation_tag(&self) -> &'static str {
+        ""
+    }
 }
 
 pub trait CassandraStressOperationFactory: Sync + Send + Sized {
@@ -104,9 +107,11 @@ impl<O: CassandraStressOperation> GenericCassandraStressOperation<O> {
             .get_or_insert_with(|| self.cs_operation.generate_row(&mut self.workload));
 
         let op_result = self.cs_operation.execute(row).await;
-        self.stats
-            .get_shard_mut()
-            .account_operation(ctx, &op_result);
+        self.stats.get_shard_mut().account_operation(
+            ctx,
+            &op_result,
+            self.cs_operation.operation_tag(),
+        );
 
         if op_result.is_ok() {
             // Operation was successful - we will generate new row
@@ -257,6 +262,7 @@ fn extract_single_row_from_query_result(query_result: QueryResult) -> Result<Row
 
 pub trait RowValidator: Sync + Send + Default {
     fn validate_row(&self, generated_row: &[CqlValue], query_result: QueryResult) -> Result<()>;
+    fn operation_tag() -> &'static str;
 }
 
 #[derive(Default)]
@@ -293,6 +299,10 @@ impl RowValidator for EqualRowValidator {
         );
         Ok(())
     }
+
+    fn operation_tag() -> &'static str {
+        "read"
+    }
 }
 
 #[derive(Default)]
@@ -303,6 +313,10 @@ impl RowValidator for ExistsRowValidator {
         // successfully extracting the first row from the query result.
         let _first_row = extract_single_row_from_query_result(query_result)?;
         Ok(())
+    }
+
+    fn operation_tag() -> &'static str {
+        "counter_read"
     }
 }
 

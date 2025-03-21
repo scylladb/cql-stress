@@ -1,4 +1,5 @@
 mod column;
+mod log;
 mod mode;
 mod node;
 mod population;
@@ -8,6 +9,7 @@ mod schema;
 use anyhow::Result;
 
 pub use column::ColumnOption;
+pub use log::LogOption;
 pub use mode::ModeOption;
 pub use node::NodeOption;
 pub use population::PopulationOption;
@@ -29,6 +31,7 @@ impl Options {
                 PopulationOption::CLI_STRING,
                 PopulationOption::description(),
             ),
+            (LogOption::CLI_STRING, LogOption::description()),
         ]
         .into_iter()
     }
@@ -48,6 +51,7 @@ impl Options {
             ColumnOption::CLI_STRING => ColumnOption::print_help(),
             PopulationOption::CLI_STRING => PopulationOption::print_help(),
             ModeOption::CLI_STRING => ModeOption::print_help(),
+            LogOption::CLI_STRING => LogOption::print_help(),
             _ => return Err(anyhow::anyhow!("Invalid option provided to command help")),
         }
 
