@@ -1,4 +1,4 @@
-use std::{fs::File, path::Path, time::SystemTime};
+use std::{fs::File, time::SystemTime};
 
 use crate::stats::Stats;
 use anyhow::Result;
@@ -11,24 +11,20 @@ use tokio::time::Instant;
 ///
 /// This struct manages a log writer for recording performance histograms,
 /// tracking the start time and last write time for accurate timing.
-pub struct HdrLogWriter {
-    log_writer: interval_log::IntervalLogWriter<
-        'static,
-        'static,
-        File,
-        hdrhistogram::serialization::V2Serializer,
-    >,
+pub struct HdrLogWriter<'w, 's> {
+    log_writer:
+        interval_log::IntervalLogWriter<'w, 's, File, hdrhistogram::serialization::V2Serializer>,
     start_timestamp: Instant,
     last_hdr_write: Instant,
 }
 
-impl HdrLogWriter {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let file = File::create(path)?;
+impl<'w, 's> HdrLogWriter<'w, 's> {
+    pub fn new(
+        file: &'w mut File,
+        serializer: &'s mut hdrhistogram::serialization::V2Serializer,
+    ) -> Result<Self> {
         let start_time = SystemTime::now();
 
-        let serializer = Box::new(hdrhistogram::serialization::V2Serializer::new());
-        // Note: Box::leak is used to satisfy 'static lifetime requirements of IntervalLogWriter.
         let log_writer = interval_log::IntervalLogWriterBuilder::new()
             .add_comment(
                 format!(
@@ -40,8 +36,7 @@ impl HdrLogWriter {
             .with_start_time(start_time)
             .with_base_time(start_time)
             .with_max_value_divisor(1000000.0)
-            .begin_log_with(Box::leak(Box::new(file)), Box::leak(serializer))
-            .unwrap();
+            .begin_log_with(file, serializer)?;
 
         Ok(Self {
             log_writer,

@@ -69,13 +69,25 @@ async fn main() -> Result<()> {
     let mut combined_stats = stats_factory.create();
 
     let (ctrl, run_finished) = cql_stress::run::run(run_config);
-    let mut hdr_log_writer = settings
+
+    // HdrLogWriter is a referential struct. We need to create hdr_file and serializer
+    // early so they live long enough to be passed to HdrLogWriter.
+    let mut maybe_hdr_file_and_serializer = settings
         .log
         .hdr_file
         .as_ref()
-        .map(|hdr_file| {
-            HdrLogWriter::new(hdr_file)
-                .with_context(|| format!("Failed to create HDR log file: {}", hdr_file.display()))
+        .map(|hdr_file| -> Result<_> {
+            let hdr_log_file = std::fs::File::create(hdr_file).with_context(|| {
+                format!("Failed to create HDR log file: {}", hdr_file.display())
+            })?;
+            let serializer = hdrhistogram::serialization::V2Serializer::new();
+            Ok((hdr_log_file, serializer))
+        })
+        .transpose()?;
+    let mut hdr_log_writer = maybe_hdr_file_and_serializer
+        .as_mut()
+        .map(|(file, serializer)| {
+            HdrLogWriter::new(file, serializer).context("Failed to create HDR log writer")
         })
         .transpose()?;
 
