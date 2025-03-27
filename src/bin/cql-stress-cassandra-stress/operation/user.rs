@@ -31,6 +31,7 @@ pub struct UserDefinedOperation {
     session: Arc<Session>,
     statement: PreparedStatement,
     argument_index: Vec<usize>,
+    operation_tag: String,
 }
 
 impl CassandraStressOperation for UserDefinedOperation {
@@ -55,12 +56,17 @@ impl CassandraStressOperation for UserDefinedOperation {
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {
         row_generator.generate_row()
     }
+
+    fn operation_tag(&self) -> &str {
+        self.operation_tag.as_str()
+    }
 }
 
 pub struct UserDefinedOperationFactory {
     session: Arc<Session>,
     statement: PreparedStatement,
     argument_index: Vec<usize>,
+    operation_tag: String,
 }
 
 impl CassandraStressOperationFactory for UserDefinedOperationFactory {
@@ -71,6 +77,7 @@ impl CassandraStressOperationFactory for UserDefinedOperationFactory {
             session: Arc::clone(&self.session),
             statement: self.statement.clone(),
             argument_index: self.argument_index.clone(),
+            operation_tag: self.operation_tag.clone(),
         }
     }
 }
@@ -106,7 +113,7 @@ impl UserOperation {
 
         self.stats
             .get_shard_mut()
-            .account_operation(ctx, &op_result);
+            .account_operation(ctx, &op_result, op.operation_tag());
 
         if op_result.is_ok() {
             // Operation was successful - we will generate new row
@@ -296,7 +303,7 @@ impl OperationFactory for UserOperationFactory {
         let weights_iter =
             self.queries_payload
                 .iter()
-                .map(|(_op_name, (stmt, weight))| {
+                .map(|(op_name, (stmt, weight))| {
                     let variable_metadata = stmt.get_variable_col_specs();
                     let argument_index = variable_metadata
                         .iter()
@@ -311,6 +318,7 @@ impl OperationFactory for UserOperationFactory {
                             session: Arc::clone(&self.session),
                             statement: stmt.clone(),
                             argument_index,
+                            operation_tag: op_name.clone(),
                         },
                         *weight,
                     )

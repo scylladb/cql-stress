@@ -5,14 +5,18 @@ from util.scylla_docker import ScyllaDockerNode
 from util.cassandra_stress import CassandraStress, CqlStressCassandraStress, CSCliRuntimeArguments
 from test_cs_write_and_validate import run as run_write_and_validate
 from test_cs_equal_db import run as run_equal_db, run_user
+from test_hdr_logging import run as run_hdr_logging
 
 
 # Utils for test cases
 
 @pytest.fixture
 def default_runtime_args():
-    return CSCliRuntimeArguments(workload_size="100", concurrency="1")
+    return CSCliRuntimeArguments(workload_size="100", concurrency="1", hdr_log_file=None, log_interval=1)
 
+@pytest.fixture
+def hdr_log_runtime_args():
+    return CSCliRuntimeArguments(workload_size="30000", concurrency="2", hdr_log_file="test.hdr", log_interval=1)
 
 DEFAULT_SCYLLA_URI = "127.0.0.1:9042"
 
@@ -40,6 +44,11 @@ def test_write_and_validate(default_runtime_args, scylla_docker_node,
                             cassandra_stress, cql_stress):
     run_write_and_validate(runtime_args=default_runtime_args, node=scylla_docker_node,
                            cs=cassandra_stress, cql_stress=cql_stress)
+
+def test_write_and_validate_with_hdr_log(hdr_log_runtime_args, scylla_docker_node,
+                                        cql_stress):
+    run_hdr_logging(runtime_args=hdr_log_runtime_args, node=scylla_docker_node,
+                           cql_stress=cql_stress)
 
 
 def test_equal_db(default_runtime_args, scylla_docker_node,

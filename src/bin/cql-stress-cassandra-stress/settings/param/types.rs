@@ -373,6 +373,38 @@ impl Parsable for RatioMap {
     }
 }
 
+/// Parses an interval value with optional millisecond or second suffix.
+/// Valid formats: "123" (seconds), "123s" (seconds), "123ms" (milliseconds)
+pub struct IntervalMillisOrSeconds;
+
+impl Parsable for IntervalMillisOrSeconds {
+    type Parsed = std::time::Duration;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        ensure_regex!(s, r"^[0-9]+(ms|s|)$");
+
+        if s.ends_with("ms") {
+            // Parse milliseconds
+            let ms_str = &s[0..s.len() - 2];
+            let ms = ms_str
+                .parse::<u64>()
+                .with_context(|| format!("Invalid millisecond value: {}", ms_str))?;
+            Ok(Duration::from_millis(ms))
+        } else {
+            // Parse seconds (either with "s" suffix or without suffix)
+            let sec_str = if s.ends_with('s') {
+                &s[0..s.len() - 1]
+            } else {
+                s
+            };
+            let sec = sec_str
+                .parse::<u64>()
+                .with_context(|| format!("Invalid second value: {}", sec_str))?;
+            Ok(Duration::from_secs(sec))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{

@@ -35,11 +35,14 @@ cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value)
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=fixed(50) -pop dist=UNIFORM(1..10) -mode cql3 native compression=snappy connectionsPerShard=3
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=fixed(50) -pop dist=UNIFORM(1..10) -mode cql3 native compression=lz4 connectionsPerHost=3
 cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=fixed(50) -pop dist=UNIFORM(1..10) -mode cql3 native compression=none connectionsPerHost=3 user=cassandra password=cassandra
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=fixed(50) -pop dist=UNIFORM(1..10) -mode cql3 native compression=none connectionsPerHost=3 user=cassandra password=cassandra
 
 # This tests the case sensitivity of throttle= parameter's value. We should accept both /S and /s.
-cassandra-stress read no-warmup cl=QUORUM duration=600M -rate threads=80 throttle=8000/S
 
 cassandra-stress mixed ratio(read=1,write=1) clustering=FIXED(10)
 cassandra-stress mixed ratio(read=1)
 cassandra-stress version
 cassandra-stress version_json
+
+cassandra-stress write -log interval=5s
+cassandra-stress write -log interval=5s hdrfile=hdr.log

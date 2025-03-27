@@ -186,7 +186,13 @@ impl MixedOperation {
                 let row = self
                     .cached_row
                     .get_or_insert_with(|| read_operation.generate_row(&mut self.workload));
-                read_operation.execute(row).await
+                let result = read_operation.execute(row).await;
+                self.stats.get_shard_mut().account_operation(
+                    ctx,
+                    &result,
+                    read_operation.operation_tag(),
+                );
+                result
             }
             MixedSubcommand::CounterRead => {
                 // This is safe. We create a given operation only if corresponding `MixedSubcommand` is defined in `operation_ratio` map.
@@ -194,7 +200,13 @@ impl MixedOperation {
                 let row = self
                     .cached_row
                     .get_or_insert_with(|| counter_read_operation.generate_row(&mut self.workload));
-                counter_read_operation.execute(row).await
+                let result = counter_read_operation.execute(row).await;
+                self.stats.get_shard_mut().account_operation(
+                    ctx,
+                    &result,
+                    counter_read_operation.operation_tag(),
+                );
+                result
             }
             MixedSubcommand::Write => {
                 // This is safe. We create a given operation only if corresponding `MixedSubcommand` is defined in `operation_ratio` map.
@@ -202,7 +214,13 @@ impl MixedOperation {
                 let row = self
                     .cached_row
                     .get_or_insert_with(|| write_operation.generate_row(&mut self.workload));
-                write_operation.execute(row).await
+                let result = write_operation.execute(row).await;
+                self.stats.get_shard_mut().account_operation(
+                    ctx,
+                    &result,
+                    write_operation.operation_tag(),
+                );
+                result
             }
             MixedSubcommand::CounterWrite => {
                 // This is safe. We create a given operation only if corresponding `MixedSubcommand` is defined in `operation_ratio` map.
@@ -210,11 +228,15 @@ impl MixedOperation {
                 let row = self.cached_row.get_or_insert_with(|| {
                     counter_write_operation.generate_row(&mut self.workload)
                 });
-                counter_write_operation.execute(row).await
+                let result = counter_write_operation.execute(row).await;
+                self.stats.get_shard_mut().account_operation(
+                    ctx,
+                    &result,
+                    counter_write_operation.operation_tag(),
+                );
+                result
             }
         };
-
-        self.stats.get_shard_mut().account_operation(ctx, &result);
 
         if result.is_ok() {
             self.current_operation_remaining -= 1;
