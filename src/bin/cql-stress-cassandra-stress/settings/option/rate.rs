@@ -76,7 +76,7 @@ impl RateOption {
     fn from_handles(handles: RateParamHandles) -> Result<Self> {
         let threads = handles.threads.get();
         let throttle = handles.throttle.get();
-        let co_fixed = handles.co_fixed.get().is_some();
+        let fixed = handles.fixed.get();
         let min_threads = handles.threads_gte.get();
         let max_threads = handles.threads_lte.get();
         let auto = handles.auto.get().is_some();
@@ -87,13 +87,21 @@ impl RateOption {
                 max_threads,
                 auto,
             },
-            _ => ThreadsInfo::Fixed {
-                // SAFETY: The parameters are grouped in a way that this won't ever panic
-                // when entering this branch.
-                threads: threads.unwrap(),
-                throttle,
-                co_fixed,
-            },
+            _ => {
+                let (final_throttle, co_fixed) = match (fixed, throttle) {
+                    (Some(rate), None) => (Some(rate), true),
+                    (None, Some(rate)) => (Some(rate), false),
+                    (None, None) => (None, false),
+                    (Some(_), Some(_)) => {
+                        return Err(anyhow::anyhow!("Cannot specify both fixed and throttle"));
+                    }
+                };
+                ThreadsInfo::Fixed {
+                    threads: threads.unwrap(),
+                    throttle: final_throttle,
+                    co_fixed,
+                }
+            }
         };
 
         Ok(Self { threads_info })
@@ -103,7 +111,7 @@ impl RateOption {
 struct RateParamHandles {
     pub threads: SimpleParamHandle<u64>,
     pub throttle: SimpleParamHandle<Rate>,
-    pub co_fixed: SimpleParamHandle<bool>,
+    pub fixed: SimpleParamHandle<Rate>,
     pub threads_gte: SimpleParamHandle<u64>,
     pub threads_lte: SimpleParamHandle<u64>,
     pub auto: SimpleParamHandle<bool>,
@@ -116,13 +124,13 @@ fn prepare_parser() -> (ParamsParser, RateParamHandles) {
     let throttle = parser.simple_param(
         "throttle=",
         None,
-        "throttle operations per second across all clients to a maximum rate (or less) with no implied schedule",
+        "limits the rate of operations per second with a schedule; see `fixed` option if latency adjustment to coordinated-omission is needed",
         false,
     );
-    let co_fixed = parser.simple_param(
-        "fixed",
+    let fixed = parser.simple_param(
+        "fixed=",
         None,
-        "display coordinated-omission-fixed latencies",
+        "limits the rate of operations per second with a schedule; displays coordinated-omission-fixed latencies (i.e. end_time - scheduled_start_time); for more information see https://www.scylladb.com/2021/04/22/on-coordinated-omission/",
         false,
     );
     let threads_gte = parser.simple_param(
@@ -145,10 +153,10 @@ fn prepare_parser() -> (ParamsParser, RateParamHandles) {
     );
 
     // $ ./cassandra-stress help -rate
-    // Usage: -rate threads=? [throttle=?] [fixed]
+    // Usage: -rate threads=? [throttle=?] [fixed=?]
     //  OR
     // Usage: -rate [threads>=?] [threads<=?] [auto]
-    parser.group(&[&threads, &throttle, &co_fixed]);
+    parser.group(&[&threads, &throttle, &fixed]);
     parser.group(&[&threads_gte, &threads_lte, &auto]);
 
     (
@@ -156,7 +164,7 @@ fn prepare_parser() -> (ParamsParser, RateParamHandles) {
         RateParamHandles {
             threads,
             throttle,
-            co_fixed,
+            fixed,
             threads_gte,
             threads_lte,
             auto,
@@ -171,7 +179,25 @@ mod tests {
     use super::prepare_parser;
 
     #[test]
-    fn rate_good_params_group_one_test() {
+    fn rate_with_fixed_test() {
+        let args = vec!["threads=100", "fixed=15/s"];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+
+        let params = RateOption::from_handles(handles).unwrap();
+        assert_eq!(
+            ThreadsInfo::Fixed {
+                threads: 100,
+                throttle: Some(15),
+                co_fixed: true
+            },
+            params.threads_info
+        );
+    }
+
+    #[test]
+    fn rate_with_throttle_test() {
         let args = vec!["threads=100", "throttle=15/s"];
         let (parser, handles) = prepare_parser();
 
@@ -189,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn rate_good_params_group_two_test() {
+    fn rate_auto_test() {
         let args = vec!["threads<=200", "auto"];
         let (parser, handles) = prepare_parser();
 
@@ -207,10 +233,11 @@ mod tests {
     }
 
     #[test]
-    fn rate_bad_params_test() {
-        let args = vec!["threads<=200", "auto", "fixed=10/s"];
-        let (parser, _) = prepare_parser();
+    fn rate_both_fixed_and_throttle_test() {
+        let args = vec!["threads=100", "fixed=15/s", "throttle=20/s"];
+        let (parser, handles) = prepare_parser();
 
-        assert!(parser.parse(args).is_err());
+        assert!(parser.parse(args).is_ok());
+        assert!(RateOption::from_handles(handles).is_err());
     }
 }
