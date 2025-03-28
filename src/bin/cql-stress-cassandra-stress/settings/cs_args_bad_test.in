@@ -9,7 +9,7 @@ cassandra-stress foo
 cassandra-stress help foo
 cassandra-stress write cl=local_one cl=quorum
 cassandra-stress write cl=quorum no-warmup -node 127.0.0.1,192.168.0.1,
-cassandra-stress write -rate fixed=10/s threads>=10
+cassandra-stress write -rate fixed=10/s throttle=10/s threads>=10
 cassandra-stress read -schema replication(factor=abc)
 cassandra-stress read -schema replication(factor==123)
 cassandra-stress read -schema replication(factor=1,=)
