@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
             let hdr_log_file = std::fs::File::create(hdr_file).with_context(|| {
                 format!("Failed to create HDR log file: {}", hdr_file.display())
             })?;
-            let serializer = hdrhistogram::serialization::V2Serializer::new();
+            let serializer = hdrhistogram::serialization::V2DeflateSerializer::new();
             Ok((hdr_log_file, serializer))
         })
         .transpose()?;

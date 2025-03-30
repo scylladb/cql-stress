@@ -12,8 +12,12 @@ use tokio::time::Instant;
 /// This struct manages a log writer for recording performance histograms,
 /// tracking the start time and last write time for accurate timing.
 pub struct HdrLogWriter<'w, 's> {
-    log_writer:
-        interval_log::IntervalLogWriter<'w, 's, File, hdrhistogram::serialization::V2Serializer>,
+    log_writer: interval_log::IntervalLogWriter<
+        'w,
+        's,
+        File,
+        hdrhistogram::serialization::V2DeflateSerializer,
+    >,
     start_timestamp: Instant,
     last_hdr_write: Instant,
 }
@@ -21,7 +25,7 @@ pub struct HdrLogWriter<'w, 's> {
 impl<'w, 's> HdrLogWriter<'w, 's> {
     pub fn new(
         file: &'w mut File,
-        serializer: &'s mut hdrhistogram::serialization::V2Serializer,
+        serializer: &'s mut hdrhistogram::serialization::V2DeflateSerializer,
     ) -> Result<Self> {
         let start_time = SystemTime::now();
 
