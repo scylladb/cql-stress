@@ -150,8 +150,7 @@ impl UserOperationFactory {
             .collect::<Vec<_>>();
 
         let column_list_str = column_names.join(", ");
-        let column_values_str = std::iter::repeat("?")
-            .take(column_names.len())
+        let column_values_str = std::iter::repeat_n("?", column_names.len())
             .collect::<Vec<_>>()
             .join(", ");
 
