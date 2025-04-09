@@ -1,7 +1,7 @@
 use super::distribution::{uniform::UniformDistribution, Distribution};
-use super::hasher::{calculate_token_for_partition_key, PartitionerName};
 #[cfg(feature = "user-profile")]
 use scylla::cluster::metadata::ColumnType;
+use scylla::routing::partitioner::{Murmur3Partitioner, Partitioner};
 use scylla::value::CqlValue;
 
 #[cfg(feature = "user-profile")]
@@ -160,7 +160,7 @@ impl GeneratorConfig {
         size_distribution: Option<Box<dyn Distribution>>,
     ) -> Self {
         let bytes = seed_str.as_bytes();
-        let salt = calculate_token_for_partition_key(bytes, &PartitionerName::Murmur3).unwrap();
+        let salt = Murmur3Partitioner.hash_one(bytes);
         Self {
             salt: salt.value(),
             identity_distribution,
