@@ -22,6 +22,7 @@ use cql_stress::{
     sharded_stats::StatsFactory as _,
 };
 use hdr_logger::HdrLogWriter;
+
 #[cfg(feature = "user-profile")]
 use operation::UserOperationFactory;
 use operation::{
@@ -156,6 +157,11 @@ async fn prepare_run(
 
     if let Some(creds) = &settings.mode.user_credentials {
         builder = builder.user(&creds.username, &creds.password);
+    }
+
+    if settings.transport.truststore.is_some() || settings.transport.keystore.is_some() {
+        let ssl_ctx = settings.transport.generate_ssl_context()?;
+        builder = builder.tls_context(Some(ssl_ctx));
     }
 
     let default_exec_profile = ExecutionProfile::builder()

@@ -5,6 +5,7 @@ mod node;
 mod population;
 mod rate;
 mod schema;
+mod transport;
 
 use anyhow::Result;
 
@@ -16,6 +17,7 @@ pub use population::PopulationOption;
 pub use rate::RateOption;
 pub use rate::ThreadsInfo;
 pub use schema::SchemaOption;
+pub use transport::TransportOption;
 
 pub struct Options;
 
@@ -32,6 +34,7 @@ impl Options {
                 PopulationOption::description(),
             ),
             (LogOption::CLI_STRING, LogOption::description()),
+            (TransportOption::CLI_STRING, TransportOption::description()),
         ]
         .into_iter()
     }
@@ -52,6 +55,9 @@ impl Options {
             PopulationOption::CLI_STRING => PopulationOption::print_help(),
             ModeOption::CLI_STRING => ModeOption::print_help(),
             LogOption::CLI_STRING => LogOption::print_help(),
+            TransportOption::CLI_STRING => {
+                TransportOption::print_help();
+            }
             _ => return Err(anyhow::anyhow!("Invalid option provided to command help")),
         }
 
