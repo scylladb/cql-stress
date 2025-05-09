@@ -47,3 +47,18 @@ cassandra-stress version_json
 
 cassandra-stress write -log interval=5s
 cassandra-stress write -log interval=5s hdrfile=hdr.log
+
+# --- BEGIN: SSL/TLS -transport positive cases ---
+cassandra-stress write -transport truststore=/etc/scylla/ca.crt keystore=/etc/scylla/db.crt hostname-verification=false
+cassandra-stress write -transport truststore=/etc/scylla/ca.crt keystore=/etc/scylla/db.crt hostname-verification=1
+cassandra-stress write -transport truststore=/etc/scylla/ca.crt
+cassandra-stress write -transport keystore=/etc/scylla/db.crt
+cassandra-stress write -transport truststore=/etc/scylla/ca.crt keystore=/etc/scylla/db.crt ssl-protocol=TLS
+cassandra-stress write -transport truststore=/etc/scylla/ca.crt keystore=/etc/scylla/db.crt ssl-alg=SunX509 store-type=JKS ssl-ciphers=TLS_RSA_WITH_AES_128_CBC_SHA
+# Combination of supported and ignored options (should warn but not fail)
+cassandra-stress write -transport truststore=/etc/scylla/ca.crt,keystore=/etc/scylla/db.crt,ssl-protocol=TLS,ssl-alg=SunX509,store-type=JKS,ssl-ciphers=TLS_RSA_WITH_AES_128_CBC_SHA,hostname-verification=true
+# Only hostname-verification
+cassandra-stress write -transport hostname-verification=true
+# Only -transport with no suboptions (should be accepted and default to no SSL)
+cassandra-stress write -transport
+# --- END: SSL/TLS -transport positive cases ---

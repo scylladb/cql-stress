@@ -30,6 +30,7 @@ use self::option::NodeOption;
 use self::option::PopulationOption;
 use self::option::RateOption;
 use self::option::SchemaOption;
+use self::option::TransportOption;
 
 pub struct CassandraStressSettings {
     pub command: Command,
@@ -41,6 +42,7 @@ pub struct CassandraStressSettings {
     pub column: ColumnOption,
     pub population: PopulationOption,
     pub log: LogOption,
+    pub transport: TransportOption,
 }
 
 impl CassandraStressSettings {
@@ -54,6 +56,7 @@ impl CassandraStressSettings {
         self.column.print_settings();
         self.population.print_settings();
         self.log.print_settings();
+        self.transport.print_settings();
         println!();
     }
 
@@ -217,6 +220,7 @@ where
         let schema = SchemaOption::parse(&mut payload)?;
         let column = ColumnOption::parse(&mut payload)?;
         let log = LogOption::parse(&mut payload)?;
+        let transport = TransportOption::parse(&mut payload)?;
 
         // The default distribution (if not specified) is SEQ(1..operation_count).
         // If operation_count is not specified, then the default is 1M.
@@ -257,6 +261,7 @@ where
                 column,
                 population,
                 log,
+                transport,
             },
         )))
     };

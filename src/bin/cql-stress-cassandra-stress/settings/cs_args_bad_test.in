@@ -47,3 +47,12 @@ cassandra-stress read ratio(read=1,write=2)
 cassandra-stress read clustering=FIXED(2)
 
 cassandra-stress read -log interval=1h
+
+# --- BEGIN: SSL/TLS -transport negative cases ---
+cassandra-stress write -transport truststore=
+cassandra-stress write -transport keystore=
+cassandra-stress write -transport hostname-verification=maybe
+cassandra-stress write -transport foo=bar
+cassandra-stress write -transport garbage
+
+# --- END: SSL/TLS -transport negative cases ---

@@ -110,6 +110,44 @@ impl Parsable for bool {
     }
 }
 
+pub struct NonEmptyString;
+
+impl Parsable for NonEmptyString {
+    type Parsed = String;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        if s.is_empty() {
+            anyhow::bail!("Value cannot be empty");
+        }
+        Ok(s.to_owned())
+    }
+}
+
+pub struct FlagNumericOrBool;
+
+impl Parsable for FlagNumericOrBool {
+    type Parsed = bool;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        match s {
+            "true" | "1" => Ok(true),
+            "false" | "0" => Ok(false),
+            _ => anyhow::bail!("Invalid value for flag: {} (expected true/false/1/0)", s),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NotSupported;
+
+impl Parsable for NotSupported {
+    type Parsed = NotSupported;
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        tracing::warn!("This parameter is not supported and will be ignored: {}", s);
+        Ok(NotSupported)
+    }
+}
+
 impl Parsable for String {
     type Parsed = String;
 
@@ -408,7 +446,8 @@ impl Parsable for IntervalMillisOrSeconds {
 #[cfg(test)]
 mod tests {
     use crate::{
-        java_generate::distribution::DistributionFactory, settings::param::types::RatioMap,
+        java_generate::distribution::DistributionFactory,
+        settings::param::types::{FlagNumericOrBool, NonEmptyString, NotSupported, RatioMap},
     };
 
     use super::Parsable;
@@ -528,5 +567,30 @@ mod tests {
         for input in bad_test_cases {
             assert!(RatioMap::parse(input).is_err())
         }
+    }
+
+    #[test]
+    fn test_non_empty_string() {
+        assert!(NonEmptyString::parse("").is_err());
+        let s = "abc";
+        let parsed = NonEmptyString::parse(s).unwrap();
+        assert_eq!(parsed, s);
+    }
+
+    #[test]
+    fn test_flag_numeric_or_bool() {
+        assert!(FlagNumericOrBool::parse("true").unwrap());
+        assert!(FlagNumericOrBool::parse("1").unwrap());
+        assert!(!FlagNumericOrBool::parse("false").unwrap());
+        assert!(!FlagNumericOrBool::parse("0").unwrap());
+        assert!(FlagNumericOrBool::parse("yes").is_err());
+        assert!(FlagNumericOrBool::parse("").is_err());
+    }
+
+    #[test]
+    fn test_not_supported() {
+        let parsed = NotSupported::parse("anything");
+        assert!(parsed.is_ok());
+        assert!(matches!(parsed.unwrap(), NotSupported));
     }
 }
