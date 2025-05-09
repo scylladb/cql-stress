@@ -94,7 +94,17 @@ impl<V: RowValidator> GenericReadOperationFactory<V> {
         session: Arc<Session>,
         stressed_table_name: &'static str,
     ) -> Result<Self> {
-        let statement_str = format!("SELECT * FROM {} WHERE KEY=?", stressed_table_name);
+        let column_list = settings
+            .column
+            .columns
+            .iter()
+            .map(|col| format!("\"{}\"", col))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let statement_str = format!(
+            "SELECT key, {} FROM {} WHERE KEY=?",
+            column_list, stressed_table_name
+        );
         let mut statement = session
             .prepare(statement_str)
             .await
