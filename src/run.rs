@@ -9,6 +9,7 @@ use futures::future::{AbortHandle, Abortable, Fuse, FutureExt};
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
+use tokio_timerfd::Delay;
 
 use crate::configuration::{Configuration, OperationContext};
 
@@ -104,26 +105,28 @@ impl WorkerSession {
     }
 
     // Should be called before starting an operation.
-    pub async fn start_operation(&mut self) -> Option<OperationContext> {
+    pub async fn start_operation(&mut self) -> Result<Option<OperationContext>> {
         if self.trial_idx == 0 {
-            let next_op_id = self.context.issue_operation_id()?;
+            let Some(next_op_id) = self.context.issue_operation_id() else {
+                return Ok(None);
+            };
             self.op_id = next_op_id;
         }
 
         let scheduled_start_time = if let Some(rate_limiter) = &self.context.rate_limiter {
             let start_time = rate_limiter.issue_next_start_time();
-            tokio::time::sleep_until(start_time).await;
+            Delay::new(start_time.into())?.await?;
             start_time
         } else {
             Instant::now()
         };
         let actual_start_time = Instant::now();
 
-        Some(OperationContext {
+        Ok(Some(OperationContext {
             operation_id: self.op_id,
             scheduled_start_time,
             actual_start_time,
-        })
+        }))
     }
 
     // Should be called after ending an operation.

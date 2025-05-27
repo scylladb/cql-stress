@@ -312,6 +312,7 @@ dependencies = [
  "strum_macros",
  "thread_local",
  "tokio",
+ "tokio-timerfd",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -2075,6 +2076,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "timerfd"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84e482e368cf7efa2c8b570f476e5b9fd9fd5e9b9219fc567832b05f13511091"
+dependencies = [
+ "rustix",
+]
+
+[[package]]
 name = "tinystr"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2130,6 +2140,19 @@ checksum = "59df6849caa43bb7567f9a36f863c447d95a11d5903c9cc334ba32576a27eadd"
 dependencies = [
  "openssl",
  "openssl-sys",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-timerfd"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87eecdae9a9b793843b1df7a64bc136f203443c1ca9889b3c4a39590afa51094"
+dependencies = [
+ "futures-core",
+ "libc",
+ "slab",
+ "timerfd",
  "tokio",
 ]
 
