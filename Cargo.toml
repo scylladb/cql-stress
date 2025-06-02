@@ -34,7 +34,7 @@ opt-level = 2
 [dependencies]
 anyhow = "1.0.52"
 async-trait = "0.1.52"
-base64 = "0.13.0"
+base64 = "0.21.7"
 chrono = "0.4.9"
 futures = "0.3.19"
 hdrhistogram = "7.5.0"
