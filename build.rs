@@ -135,13 +135,13 @@ fn main() {
         .unwrap_or_default();
     let mut scylla_version = scylla_pkg.version.to_string();
     let (scylla_commit_date, scylla_sha) = if scylla_source.is_empty() {
-        scylla_version = format!("{}-dev", scylla_version);
+        scylla_version = format!("{scylla_version}-dev");
         (
             Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             UNKNOWN.into(),
         )
     } else if scylla_source.contains("git+") {
-        scylla_version = format!("{}-dev", scylla_version);
+        scylla_version = format!("{scylla_version}-dev");
         let commit_sha = scylla_source
             .split('#')
             .nth(1)
