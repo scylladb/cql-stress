@@ -320,7 +320,7 @@ mod tests {
         ];
 
         for (s, expected) in goods {
-            println!("Parsing: {}", s);
+            println!("Parsing: {s}");
             let value: i64 = parse_long(s).unwrap();
             assert_eq!(value, *expected);
         }
@@ -334,11 +334,11 @@ mod tests {
             "1 2 3",
             "999999999999999999999999999999999999999999999999999999",
             "99999999999b", // <- Will overflow after adjusting for the suffix
-            &format!("{}", u64::MAX), // <- Out of range of i64, but in range of u64
+            &format!("{u64_max}", u64_max = u64::MAX), // <- Out of range of i64, but in range of u64
         ];
 
         for s in bads {
-            println!("Parsing: {}", s);
+            println!("Parsing: {s}");
             parse_long::<i64>(s).unwrap_err();
         }
     }
@@ -354,11 +354,11 @@ mod tests {
             ("34M", 34_000_000),
             ("56b", 56_000_000_000),
             ("56B", 56_000_000_000),
-            (&format!("{}", u64::MAX), u64::MAX),
+            (&format!("{u64_max}", u64_max = u64::MAX), u64::MAX),
         ];
 
         for (s, expected) in goods {
-            println!("Parsing: {}", s);
+            println!("Parsing: {s}");
             let value: u64 = parse_long(s).unwrap();
             assert_eq!(value, *expected);
         }
@@ -376,7 +376,7 @@ mod tests {
         ];
 
         for s in bads {
-            println!("Parsing: {}", s);
+            println!("Parsing: {s}");
             parse_long::<u64>(s).unwrap_err();
         }
     }

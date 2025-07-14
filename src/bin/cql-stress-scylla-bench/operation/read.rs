@@ -241,7 +241,7 @@ impl ReadRestrictionKind {
                 }
                 let mut ins = "?,".repeat(cks_to_select as usize);
                 ins.pop(); // Remove the last comma
-                format!("AND ck IN ({})", ins)
+                format!("AND ck IN ({ins})")
             }
             ReadRestrictionKind::BothBounds { .. } => "AND ck >= ? AND ck < ?".to_owned(),
             ReadRestrictionKind::OnlyLowerBound { .. } => "AND ck >= ?".to_string(),
@@ -253,7 +253,7 @@ impl ReadRestrictionKind {
         match *self {
             ReadRestrictionKind::OnlyLowerBound { limit }
             | ReadRestrictionKind::NoBounds { limit } => {
-                format!("LIMIT {}", limit)
+                format!("LIMIT {limit}")
             }
             _ => "".to_string(),
         }

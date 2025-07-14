@@ -210,15 +210,15 @@ pub fn format_duration(d: Duration) -> String {
         let hours = d.as_secs() / 3600;
 
         if hours > 0 {
-            write!(s, "{}h", hours).unwrap();
+            write!(s, "{hours}h").unwrap();
         }
         if minutes > 0 {
-            write!(s, "{}m", minutes).unwrap();
+            write!(s, "{minutes}m").unwrap();
         }
 
         // Print one digit of precision
         let secs = d.as_secs_f64() % 60.0;
-        write!(s, "{:.1}s", secs).unwrap();
+        write!(s, "{secs:.1}s").unwrap();
     } else {
         // Diverge a bit from scylla-bench: we will keep at most 3 digits of precision, always
         let total_nanos = d.subsec_nanos();
@@ -234,12 +234,14 @@ pub fn format_duration(d: Duration) -> String {
 
         if first_digit >= 1_000_000 {
             let prec = 8 - first_offset;
-            write!(s, "{:.*}ms", prec, total_nanos as f64 / 1_000_000.0).unwrap();
+            let ms = total_nanos as f64 / 1_000_000.0;
+            write!(s, "{ms:.prec$}ms").unwrap();
         } else if first_digit >= 1_000 {
             let prec = 5 - first_offset;
-            write!(s, "{:.*}μs", prec, total_nanos as f64 / 1_000.0).unwrap();
+            let us = total_nanos as f64 / 1_000.0;
+            write!(s, "{us:.prec$}μs").unwrap();
         } else {
-            write!(s, "{}ns", total_nanos).unwrap();
+            write!(s, "{total_nanos}ns").unwrap();
         }
     }
 
@@ -322,14 +324,11 @@ mod tests {
     ) -> bool {
         match (parse)(raw) {
             Err(err) => {
-                println!("Subtest failed: failed to parse {}: {}", raw, err);
+                println!("Subtest failed: failed to parse {raw}: {err}");
                 false
             }
             Ok(actual) if &actual != expected => {
-                println!(
-                    "Subtest failed: {} parsed as {:?}, but expected {:?}",
-                    raw, actual, expected,
-                );
+                println!("Subtest failed: {raw} parsed as {actual:?}, but expected {expected:?}");
                 false
             }
             Ok(_) => true,
@@ -340,10 +339,7 @@ mod tests {
     fn parse_expecting_failure<T: Debug>(raw: &str, parse: impl Fn(&str) -> Result<T>) -> bool {
         match (parse)(raw) {
             Ok(actual) => {
-                println!(
-                    "Subtest failed: unexpectedly parsed {} as {:?}",
-                    raw, actual,
-                );
+                println!("Subtest failed: unexpectedly parsed {raw} as {actual:?}");
                 false
             }
             Err(_) => true,

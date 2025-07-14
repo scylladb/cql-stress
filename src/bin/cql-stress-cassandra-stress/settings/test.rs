@@ -21,7 +21,7 @@ fn cs_args_good_test() {
             _ => success += 1,
         }
 
-        println!("Success count: {}, Failure count: {}", success, failure);
+        println!("Success count: {success}, Failure count: {failure}");
         assert_eq!(failure, 0);
     }
 }
@@ -44,7 +44,7 @@ fn cs_args_bad_test() {
             }
         }
 
-        println!("Success count: {}, Failure count: {}", success, failure);
+        println!("Success count: {success} , Failure count: {failure}");
         assert_eq!(success, 0);
     }
 }

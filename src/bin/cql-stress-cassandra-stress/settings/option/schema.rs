@@ -76,18 +76,18 @@ impl SchemaOption {
         let options_str = self
             .replication_opts
             .iter()
-            .map(|(key, value)| format!("'{}': '{}'", key, value))
+            .map(|(key, value)| format!("'{key}': '{value}'"))
             .collect::<Vec<_>>()
             .join(", ");
 
-        format!("{{{}}}", options_str)
+        format!("{{{options_str}}}")
     }
 
     pub fn construct_keyspace_creation_query(&self) -> String {
         format!(
-            "CREATE KEYSPACE IF NOT EXISTS \"{}\" WITH REPLICATION = {};",
-            self.keyspace,
-            self.construct_replication_string()
+            "CREATE KEYSPACE IF NOT EXISTS \"{keyspace}\" WITH REPLICATION = {replication};",
+            keyspace = self.keyspace,
+            replication = self.construct_replication_string()
         )
     }
 
@@ -96,11 +96,11 @@ impl SchemaOption {
             let options_str = self
                 .compaction_opts
                 .iter()
-                .map(|(key, value)| format!("'{}': '{}'", key, value))
+                .map(|(key, value)| format!("'{key}': '{value}'"))
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            format!(" AND compaction = {{{}}}", options_str)
+            format!(" AND compaction = {{{options_str}}}")
         })
     }
 
@@ -114,14 +114,14 @@ impl SchemaOption {
     ) -> String {
         // Note that for now we hardcode the columns.
         // In the future, `-col` option will be supported, that lets the user define column names as well as the number of columns.
-        let mut result = format!("CREATE TABLE IF NOT EXISTS {0} (key blob", table_name);
+        let mut result = format!("CREATE TABLE IF NOT EXISTS {table_name} (key blob");
         for column in column_names {
-            result += &format!(", \"{}\" {}", column, column_type);
+            result += &format!(", \"{column}\" {column_type}");
         }
         result += ", PRIMARY KEY (key))";
         result += " WITH compression = {";
         if let Some(compression) = &self.compression {
-            result += &format!("'sstable_compression': '{}'", compression);
+            result += &format!("'sstable_compression': '{compression}'");
         }
         result += "}";
         if let Some(compaction_str) = self.construct_compaction_string() {

@@ -42,7 +42,7 @@ impl Options {
     pub fn print_generic_help() {
         println!("---Options---");
         for (option, description) in Self::help_messages() {
-            println!("{:<20} : {}", option, description);
+            println!("{option:<20} : {description}");
         }
     }
 

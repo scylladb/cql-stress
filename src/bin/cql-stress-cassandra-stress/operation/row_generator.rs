@@ -183,7 +183,7 @@ impl RowGeneratorFactory {
                 Generator::new(
                     Box::<Blob>::default(),
                     GeneratorConfig::new(
-                        &format!("randomstr{}", column),
+                        &format!("randomstr{column}"),
                         None,
                         Some(self.settings.column.size_distribution.create()),
                     ),
