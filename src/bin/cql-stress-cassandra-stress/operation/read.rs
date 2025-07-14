@@ -54,7 +54,7 @@ impl<V: RowValidator> ReadOperation<V> {
             );
         }
         validation_result
-            .with_context(|| format!("Row with partition_key: {:?} could not be validated.", pk))?;
+            .with_context(|| format!("Row with partition_key: {pk:?} could not be validated."))?;
 
         Ok(ControlFlow::Continue(()))
     }
@@ -98,13 +98,11 @@ impl<V: RowValidator> GenericReadOperationFactory<V> {
             .column
             .columns
             .iter()
-            .map(|col| format!("\"{}\"", col))
+            .map(|col| format!("\"{col}\""))
             .collect::<Vec<_>>()
             .join(", ");
-        let statement_str = format!(
-            "SELECT key, {} FROM {} WHERE KEY=?",
-            column_list, stressed_table_name
-        );
+        let statement_str =
+            format!("SELECT key, {column_list} FROM {stressed_table_name} WHERE KEY=?");
         let mut statement = session
             .prepare(statement_str)
             .await

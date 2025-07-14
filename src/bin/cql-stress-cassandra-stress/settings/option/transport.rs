@@ -129,13 +129,13 @@ impl TransportOption {
             println!("  factory: (unsupported)");
         }
         if let Some(ref v) = self.truststore {
-            println!("  truststore: {}", v);
+            println!("  truststore: {v}");
         }
         if self.truststore_password.is_some() {
             println!("  truststore-password: (unsupported)");
         }
         if let Some(ref v) = self.keystore {
-            println!("  keystore: {}", v);
+            println!("  keystore: {v}");
         }
         if self.keystore_password.is_some() {
             println!("  keystore-password: (unsupported)");
@@ -153,7 +153,7 @@ impl TransportOption {
             println!("  ssl-ciphers: (unsupported)");
         }
         if let Some(v) = self.hostname_verification {
-            println!("  hostname-verification: {}", v);
+            println!("  hostname-verification: {v}");
         }
     }
 
@@ -178,16 +178,15 @@ impl TransportOption {
         });
 
         if let Some(ref truststore) = self.truststore {
-            let ca_path = fs::canonicalize(truststore).with_context(|| {
-                format!("Failed to canonicalize truststore path: {}", truststore)
-            })?;
+            let ca_path = fs::canonicalize(truststore)
+                .with_context(|| format!("Failed to canonicalize truststore path: {truststore}"))?;
             builder
                 .set_ca_file(&ca_path)
                 .with_context(|| format!("Failed to set CA file: {}", ca_path.display()))?;
         }
         if let Some(ref keystore) = self.keystore {
             let key_path = fs::canonicalize(keystore)
-                .with_context(|| format!("Failed to canonicalize keystore path: {}", keystore))?;
+                .with_context(|| format!("Failed to canonicalize keystore path: {keystore}"))?;
             builder
                 .set_certificate_file(&key_path, SslFiletype::PEM)
                 .with_context(|| {

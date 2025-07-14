@@ -30,20 +30,20 @@ impl ThreadsInfo {
                 throttle,
                 co_fixed,
             } => {
-                println!("  Thread count: {}", threads);
+                println!("  Thread count: {threads}");
                 if let Some(throttle) = throttle {
-                    println!("  OpsPer Sec: {}", throttle);
+                    println!("  OpsPer Sec: {throttle}");
                 }
-                println!("  Coordinated-Omission-Fixed latencies: {}", co_fixed);
+                println!("  Coordinated-Omission-Fixed latencies: {co_fixed}");
             }
             Self::Auto {
                 min_threads,
                 max_threads,
                 auto,
             } => {
-                println!("  Min threads: {}", min_threads);
-                println!("  Max threads: {}", max_threads);
-                println!("  auto: {}", auto);
+                println!("  Min threads: {min_threads}");
+                println!("  Max threads: {max_threads}");
+                println!("  auto: {auto}");
             }
         }
     }

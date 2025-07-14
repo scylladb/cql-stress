@@ -28,7 +28,7 @@ impl std::fmt::Display for MixedSubcommand {
             MixedSubcommand::CounterRead => "counter_read",
             MixedSubcommand::CounterWrite => "counter_write",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -50,7 +50,7 @@ impl Parsable for OperationRatio {
     type Parsed = Self;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
-        Self::do_parse(s).with_context(|| format!("invalid operation ratio specification: {}", s))
+        Self::do_parse(s).with_context(|| format!("invalid operation ratio specification: {s}"))
     }
 }
 

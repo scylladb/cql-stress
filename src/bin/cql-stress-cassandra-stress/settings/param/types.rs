@@ -180,7 +180,7 @@ impl Parsable for Duration {
         let value_str = &s[0..s.len() - 1];
         let value = value_str
             .parse::<u64>()
-            .with_context(|| format!("Invalid u64 value: {}", value_str))?;
+            .with_context(|| format!("Invalid u64 value: {value_str}"))?;
         Ok(Duration::from_secs(value * multiplier))
     }
 }
@@ -209,7 +209,7 @@ impl Parsable for Count {
         let last = s
             .chars()
             .last()
-            .ok_or_else(|| anyhow::anyhow!("Invalid argument: {}", s))?;
+            .ok_or_else(|| anyhow::anyhow!("Invalid argument: {s}"))?;
         let mut multiplier = 1;
         let mut number_slice = s;
         if last.is_alphabetic() {
@@ -218,7 +218,7 @@ impl Parsable for Count {
         }
         let value = number_slice
             .parse::<u64>()
-            .with_context(|| format!("Invalid u64 value: {}", number_slice))?;
+            .with_context(|| format!("Invalid u64 value: {number_slice}"))?;
         Ok(value * multiplier)
     }
 }
@@ -407,7 +407,7 @@ impl Parsable for RatioMap {
     type Parsed = HashMap<String, f64>;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
-        Self::do_parse(s).with_context(|| format!("Invalid ratio specification: {}", s))
+        Self::do_parse(s).with_context(|| format!("Invalid ratio specification: {s}"))
     }
 }
 
@@ -426,7 +426,7 @@ impl Parsable for IntervalMillisOrSeconds {
             let ms_str = &s[0..s.len() - 2];
             let ms = ms_str
                 .parse::<u64>()
-                .with_context(|| format!("Invalid millisecond value: {}", ms_str))?;
+                .with_context(|| format!("Invalid millisecond value: {ms_str}"))?;
             Ok(Duration::from_millis(ms))
         } else {
             // Parse seconds (either with "s" suffix or without suffix)
@@ -437,7 +437,7 @@ impl Parsable for IntervalMillisOrSeconds {
             };
             let sec = sec_str
                 .parse::<u64>()
-                .with_context(|| format!("Invalid second value: {}", sec_str))?;
+                .with_context(|| format!("Invalid second value: {sec_str}"))?;
             Ok(Duration::from_secs(sec))
         }
     }

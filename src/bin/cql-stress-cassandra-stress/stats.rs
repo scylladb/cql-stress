@@ -134,7 +134,7 @@ impl Stats {
                 let default_latency = self.latency_calculator.default_latency(&metrics);
                 self.latency_histogram.record(default_latency).unwrap();
 
-                let service_time_tag = format!("{}-st", tag);
+                let service_time_tag = format!("{tag}-st");
                 let service_time_histogram = self
                     .histograms
                     .entry(service_time_tag)
@@ -142,7 +142,7 @@ impl Stats {
                 service_time_histogram.record(metrics.service_time).unwrap();
 
                 if let Some(response_time) = metrics.response_time {
-                    let response_time_tag = format!("{}-rt", tag);
+                    let response_time_tag = format!("{tag}-rt");
                     let response_time_histogram = self
                         .histograms
                         .entry(response_time_tag)
@@ -151,7 +151,7 @@ impl Stats {
                 }
 
                 if let Some(wait_time) = metrics.wait_time {
-                    let wait_time_tag = format!("{}-wt", tag);
+                    let wait_time_tag = format!("{tag}-wt");
                     let wait_time_histogram = self
                         .histograms
                         .entry(wait_time_tag)
@@ -299,9 +299,6 @@ impl StatsPrinter {
         let seconds = benchmark_duration.as_secs() % 60;
         let minutes = (benchmark_duration.as_secs() / 60) % 60;
         let hours = (benchmark_duration.as_secs() / 60) / 60;
-        println!(
-            "Total operation time      : {:0>2}:{:0>2}:{:0>2}",
-            hours, minutes, seconds
-        )
+        println!("Total operation time      : {hours:0>2}:{minutes:0>2}:{seconds:0>2}");
     }
 }

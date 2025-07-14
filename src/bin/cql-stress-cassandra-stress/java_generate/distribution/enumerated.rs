@@ -31,9 +31,9 @@ impl<T: std::fmt::Display> std::fmt::Display for EnumeratedDistribution<T> {
         let items_str = self
             .items
             .iter()
-            .map(|item| format!("{}={}", item.0, item.1))
+            .map(|item| format!("{key}={value}", key = item.0, value = item.1))
             .collect::<Vec<_>>()
             .join(",");
-        write!(f, "{}}}", items_str)
+        write!(f, "{items_str}}}")
     }
 }

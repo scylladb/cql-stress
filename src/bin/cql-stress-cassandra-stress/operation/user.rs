@@ -268,7 +268,7 @@ impl UserOperationFactory {
         let pk_name = &self.table_metadata.partition_key[0];
         let pk_generator = Generator::new(
             self.pk_generator_factory.create(),
-            GeneratorConfig::new(&format!("{}{}", SEED_STR, pk_name), None, None),
+            GeneratorConfig::new(&format!("{SEED_STR}{pk_name}"), None, None),
             pk_name.clone(),
         );
 
@@ -281,7 +281,7 @@ impl UserOperationFactory {
             .map(|((col_name, _), gen_factory)| {
                 Generator::new(
                     gen_factory.create(),
-                    GeneratorConfig::new(&format!("{}{}", SEED_STR, col_name), None, None),
+                    GeneratorConfig::new(&format!("{SEED_STR}{col_name}"), None, None),
                     col_name.to_owned(),
                 )
             })

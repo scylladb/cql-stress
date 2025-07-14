@@ -67,7 +67,7 @@ impl WriteOperationFactory {
     ) -> Result<Self> {
         let mut statement_str = String::from("INSERT INTO standard1 (key");
         for column in settings.column.columns.iter() {
-            statement_str += &format!(", \"{}\"", column);
+            statement_str += &format!(", \"{column}\"");
         }
         statement_str += ") VALUES (?";
         for _ in settings.column.columns.iter() {

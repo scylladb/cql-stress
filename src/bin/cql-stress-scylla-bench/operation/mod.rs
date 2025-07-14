@@ -178,7 +178,7 @@ impl ReadContext {
         self.errors += 1;
     }
     pub fn data_corruption(&mut self, pk: i64, ck: i64, err: &impl Display) {
-        eprintln!("data corruption in pk({}), ck({}): {}", pk, ck, err);
+        eprintln!("data corruption in pk({pk}), ck({ck}): {err}");
         error!(
             error = %err,
             partition_key = pk,

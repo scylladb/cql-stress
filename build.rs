@@ -24,8 +24,7 @@ mod scylla_date_utils {
             .ok()?;
         let resp = client
             .get(format!(
-                "https://api.github.com/repos/scylladb/scylla-rust-driver/commits/{}",
-                sha
+                "https://api.github.com/repos/scylladb/scylla-rust-driver/commits/{sha}"
             ))
             .send()
             .ok()?;
@@ -59,7 +58,7 @@ mod scylla_date_utils {
             .build()
             .ok()?;
         let resp = client
-            .get(format!("https://crates.io/api/v1/crates/{}/versions", name))
+            .get(format!("https://crates.io/api/v1/crates/{name}/versions"))
             .send()
             .ok()?;
         if !resp.status().is_success() {

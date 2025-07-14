@@ -25,12 +25,12 @@ impl<W: AsyncWrite + Unpin> HistogramLogWriter<W> {
     }
 
     pub async fn output_log_format_version(&mut self) -> Result<()> {
-        let line = format!("#[Histogram log format version {}]\n", LOG_FORMAT_VERSION);
+        let line = format!("#[Histogram log format version {LOG_FORMAT_VERSION}]\n");
         self.writer.write_all(line.as_bytes()).await
     }
 
     pub async fn output_comment(&mut self, s: &str) -> Result<()> {
-        let line = format!("#{}\n", s);
+        let line = format!("#{s}\n");
         self.writer.write_all(line.as_bytes()).await
     }
 
@@ -39,7 +39,7 @@ impl<W: AsyncWrite + Unpin> HistogramLogWriter<W> {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        let line = format!("#[Basetime: {} (seconds since epoch)]\n", secs);
+        let line = format!("#[Basetime: {secs} (seconds since epoch)]\n");
         self.writer.write_all(line.as_bytes()).await
     }
 
