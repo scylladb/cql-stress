@@ -49,7 +49,7 @@ regex = "1.9.1"
 scylla = { version = "1.2.0", features = ["openssl-010"] }
 sha2 = "0.10"
 strum = "0.25.0"
-strum_macros = "0.25.1"
+strum_macros = "0.27.2"
 thread_local = "1.1.4"
 tokio = { version = "1.15.0", features = [
     "rt",
