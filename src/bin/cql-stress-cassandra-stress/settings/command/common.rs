@@ -71,10 +71,7 @@ impl Parsable for Truncate {
                 .collect::<Vec<String>>()
                 .join("|");
 
-            format!(
-                "Invalid truncate type: {}. Must be one of: {}",
-                truncate, concat,
-            )
+            format!("Invalid truncate type: {truncate}. Must be one of: {concat}",)
         };
 
         Self::from_str(truncate).with_context(create_err_msg)
@@ -130,10 +127,7 @@ impl Parsable for ConsistencyLevel {
                 .collect::<Vec<String>>()
                 .join("|");
 
-            format!(
-                "Invalid consistency level: {}. Must be one of: {}",
-                cl, concat
-            )
+            format!("Invalid consistency level: {cl}. Must be one of: {concat}",)
         };
 
         Self::from_str(cl)
@@ -173,10 +167,7 @@ impl Parsable for SerialConsistencyLevel {
                 .collect::<Vec<String>>()
                 .join("|");
 
-            format!(
-                "Invalid serial consistency level: {}. Must be one of: {}",
-                serial_cl, concat
-            )
+            format!("Invalid serial consistency level: {serial_cl}. Must be one of: {concat}",)
         };
 
         Self::from_str(serial_cl)

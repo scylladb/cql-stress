@@ -22,6 +22,6 @@ fn test_example_sets() {
         }
     }
 
-    println!("Successes: {}, failures: {}", success_count, failure_count);
+    println!("Successes: {success_count}, failures: {failure_count}");
     assert_eq!(failure_count, 0);
 }

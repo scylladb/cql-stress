@@ -264,10 +264,10 @@ impl StatsPrinter {
         }
 
         let ops_per_second = stats.operations as f64 / time.as_secs_f64();
-        writeln!(out, "Operations/s:\t{}", ops_per_second)?;
+        writeln!(out, "Operations/s:\t{ops_per_second}")?;
 
         let rows_per_second = stats.clustering_rows as f64 / time.as_secs_f64();
-        writeln!(out, "Rows/s:\t\t{}", rows_per_second)?;
+        writeln!(out, "Rows/s:\t\t{rows_per_second}")?;
 
         if let Some(ls) = &stats.latencies {
             self.print_final_latency_histogram("raw latency", &ls.raw, out)?;
@@ -286,7 +286,7 @@ impl StatsPrinter {
         out: &mut impl Write,
     ) -> Result<()> {
         // TODO: Use non-shortened version of the format_duration
-        writeln!(out, "{}:", name)?;
+        writeln!(out, "{name}:")?;
 
         let p50 = Duration::from_nanos(latency.value_at_quantile(0.5));
         let p90 = Duration::from_nanos(latency.value_at_quantile(0.9));

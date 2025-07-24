@@ -429,7 +429,7 @@ where
     match result {
         Ok(parse_result) => Some(parse_result),
         Err(err) => {
-            eprintln!("Failed to parse flags: {:?}", err);
+            eprintln!("Failed to parse flags: {err:?}");
             if print_usage_on_fail {
                 desc.print_help(&mut std::io::stderr(), program_name.as_ref())
                     .unwrap();
@@ -472,7 +472,10 @@ impl ScyllaBenchArgs {
         println!("Concurrency:\t\t {}", self.concurrency);
         // println!("Connections:\t\t {}", self.connection_count);
         if self.maximum_rate > 0 {
-            println!("Maximum rate:\t\t {}ops/s", self.maximum_rate);
+            println!(
+                "Maximum rate:\t\t {maximum_rate}ops/s",
+                maximum_rate = self.maximum_rate
+            );
         } else {
             println!("Maximum rate:\t\t unlimited");
         }
@@ -519,7 +522,7 @@ fn parse_order_by_chain(s: &str) -> Result<Vec<OrderBy>> {
         .enumerate()
         .map(|(idx, s)| {
             parse_order_by(s)
-                .with_context(|| format!("failed to parse part {} of the order by chain", idx))
+                .with_context(|| format!("failed to parse part {idx} of the order by chain"))
         })
         .collect()
 }

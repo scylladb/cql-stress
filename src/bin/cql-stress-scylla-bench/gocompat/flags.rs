@@ -58,7 +58,7 @@ impl GoValue for i64 {
     }
 
     fn to_string(&self) -> String {
-        format!("{}", self)
+        format!("{self}")
     }
 
     fn is_zero_value(&self) -> bool {
@@ -76,7 +76,7 @@ impl GoValue for u64 {
     }
 
     fn to_string(&self) -> String {
-        format!("{}", self)
+        format!("{self}")
     }
 
     fn is_zero_value(&self) -> bool {
@@ -142,7 +142,7 @@ impl Flag {
         // Try to extract the quoted name
         let parts: Vec<_> = self.desc.splitn(3, '`').collect();
         if let &[left, name, right] = parts.as_slice() {
-            return (name, Cow::Owned(format!("{}{}{}", left, name, right)));
+            return (name, Cow::Owned(format!("{left}{name}{right}")));
         }
 
         // No explicit name, so use the type instead
@@ -388,7 +388,7 @@ impl Parser {
             let flag = self
                 .flags
                 .get(&name)
-                .ok_or_else(|| anyhow::anyhow!("Unknown flag: {}", name))?;
+                .ok_or_else(|| anyhow::anyhow!("Unknown flag: {name}"))?;
 
             match value_after_eq {
                 // The current option had `-name=value` form, so we already have the value
@@ -401,7 +401,7 @@ impl Parser {
                 None => {
                     let arg = args
                         .next()
-                        .ok_or_else(|| anyhow::anyhow!("Value is missing for flag {}", name))?;
+                        .ok_or_else(|| anyhow::anyhow!("Value is missing for flag {name}"))?;
                     flag.cell.parse(arg.as_ref())?
                 }
             };
@@ -418,7 +418,7 @@ pub struct FlagSetDescription {
 impl FlagSetDescription {
     /// Prints the help message with information about the flag usage.
     pub fn print_help(&self, write: &mut impl Write, program_name: &str) -> Result<()> {
-        writeln!(write, "Usage of {}:", program_name)?;
+        writeln!(write, "Usage of {program_name}:")?;
         let mut flag_names: Vec<&str> = self.flags.keys().copied().collect();
         flag_names.sort_unstable();
 
@@ -454,7 +454,7 @@ impl FlagSetDescription {
                 s.push(')');
             }
 
-            writeln!(write, "{}", s)?;
+            writeln!(write, "{s}")?;
         }
 
         Ok(())
@@ -552,11 +552,11 @@ mod tests {
                     "one" => Ok(V::One),
                     "two" => Ok(V::Two),
                     "three" => Ok(V::Three),
-                    _ => Err(anyhow::anyhow!("Wrong value of V: {}", s)),
+                    _ => Err(anyhow::anyhow!("Wrong value of V: {s}")),
                 }
             }
             fn to_string(&self) -> String {
-                format!("{:?}", self)
+                format!("{self:?}")
             }
         }
 

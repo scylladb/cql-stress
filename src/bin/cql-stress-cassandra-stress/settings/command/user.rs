@@ -87,8 +87,7 @@ impl Parsable for UserProfile {
     type Parsed = Self;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
-        let yaml =
-            File::open(s).with_context(|| format!("Invalid profile yaml filepath: {}", s))?;
+        let yaml = File::open(s).with_context(|| format!("Invalid profile yaml filepath: {s}"))?;
         let profile: UserProfile =
             serde_yaml::from_reader(yaml).context("Failed to parse profile yaml file")?;
         anyhow::ensure!(

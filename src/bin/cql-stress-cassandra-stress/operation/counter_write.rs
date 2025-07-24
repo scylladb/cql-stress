@@ -112,10 +112,10 @@ impl CounterWriteOperationFactory {
             .column
             .columns
             .iter()
-            .map(|col| format!("\"{0}\"=\"{0}\"+?", col))
+            .map(|col| format!("\"{col}\"=\"{col}\"+?"))
             .collect::<Vec<_>>()
             .join(",");
 
-        format!("UPDATE counter1 SET {} WHERE KEY=?", columns_str)
+        format!("UPDATE counter1 SET {columns_str} WHERE KEY=?")
     }
 }

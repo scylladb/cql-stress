@@ -49,7 +49,7 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
     }
 
     fn print_usage(&self, param_name: &'static str) {
-        print!("{}", param_name);
+        print!("{param_name}");
         if !T::is_bool() {
             print!("?");
         }
@@ -68,7 +68,7 @@ impl<T: Parsable> ParamImpl for SimpleParam<T> {
         if let Some(default) = default_value {
             usage += &format!(" (default={default})");
         }
-        println!("{:<40} {}", usage, description);
+        println!("{usage:<40} {description}");
         if let Some(additional_description) = &self.additional_desc {
             println!("{additional_description}")
         }
