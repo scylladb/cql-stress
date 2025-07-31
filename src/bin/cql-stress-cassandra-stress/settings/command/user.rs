@@ -26,6 +26,7 @@ pub struct UserProfile {
     pub table: String,
     pub table_definition: Option<String>,
     pub queries: HashMap<String, QueryDefinitionYaml>,
+    pub extra_definitions: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Debug)]
@@ -115,6 +116,7 @@ pub struct UserParams {
     pub queries_payload: HashMap<String, (QueryDefinition, OpWeight)>,
     pub clustering: Arc<dyn DistributionFactory>,
     pub insert_operation_weight: Option<OpWeight>,
+    pub extra_definitions: Option<Vec<String>>,
 }
 
 impl UserParams {
@@ -151,6 +153,14 @@ impl UserParams {
                 .context("Failed to create table based on user profile")?;
         }
 
+        if let Some(extra_definitions) = &self.extra_definitions {
+            for query in extra_definitions {
+                session.query_unpaged(query.as_str(), ()).await.with_context(
+                    || { format!("Failed to execute additional statement from profile extra_definitions array: {query}") },
+                )?;
+            }
+        }
+
         Ok(())
     }
 
@@ -162,6 +172,7 @@ impl UserParams {
             table,
             table_definition,
             mut queries,
+            extra_definitions,
         } = handles.profile.get().unwrap();
         let mut queries_ratio = handles.ratio.get().unwrap();
         let clustering: Arc<dyn DistributionFactory> = handles.clustering.get().unwrap().into();
@@ -195,6 +206,7 @@ impl UserParams {
             queries_payload,
             clustering,
             insert_operation_weight,
+            extra_definitions,
         })
     }
 }
@@ -325,6 +337,14 @@ mod tests {
     }
 
     #[test]
+    fn get_extra_definitions_from_profile_test() {
+        let yaml_filepath = build_file_path("user_profile_with_extra_defs.yaml");
+
+        let profile = UserProfile::parse(&yaml_filepath);
+        assert!(profile.is_ok_and(|prof| { prof.extra_definitions.is_some() }));
+    }
+
+    #[test]
     fn full_profile_yaml_contents_test() {
         let yaml_filepath = build_file_path("full_profile.yaml");
 
@@ -354,6 +374,10 @@ mod tests {
             Some("serial".to_string()),
             read_query.serial_consistency_level
         );
+
+        let extra_defs = profile.extra_definitions.unwrap();
+        assert_eq!(extra_defs.len(), 1);
+        assert_eq!(extra_defs[0], "CREATE TABLE IF NOT EXISTS keyspace2.extra_table(id bigint, v blob, PRIMARY KEY (id)) WITH compaction = { 'class' : 'SizeTieredCompactionStrategy' }");
     }
 
     #[test]
