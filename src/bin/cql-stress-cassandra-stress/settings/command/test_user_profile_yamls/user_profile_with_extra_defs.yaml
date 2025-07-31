@@ -1,0 +1,21 @@
+# Minimal profile with extra definitions array
+keyspace: foo
+
+keyspace_definition: |
+  CREATE KEYSPACE IF NOT EXISTS foo WITH replication = { 'class': 'SimpleStrategy', 'replication_factor': 1};
+
+table: bar
+
+table_definition:
+  CREATE TABLE IF NOT EXISTS bar (
+    pkey blob PRIMARY KEY,
+    ckey blob,
+    c1 blob
+   );
+
+queries:
+  baz:
+    cql: select c1 from standard1 where pkey = ?
+
+extra_definitions:
+  - "CREATE TABLE IF NOT EXISTS foo.extra_table(id bigint, v blob, PRIMARY KEY (id)) WITH compaction = { 'class' : 'SizeTieredCompactionStrategy' }"

@@ -22,3 +22,6 @@ queries:
     cql: select c1 from standard1 where pkey = ?
     consistencyLevel: quorum
     serialConsistencyLevel: serial
+
+extra_definitions:
+  - "CREATE TABLE IF NOT EXISTS keyspace2.extra_table(id bigint, v blob, PRIMARY KEY (id)) WITH compaction = { 'class' : 'SizeTieredCompactionStrategy' }"
