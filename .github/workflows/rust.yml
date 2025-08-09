@@ -108,7 +108,7 @@ jobs:
         run: |
           docker compose -f ./docker/scylla-test/compose.yml up -d --wait
           until docker logs scylla_test 2>&1 | grep "Starting listening for CQL clients" > /dev/null; do sleep 0.2; done
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: ${{ matrix.binary }}
       - name: C-S frontend tests
