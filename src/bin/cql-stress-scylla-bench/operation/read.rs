@@ -225,9 +225,9 @@ impl ReadOperation {
                         Ok(Some((ck, c1, c2, c3, c4, c5))) => {
                             rctx.row_read();
                             if self.validate_data {
-                                if let Err(err) =
-                                    super::validate_counter_row_data(pk, ck, c1.0, c2.0, c3.0, c4.0, c5.0)
-                                {
+                                if let Err(err) = super::validate_counter_row_data(
+                                    pk, ck, c1.0, c2.0, c3.0, c4.0, c5.0,
+                                ) {
                                     rctx.data_corruption(pk, ck, &err);
                                 }
                             }

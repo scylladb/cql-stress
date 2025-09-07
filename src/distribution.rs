@@ -77,7 +77,7 @@ impl<'a> Description<'a> {
 // cassandra-stress and scylla-bench accept different distributions and parse
 // their arguments in a slightly different way, so it's the responsiblity
 // of the frontends to further interpret the decomposed description.
-pub fn parse_description(s: &str, flavor: SyntaxFlavor) -> Result<Description> {
+pub fn parse_description(s: &str, flavor: SyntaxFlavor) -> Result<Description<'_>> {
     let mut s = s.trim();
 
     let inverted = match s.strip_prefix('~') {
@@ -207,11 +207,11 @@ impl_parsable_number!(u64);
 mod tests {
     use super::*;
 
-    fn parse_classic(s: &str) -> Result<Description> {
+    fn parse_classic(s: &str) -> Result<Description<'_>> {
         parse_description(s, SyntaxFlavor::Classic)
     }
 
-    fn parse_modern(s: &str) -> Result<Description> {
+    fn parse_modern(s: &str) -> Result<Description<'_>> {
         parse_description(s, SyntaxFlavor::ClassicOrShort)
     }
 
