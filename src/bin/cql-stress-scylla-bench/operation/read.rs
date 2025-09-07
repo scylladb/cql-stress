@@ -194,11 +194,24 @@ impl ReadOperation {
             ReadKind::Regular => {
                 let mut iter = pager.rows_stream::<(i64, Vec<u8>)>()?;
 
-                while let Some((ck, v)) = iter.try_next().await? {
-                    rctx.row_read();
-                    if self.validate_data {
-                        if let Err(err) = super::validate_row_data(pk, ck, &v) {
-                            rctx.data_corruption(pk, ck, &err);
+                loop {
+                    match iter.try_next().await {
+                        Ok(Some((ck, v))) => {
+                            rctx.row_read();
+                            if self.validate_data {
+                                if let Err(err) = super::validate_row_data(pk, ck, &v) {
+                                    rctx.data_corruption(pk, ck, &err);
+                                }
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(err) => {
+                            tracing::error!(
+                                error = %err,
+                                partition_key = pk,
+                                "error during row streaming iteration"
+                            );
+                            return Err(err.into());
                         }
                     }
                 }
@@ -207,13 +220,26 @@ impl ReadOperation {
                 let mut iter =
                     pager.rows_stream::<(i64, Counter, Counter, Counter, Counter, Counter)>()?;
 
-                while let Some((ck, c1, c2, c3, c4, c5)) = iter.try_next().await? {
-                    rctx.row_read();
-                    if self.validate_data {
-                        if let Err(err) =
-                            super::validate_counter_row_data(pk, ck, c1.0, c2.0, c3.0, c4.0, c5.0)
-                        {
-                            rctx.data_corruption(pk, ck, &err);
+                loop {
+                    match iter.try_next().await {
+                        Ok(Some((ck, c1, c2, c3, c4, c5))) => {
+                            rctx.row_read();
+                            if self.validate_data {
+                                if let Err(err) =
+                                    super::validate_counter_row_data(pk, ck, c1.0, c2.0, c3.0, c4.0, c5.0)
+                                {
+                                    rctx.data_corruption(pk, ck, &err);
+                                }
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(err) => {
+                            tracing::error!(
+                                error = %err,
+                                partition_key = pk,
+                                "error during counter row streaming iteration"
+                            );
+                            return Err(err.into());
                         }
                     }
                 }

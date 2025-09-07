@@ -128,11 +128,25 @@ impl ScanOperation {
 
         let mut iter = pager.rows_stream::<(i64, i64, Vec<u8>)>()?;
 
-        while let Some((pk, ck, v)) = iter.try_next().await? {
-            rctx.row_read();
-            if self.args.validate_data {
-                if let Err(err) = super::validate_row_data(pk, ck, &v) {
-                    rctx.data_corruption(pk, ck, &err);
+        loop {
+            match iter.try_next().await {
+                Ok(Some((pk, ck, v))) => {
+                    rctx.row_read();
+                    if self.args.validate_data {
+                        if let Err(err) = super::validate_row_data(pk, ck, &v) {
+                            rctx.data_corruption(pk, ck, &err);
+                        }
+                    }
+                }
+                Ok(None) => break,
+                Err(err) => {
+                    tracing::error!(
+                        error = %err,
+                        range_start = first,
+                        range_end = last,
+                        "error during scan row streaming iteration"
+                    );
+                    return Err(err.into());
                 }
             }
         }
