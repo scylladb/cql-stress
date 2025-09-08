@@ -138,7 +138,7 @@ impl Flag {
     // If there is no quoted name then an appropriate name will be deduced
     // based on the type.
     // TODO: This could be done during preparation?
-    fn unquote_usage(&self) -> (&str, Cow<str>) {
+    fn unquote_usage(&self) -> (&str, Cow<'_, str>) {
         // Try to extract the quoted name
         let parts: Vec<_> = self.desc.splitn(3, '`').collect();
         if let &[left, name, right] = parts.as_slice() {

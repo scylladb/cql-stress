@@ -62,6 +62,7 @@ impl ArbitraryParamsAcceptance for AcceptsArbitraryParams {
 
 /// [MultiParam<RejectsArbitraryParams>] rejects all arbitrary params by returning an error.
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct RejectsArbitraryParams;
 
 impl ArbitraryParamsAcceptance for RejectsArbitraryParams {
