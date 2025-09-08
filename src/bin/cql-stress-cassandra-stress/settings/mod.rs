@@ -114,7 +114,7 @@ type ParsePayload<'a> = HashMap<String, Vec<&'a str>>;
 ///
 /// cassandra-stress accepts CLI args of the following pattern:
 /// ./cassandra-stress COMMAND [command_param...] [OPTION [option_param...]...]
-fn prepare_parse_payload(args: &[String]) -> Result<(&str, ParsePayload)> {
+fn prepare_parse_payload(args: &[String]) -> Result<(&str, ParsePayload<'_>)> {
     let mut cl_args: ParsePayload = HashMap::new();
 
     let mut iter = args.iter();

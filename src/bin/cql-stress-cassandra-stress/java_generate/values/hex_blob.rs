@@ -43,6 +43,7 @@ impl ValueGenerator for HexBlob {
 }
 
 #[cfg(feature = "user-profile")]
+#[allow(dead_code)]
 pub struct HexBlobFactory;
 
 #[cfg(feature = "user-profile")]
