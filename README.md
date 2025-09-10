@@ -61,7 +61,28 @@ To enable the `user` mode, the tool needs to be compiled with `user-profile` fea
 
 ## Development
 
-You need the `cargo` command in order to build the tool:
+### Prerequisites
+
+You need the `cargo` command and OpenSSL development libraries to build the tool.
+
+**Install system dependencies:**
+
+On Ubuntu/Debian/Linux Mint:
+```bash
+sudo apt update && sudo apt install libssl-dev pkg-config
+```
+
+On Fedora/RHEL/CentOS:
+```bash
+sudo dnf install openssl-devel pkg-config
+```
+
+On macOS:
+```bash
+brew install openssl pkg-config
+```
+
+### Building
 
 ```bash
 # The --release flag can be omitted when developing features and testing them,
