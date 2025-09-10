@@ -12,11 +12,12 @@ from test_hdr_logging import run as run_hdr_logging
 
 @pytest.fixture
 def default_runtime_args():
-    return CSCliRuntimeArguments(workload_size="100", concurrency="1", hdr_log_file=None, log_interval=1)
+    return CSCliRuntimeArguments(workload_size="100", concurrency="1", hdr_log_file=None, log_interval=1, throttle=None)
 
 @pytest.fixture
 def hdr_log_runtime_args():
-    return CSCliRuntimeArguments(workload_size="30000", concurrency="2", hdr_log_file="test.hdr", log_interval=1)
+    # Throttle to 1000 ops/sec with 3000 operations to ensure test runs for at least 3 seconds
+    return CSCliRuntimeArguments(workload_size="3000", concurrency="1", hdr_log_file="test.hdr", log_interval=1, throttle="1000/s")
 
 DEFAULT_SCYLLA_URI = "127.0.0.1:9042"
 
