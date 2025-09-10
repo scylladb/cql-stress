@@ -20,16 +20,22 @@ Keyspaces = namedtuple("Keyspaces", ["ks_cassandra", "ks_cqlstress"])
 
 
 CSCliRuntimeArguments = namedtuple("CSCliRuntimeArguments", [
-                                   "workload_size", "concurrency", "hdr_log_file", "log_interval"])
+                                   "workload_size", "concurrency", "hdr_log_file", "log_interval", "throttle"])
 DEFAULT_RUNTIME_ARGUMENTS = CSCliRuntimeArguments(
-    workload_size=100, concurrency=1, hdr_log_file=None, log_interval=1)
+    workload_size=100, concurrency=1, hdr_log_file=None, log_interval=1, throttle=None)
 
 
 def prepare_args(command, node_ip, keyspace, runtime_args: CSCliRuntimeArguments = DEFAULT_RUNTIME_ARGUMENTS):
     args = [command, "no-warmup", f"n={runtime_args.workload_size}",
-            "-node", node_ip,
-            "-rate", f"threads={runtime_args.concurrency}",
-            "-schema", f"keyspace={keyspace}"]
+            "-node", node_ip]
+    
+    # Add rate arguments with optional throttle
+    rate_args = [f"threads={runtime_args.concurrency}"]
+    if runtime_args.throttle:
+        rate_args.append(f"throttle={runtime_args.throttle}")
+    args.extend(["-rate"] + rate_args)
+    
+    args.extend(["-schema", f"keyspace={keyspace}"])
 
     # Add HDR logging options if specified
     if runtime_args.hdr_log_file:
@@ -46,10 +52,14 @@ DEFAULT_TEST_QUERY_NAME = "test_query"
 
 
 def prepare_user_args(node_ip, profile_name, runtime_args: CSCliRuntimeArguments = DEFAULT_RUNTIME_ARGUMENTS):
+    rate_args = [f"threads={runtime_args.concurrency}"]
+    if runtime_args.throttle:
+        rate_args.append(f"throttle={runtime_args.throttle}")
+    
     return ["user", f"profile={profile_name}",
             "no-warmup", f"n={runtime_args.workload_size}",
             "-node", node_ip,
-            "-rate", f"threads={runtime_args.concurrency}"]
+            "-rate"] + rate_args
 
 
 def generate_random_keyspaces(timestamp_format=DEFAULT_TIMESTAMP_FORMAT):
@@ -71,10 +81,14 @@ class CSCliRunner:
 
     def prepare_user_args(self, node_ip, profile_name, query_name=DEFAULT_TEST_QUERY_NAME, runtime_args: CSCliRuntimeArguments = DEFAULT_RUNTIME_ARGUMENTS):
         full_profile_name = os.path.join(TEST_PROFILES_DIRECTORY, profile_name)
+        rate_args = [f"threads={runtime_args.concurrency}"]
+        if runtime_args.throttle:
+            rate_args.append(f"throttle={runtime_args.throttle}")
+        
         return ["user", f"profile={full_profile_name}", f"ops({query_name}=1)",
                 "no-warmup", f"n={runtime_args.workload_size}",
                 "-node", node_ip,
-                "-rate", f"threads={runtime_args.concurrency}",
+                "-rate"] + rate_args + [
                 f"-pop seq=1..{runtime_args.workload_size}"]
 
     def run_user(self, node_ip, profile_name, runtime_args: CSCliRuntimeArguments):
