@@ -15,7 +15,7 @@ env:
 jobs:
   check:
     name: Check
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -30,7 +30,7 @@ jobs:
         run: RUSTFLAGS="--cfg fetch_extended_version_info" cargo clippy --tests -- -D warnings
   fmt:
     name: Format
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -41,7 +41,7 @@ jobs:
         uses: actions-rust-lang/rustfmt@v1
 
   build:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -67,7 +67,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   test:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
     - uses: actions/checkout@v4
     - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -91,7 +91,7 @@ jobs:
     needs: [build, test]
     cancel-timeout-minutes: 1
     timeout-minutes: 20
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.binary }}
     strategy:
