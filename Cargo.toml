@@ -51,7 +51,9 @@ sha2 = "0.10"
 strum = "0.25.0"
 strum_macros = "0.25.1"
 thread_local = "1.1.4"
-tokio = { version = "1.15.0", features = [
+# NOTE: pin the tokio version to be 1.44.2 to avoid newer versions with performance regression
+#       See: https://github.com/tokio-rs/tokio/issues/7744
+tokio = { version = "=1.44.2", features = [
     "rt",
     "macros",
     "rt-multi-thread",
