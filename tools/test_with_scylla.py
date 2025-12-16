@@ -4,7 +4,7 @@ import argparse
 import os
 import subprocess
 
-from util.scylla_docker import *
+from util.scylla_docker import scylla_docker
 
 
 def main():
