@@ -158,4 +158,3 @@ class CqlStressCassandraStress(CSCliRunner):
 
 
 if __name__ == "__main__":
-    cassandra_stress = CassandraStress()
