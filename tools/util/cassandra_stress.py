@@ -155,6 +155,3 @@ class CassandraStress(CSCliRunner):
 class CqlStressCassandraStress(CSCliRunner):
     def __init__(self):
         super().__init__(stress_cmd=["cql-stress-cassandra-stress"])
-
-
-if __name__ == "__main__":
