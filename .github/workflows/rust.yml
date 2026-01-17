@@ -54,13 +54,13 @@ jobs:
           command: build
           args: --profile dist --all
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: cql-stress-cassandra-stress
           path: "./target/dist/cql-stress-cassandra-stress"
           if-no-files-found: error
           retention-days: 1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: cql-stress-scylla-bench
           path: "./target/dist/cql-stress-scylla-bench"
@@ -108,7 +108,7 @@ jobs:
         run: |
           docker compose -f ./docker/scylla-test/compose.yml up -d --wait
           until docker logs scylla_test 2>&1 | grep "Starting listening for CQL clients" > /dev/null; do sleep 0.2; done
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: ${{ matrix.binary }}
       - name: C-S frontend tests
