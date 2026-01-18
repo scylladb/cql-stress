@@ -18,7 +18,8 @@ cargo build
 # Release build (recommended for benchmarking)
 cargo build --release
 
-# Optimized distribution build (used by CI)
+# Optimized distribution build with LTO (used by CI/CD for releases)
+# Note: Longer build time but smaller binary and potentially better performance
 cargo build --profile dist
 
 # Build with specific features
@@ -167,9 +168,10 @@ When compiled with the `user-profile` feature (default), supports custom schemas
 - To disable: `cargo build --no-default-features`
 
 ### Build Profiles
-- `release`: Standard optimized build with LTO
-- `dist`: Distribution build with maximum optimization and stripped symbols
+- `dev`: Development build with minimal optimization (default)
 - `dev-opt`: Development build with level 2 optimization
+- `release`: Standard optimized build without LTO (fast compilation, suitable for local benchmarking)
+- `dist`: Distribution build with LTO, maximum optimization and stripped symbols (used in CI/CD pipelines)
 
 ## Environment Variables
 
