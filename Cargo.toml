@@ -16,11 +16,11 @@ path = "src/bin/cql-stress-scylla-bench/main.rs"
 
 [profile.release]
 codegen-units = 1
-lto = true
 panic = "abort"
 
 [profile.dist]
 inherits = "release"
+lto = true
 opt-level = 3
 overflow-checks = false
 debug = false
