@@ -85,9 +85,15 @@ brew install openssl pkg-config
 ### Building
 
 ```bash
-# The --release flag can be omitted when developing features and testing them,
-# but don't forget to include it when building for benchmarking purposes
+# Development build (fastest compilation)
+cargo build
+
+# Release build (optimized, suitable for most benchmarking)
 cargo build --release
+
+# Distribution build (maximum optimization with LTO, used in CI/CD)
+# Use this for production releases, but note it has longer build times
+cargo build --profile dist
 ```
 
 Then, run the frontend of your choice:
