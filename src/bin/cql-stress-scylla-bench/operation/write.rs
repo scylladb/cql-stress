@@ -73,7 +73,7 @@ impl OperationFactory for WriteOperationFactory {
             rows_per_op: self.args.rows_per_request,
             validate_data: self.args.validate_data,
 
-            gen: RngGen::new(rand::thread_rng().gen()),
+            gen: RngGen::new(rand::rng().random()),
         })
     }
 }

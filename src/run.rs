@@ -9,6 +9,7 @@ use futures::future::{AbortHandle, Abortable, Fuse, FutureExt};
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::oneshot;
 use tokio::time::Instant;
+#[cfg(feature = "timerfd")]
 use tokio_timerfd::Delay;
 
 use crate::configuration::{Configuration, OperationContext};
@@ -115,7 +116,10 @@ impl WorkerSession {
 
         let scheduled_start_time = if let Some(rate_limiter) = &self.context.rate_limiter {
             let start_time = rate_limiter.issue_next_start_time();
+            #[cfg(feature = "timerfd")]
             Delay::new(start_time.into())?.await?;
+            #[cfg(not(feature = "timerfd"))]
+            tokio::time::sleep_until(start_time).await;
             start_time
         } else {
             Instant::now()

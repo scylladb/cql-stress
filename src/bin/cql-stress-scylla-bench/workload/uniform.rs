@@ -51,9 +51,11 @@ impl Uniform {
     /// Creates a new uniform workload.
     fn new(config: UniformConfig) -> Uniform {
         Uniform {
-            pk_distribution: config.pk_range.into(),
-            ck_distribution: config.ck_range.into(),
-            gen: RngGen::new(rand::thread_rng().gen()),
+            pk_distribution: rand_distr::Uniform::new(config.pk_range.start, config.pk_range.end)
+                .expect("Invalid pk range"),
+            ck_distribution: rand_distr::Uniform::new(config.ck_range.start, config.ck_range.end)
+                .expect("Invalid ck range"),
+            gen: RngGen::new(rand::rng().random()),
         }
     }
 }

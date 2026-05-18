@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rand_distr::{Distribution, WeightedIndex};
+use rand_distr::{weighted::WeightedIndex, Distribution};
 
 #[derive(Clone)]
 pub struct EnumeratedDistribution<T> {
@@ -15,7 +15,7 @@ impl<T: Copy> EnumeratedDistribution<T> {
     }
 
     pub fn sample(&self) -> T {
-        self.items[self.dist.sample(&mut rand::thread_rng())].0
+        self.items[self.dist.sample(&mut rand::rng())].0
     }
 }
 

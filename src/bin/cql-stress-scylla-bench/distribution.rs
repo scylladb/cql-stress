@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rand::distributions::Distribution as RandDistribution;
+use rand::distr::Distribution as RandDistribution;
 use rand_pcg::Pcg64Mcg;
 
 use cql_stress::distribution::{parse_description, parse_long, Description, SyntaxFlavor};
@@ -83,7 +83,8 @@ impl Uniform {
         let high: u64 = parse_long(desc.args[1])?;
         anyhow::ensure!(low <= high, "Invalid number range");
         Ok(Self {
-            sampler: rand_distr::Uniform::new_inclusive(low, high),
+            sampler: rand_distr::Uniform::new_inclusive(low, high)
+                .map_err(|e| anyhow::anyhow!("Invalid uniform range: {}", e))?,
             low,
             high,
         })
