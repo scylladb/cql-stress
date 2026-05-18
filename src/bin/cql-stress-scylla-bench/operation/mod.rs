@@ -35,7 +35,7 @@ fn generate_row_data(pk: i64, ck: i64, size: usize) -> Vec<u8> {
 
             // Generate random payload
             let payload = &mut buf[GENERATED_DATA_HEADER_SIZE..size - 32];
-            rand::thread_rng().fill_bytes(payload);
+            rand::rng().fill_bytes(payload);
 
             // Hash it with SHA256
             let mut hasher = Sha256::new();

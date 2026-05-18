@@ -63,7 +63,7 @@ impl TimeseriesRead {
     fn new(config: TimeseriesReadConfig, shared_state: Arc<SharedState>) -> TimeseriesRead {
         TimeseriesRead {
             config,
-            gen: RngGen::new(rand::thread_rng().gen()),
+            gen: RngGen::new(rand::rng().random()),
             shared_state,
         }
     }
@@ -112,7 +112,7 @@ impl TimeseriesRead {
                 }
                 ((1.0 - base * 0.25) * max_value as f64) as u64
             }
-            TimeseriesDistribution::Uniform => self.gen.gen_range(0..max_value),
+            TimeseriesDistribution::Uniform => self.gen.random_range(0..max_value),
         }
     }
 }
