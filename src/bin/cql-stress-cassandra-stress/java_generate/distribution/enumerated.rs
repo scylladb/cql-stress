@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rand_distr::{Distribution, weighted::WeightedIndex};
+use rand_distr::{weighted::WeightedIndex, Distribution};
 
 #[derive(Clone)]
 pub struct EnumeratedDistribution<T> {

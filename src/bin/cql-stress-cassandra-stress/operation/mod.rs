@@ -13,7 +13,7 @@ use cql_stress::configuration::OperationContext;
 use cql_stress::configuration::OperationFactory;
 use cql_stress::make_runnable;
 #[cfg(feature = "user-profile")]
-use rand_distr::{Distribution as _, weighted::WeightedIndex};
+use rand_distr::{weighted::WeightedIndex, Distribution as _};
 use scylla::client::session::Session;
 use std::future::Future;
 use std::num::Wrapping;
