@@ -6,7 +6,7 @@ pub mod write;
 use std::fmt::Display;
 
 use anyhow::Result;
-use rand::RngCore;
+use rand::rand_core::Rng;
 use sha2::{Digest, Sha256};
 use tracing::error;
 

@@ -3,6 +3,7 @@ use std::marker::Unpin;
 use std::ops::Range;
 use std::time::{Duration, SystemTime};
 
+use base64::Engine as _;
 use chrono::{DateTime, Utc};
 use hdrhistogram::serialization::{Serializer, V2DeflateSerializer};
 use hdrhistogram::Histogram;
@@ -85,7 +86,7 @@ impl<W: AsyncWrite + Unpin> HistogramLogWriter<W> {
             start_time = opts.interval_seconds.start,
             end_time = opts.interval_seconds.end,
             max_value = max_value,
-            encoded = base64::encode(&raw_encoded_histogram),
+            encoded = base64::engine::general_purpose::STANDARD.encode(&raw_encoded_histogram),
         );
         self.writer.write_all(line.as_bytes()).await
     }

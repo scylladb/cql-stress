@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use anyhow::Result;
-use rand::Rng;
+use rand::RngExt;
 use scylla::client::session::Session;
 use scylla::statement::batch::{Batch, BatchType};
 use scylla::statement::prepared::PreparedStatement;

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Result;
-use rand::Rng;
+use rand::RngExt;
 use rand_distr::{Distribution, StandardNormal};
 
 use crate::args::TimeseriesDistribution;

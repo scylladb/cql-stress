@@ -3,7 +3,7 @@ use std::ops::Range;
 use crate::distribution::RngGen;
 
 use anyhow::Result;
-use rand::Rng;
+use rand::RngExt;
 use rand_distr::Distribution;
 
 use super::{Workload, WorkloadFactory};
