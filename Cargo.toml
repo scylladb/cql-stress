@@ -46,7 +46,7 @@ rand = "0.10"
 rand_distr = "0.6"
 rand_pcg = "0.10"
 regex = "1.12.3"
-scylla = { version = "1.6.0", features = ["openssl-010"] }
+scylla = { version = "1.7.0", features = ["openssl-010"] }
 sha2 = "0.11"
 strum = "0.28.0"
 strum_macros = "0.28.0"
