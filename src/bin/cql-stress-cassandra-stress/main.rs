@@ -164,6 +164,17 @@ async fn prepare_run(
         builder = builder.tls_context(Some(ssl_ctx));
     }
 
+    // Set the preferred datacenter/rack on the SessionBuilder (the recommended way).
+    // The token-aware policy below leaves its own preference unset, so it falls back
+    // to the session-level preference configured here.
+    if let Some(dc) = settings.node.datacenter.clone() {
+        builder = if let Some(rack) = settings.node.rack.clone() {
+            builder.prefer_datacenter_and_rack(dc, rack)
+        } else {
+            builder.prefer_datacenter(dc)
+        };
+    }
+
     let default_exec_profile = ExecutionProfile::builder()
         .load_balancing_policy(settings.node.load_balancing_policy())
         .build();
