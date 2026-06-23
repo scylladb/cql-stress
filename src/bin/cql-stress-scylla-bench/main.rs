@@ -140,6 +140,15 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
         builder = builder.compression(Some(Compression::Snappy));
     }
 
+    // Set the preferred datacenter/rack on the SessionBuilder (the recommended way).
+    // The host selection policy leaves its own preference unset, so it falls back to
+    // the session-level preference configured here.
+    builder = match (args.datacenter.clone(), args.rack.clone()) {
+        (Some(dc), Some(rack)) => builder.prefer_datacenter_and_rack(dc, rack),
+        (Some(dc), None) => builder.prefer_datacenter(dc),
+        _ => builder,
+    };
+
     let default_exec_profile = ExecutionProfile::builder()
         .load_balancing_policy(Arc::clone(&args.host_selection_policy))
         .build();

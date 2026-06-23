@@ -36,6 +36,10 @@ pub(crate) struct ScyllaBenchArgs {
     pub start_timestamp: u64,
 
     pub host_selection_policy: Arc<dyn LoadBalancingPolicy>,
+    /// Preferred datacenter, applied on the SessionBuilder.
+    pub datacenter: Option<String>,
+    /// Preferred rack within `datacenter`, applied on the SessionBuilder.
+    pub rack: Option<String>,
     pub tls_encryption: bool,
     pub keyspace_name: String,
     pub table_name: String,
@@ -161,6 +165,12 @@ where
         "token-aware",
         "set the driver host selection policy \
         (round-robin,token-aware,dc-aware:name-of-local-dc),default 'token-aware'",
+    );
+    let rack = flag.string_var(
+        "rack",
+        "",
+        "preferred rack within the preferred datacenter, applied on the SessionBuilder; \
+        requires a 'dc-aware:<dc>' host-selection-policy",
     );
     let tls_encryption = flag.bool_var(
         "tls",
@@ -318,7 +328,16 @@ where
         if start_timestamp == 0 {
             start_timestamp = SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos() as u64;
         }
-        let host_selection_policy = parse_host_selection_policy(&host_selection_policy.get())?;
+        let (host_selection_policy, datacenter) =
+            parse_host_selection_policy(&host_selection_policy.get())?;
+        let rack = match rack.get() {
+            s if s.is_empty() => None,
+            s => Some(s),
+        };
+        anyhow::ensure!(
+            rack.is_none() || datacenter.is_some(),
+            "`rack` requires a 'dc-aware:<dc>' host-selection-policy to set the datacenter"
+        );
         let select_order_by = parse_order_by_chain(&select_order_by.get())?;
         let write_rate = write_rate.get();
         let concurrency = concurrency.get();
@@ -394,6 +413,8 @@ where
             distribution,
             start_timestamp,
             host_selection_policy,
+            datacenter,
+            rack,
             tls_encryption: tls_encryption.get(),
             keyspace_name: keyspace_name.get(),
             table_name: table_name.get(),
@@ -449,6 +470,12 @@ impl ScyllaBenchArgs {
             "Consistency level:\t {}",
             show_consistency_level(&self.consistency_level)
         );
+        if let Some(datacenter) = &self.datacenter {
+            println!("Preferred datacenter:\t {datacenter}");
+        }
+        if let Some(rack) = &self.rack {
+            println!("Preferred rack:\t\t {rack}");
+        }
         println!("Partition count:\t {}", self.partition_count);
         if self.workload == WorkloadType::Sequential && self.partition_offset != 0 {
             println!("Partition offset:\t {}", self.partition_offset);
@@ -666,20 +693,32 @@ fn show_consistency_level(cl: &Consistency) -> &'static str {
     }
 }
 
-fn parse_host_selection_policy(s: &str) -> Result<Arc<dyn LoadBalancingPolicy>> {
+/// Parses the host selection policy, returning the load balancing policy together
+/// with the preferred datacenter (if any).
+///
+/// The datacenter is not baked into the policy; it is applied on the
+/// [`SessionBuilder`](scylla::client::session_builder::SessionBuilder), which is the
+/// recommended way. A `DefaultPolicy` with no explicit preference falls back to the
+/// session-level preference.
+fn parse_host_selection_policy(s: &str) -> Result<(Arc<dyn LoadBalancingPolicy>, Option<String>)> {
     // host-pool is unsupported
-    let policy: Arc<dyn LoadBalancingPolicy> = match s {
-        "round-robin" => DefaultPolicy::builder().token_aware(false).build(),
-        "token-aware" => DefaultPolicy::builder().token_aware(true).build(),
+    let result: (Arc<dyn LoadBalancingPolicy>, Option<String>) = match s {
+        "round-robin" => (DefaultPolicy::builder().token_aware(false).build(), None),
+        "token-aware" => (DefaultPolicy::builder().token_aware(true).build(), None),
         // dc-aware is unimplemented in the original s-b, so here is
         // my interpretation of it
         _ => match s.strip_prefix("dc-aware:") {
-            Some(local_dc) => DefaultPolicy::builder()
-                .token_aware(false)
-                .prefer_datacenter(local_dc.to_owned())
-                .build(),
+            Some("") => {
+                return Err(anyhow::anyhow!(
+                    "dc-aware: requires a non-empty datacenter name"
+                ))
+            }
+            Some(local_dc) => (
+                DefaultPolicy::builder().token_aware(false).build(),
+                Some(local_dc.to_owned()),
+            ),
             None => return Err(anyhow::anyhow!("Unknown host selection policy: {}", s)),
         },
     };
-    Ok(policy)
+    Ok(result)
 }

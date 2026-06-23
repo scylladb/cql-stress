@@ -16,6 +16,7 @@ pub struct NodeOption {
     pub nodes: Vec<String>,
     pub whitelist: bool,
     pub datacenter: Option<String>,
+    pub rack: Option<String>,
 }
 
 impl NodeOption {
@@ -42,13 +43,26 @@ impl NodeOption {
         println!("  Nodes: {:?}", self.nodes);
         println!("  Is White List: {}", self.whitelist);
         println!("  Datacenter: {:?}", self.datacenter);
+        println!("  Rack: {:?}", self.rack);
     }
 
     fn from_handles(handles: NodeParamHandles) -> Result<NodeOption> {
         let datacenter = handles.datacenter.get();
+        let rack = handles.rack.get();
         let whitelist = handles.whitelist.get().is_some();
         let file = handles.file.get();
         let nodes = handles.nodes.get();
+
+        if datacenter.as_deref() == Some("") {
+            anyhow::bail!("`datacenter` must not be empty");
+        }
+        if rack.as_deref() == Some("") {
+            anyhow::bail!("`rack` must not be empty");
+        }
+        anyhow::ensure!(
+            rack.is_none() || datacenter.is_some(),
+            "`rack` requires `datacenter` to also be set"
+        );
 
         let nodes = match nodes {
             Some(nodes) => nodes,
@@ -61,16 +75,18 @@ impl NodeOption {
             nodes,
             whitelist,
             datacenter,
+            rack,
         })
     }
 
-    /// Define a token-aware load balancing policy with a preferred datacenter (if specified).
+    /// Define a token-aware load balancing policy.
+    ///
+    /// The preferred datacenter/rack are not set on the policy itself; they are
+    /// configured on the [`SessionBuilder`](scylla::client::session_builder::SessionBuilder)
+    /// (see [`Self::datacenter`] / [`Self::rack`]), which is the recommended way. A
+    /// `DefaultPolicy` with no explicit preference falls back to the session's preference.
     pub fn load_balancing_policy(&self) -> Arc<dyn LoadBalancingPolicy> {
-        let mut builder = DefaultPolicy::builder().token_aware(true);
-        if let Some(datacenter) = &self.datacenter {
-            builder = builder.prefer_datacenter(datacenter.to_owned());
-        };
-        builder.build()
+        DefaultPolicy::builder().token_aware(true).build()
     }
 
     /// Limit the communication to the specified nodes (if `whitelist` is set).
@@ -86,6 +102,7 @@ impl NodeOption {
 
 struct NodeParamHandles {
     datacenter: SimpleParamHandle<String>,
+    rack: SimpleParamHandle<String>,
     whitelist: SimpleParamHandle<bool>,
     file: SimpleParamHandle<String>,
     nodes: SimpleParamHandle<CommaDelimitedList>,
@@ -97,7 +114,14 @@ fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
     let datacenter = parser.simple_param(
         "datacenter=",
         None,
-        "Preferred datacenter for the default load balancing policy",
+        "Preferred datacenter, set on the SessionBuilder",
+        false,
+    );
+    let rack = parser.simple_param(
+        "rack=",
+        None,
+        "Preferred rack within the preferred datacenter, set on the SessionBuilder; \
+        requires `datacenter`",
         false,
     );
     let whitelist = parser.simple_param(
@@ -115,16 +139,17 @@ fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
     );
 
     // $ ./cassandra-stress help -node
-    // Usage: -node [datacenter=?] [whitelist] []
+    // Usage: -node [datacenter=?] [rack=?] [whitelist] []
     //  OR
-    // Usage: -node [datacenter=?] [whitelist] [file=?]
-    parser.group(&[&datacenter, &whitelist, &nodes]);
-    parser.group(&[&datacenter, &whitelist, &file]);
+    // Usage: -node [datacenter=?] [rack=?] [whitelist] [file=?]
+    parser.group(&[&datacenter, &rack, &whitelist, &nodes]);
+    parser.group(&[&datacenter, &rack, &whitelist, &file]);
 
     (
         parser,
         NodeParamHandles {
             datacenter,
+            rack,
             whitelist,
             file,
             nodes,
@@ -160,8 +185,51 @@ mod tests {
 
         let params = NodeOption::from_handles(handles).unwrap();
         assert_eq!(None, params.datacenter);
+        assert_eq!(None, params.rack);
         assert!(params.whitelist);
         assert_eq!(vec!["127.0.0.1", "localhost", "192.168.0.1"], params.nodes);
+    }
+
+    #[test]
+    fn node_datacenter_and_rack_test() {
+        let args = vec!["datacenter=dc1", "rack=rack1", "127.0.0.1"];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+
+        let params = NodeOption::from_handles(handles).unwrap();
+        assert_eq!(Some("dc1".to_owned()), params.datacenter);
+        assert_eq!(Some("rack1".to_owned()), params.rack);
+    }
+
+    #[test]
+    fn node_rack_without_datacenter_test() {
+        let args = vec!["rack=rack1", "127.0.0.1"];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+        // `rack` without `datacenter` must be rejected.
+        assert!(NodeOption::from_handles(handles).is_err());
+    }
+
+    #[test]
+    fn node_empty_datacenter_test() {
+        let args = vec!["datacenter=", "127.0.0.1"];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+        // empty datacenter string must be rejected
+        assert!(NodeOption::from_handles(handles).is_err());
+    }
+
+    #[test]
+    fn node_empty_rack_test() {
+        let args = vec!["datacenter=dc1", "rack=", "127.0.0.1"];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+        // empty rack string must be rejected
+        assert!(NodeOption::from_handles(handles).is_err());
     }
 
     #[test]
