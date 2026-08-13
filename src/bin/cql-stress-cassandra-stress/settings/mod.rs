@@ -146,6 +146,11 @@ impl CassandraStressSettings {
             "Requested consistency=global, but keyspace '{keyspace}' reports {mode:?}. \
              This run would not measure strong consistency. Check that:\n\
              - the server runs with --experimental-features=strongly-consistent-tables;\n\
+             - the server advertises the TABLETS_ROUTING_V2_EXPERIMENTAL protocol \
+             extension. This is a separate capability, and a server can accept \
+             consistency='global' without having it (e.g. ScyllaDB 2026.2.3, which only \
+             advertises TABLETS_ROUTING_V1). Without it the driver receives no \
+             leader-ordered replica list and reports every keyspace as eventual;\n\
              - keyspace '{keyspace}' does not already exist as an eventually consistent \
              keyspace (CREATE KEYSPACE IF NOT EXISTS will not upgrade it - drop it first);\n\
              - the keyspace is tablet-based (non-tablet keyspaces reject the consistency \

@@ -91,8 +91,14 @@ omitted from the DDL entirely, so existing invocations are unaffected.
 Requirements and caveats:
 
 - The server must run with `--experimental-features=strongly-consistent-tables`. Without it
-  the `consistency` option is rejected outright, and the driver's leader-aware
-  `TABLETS_ROUTING_V2` extension is not advertised at all.
+  the `consistency` option is rejected outright.
+- **The server must also advertise the `TABLETS_ROUTING_V2_EXPERIMENTAL` protocol
+  extension.** These are two separate capabilities and a released ScyllaDB can have the
+  first without the second — ScyllaDB 2026.2.3 accepts `consistency = 'global'` but only
+  advertises `TABLETS_ROUTING_V1`. Without V2 the driver never receives a leader-ordered
+  replica list, so no leader routing happens, and the same gate makes it report every
+  keyspace as eventually consistent. The startup check below turns this into a hard failure
+  rather than a silently meaningless run. A server build with the V2 extension is required.
 - The keyspace must be tablet-based. `NetworkTopologyStrategy` enables tablets by default on
   recent ScyllaDB; `SimpleStrategy` keyspaces may not get tablets, and non-tablet keyspaces
   reject the `consistency` option.

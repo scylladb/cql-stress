@@ -11,3 +11,36 @@ services:
       timeout: 5s
       retries: 20
     command: --smp 1
+
+  # Strongly consistent (Raft-per-tablet) tables, for leader-aware routing tests.
+  #
+  # Behind the `strong-consistency` profile, so the default `docker compose up` leaves
+  # it alone - the eventually consistent suite must stay exactly as it was.
+  #
+  # It binds the SAME host ports as `scylla-test`, so the two are mutually exclusive.
+  # A non-standard port is not an option: both drivers discover the node by its
+  # broadcast address and then reconnect on the contact point's port, which is not
+  # published for the discovered address. CI runs this in its own job, so nothing is
+  # lost; locally, stop `scylla-test` first.
+  #
+  # `--smp 2` rather than the sibling's `--smp 1`: leader routing distributes tablets
+  # across shards, so a single-shard node cannot show any distribution at all. A single
+  # node still only proves the mechanism works; meaningful performance numbers need a
+  # real multi-node cluster.
+  #
+  # The image must support the `strongly-consistent-tables` experimental feature.
+  # Override with SCYLLA_SC_IMAGE if the default tag is too old; the tests skip
+  # themselves when the feature turns out to be unavailable.
+  scylla-sc-test:
+    profiles: [ strong-consistency ]
+    image: ${SCYLLA_SC_IMAGE:-scylladb/scylla}
+    container_name: scylla_sc_test
+    ports:
+      - 9042:9042
+      - 19042:19042
+    healthcheck:
+      test: [ "CMD", "cqlsh", "-e", "select * from system.local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    command: --smp 2 --experimental-features=strongly-consistent-tables
