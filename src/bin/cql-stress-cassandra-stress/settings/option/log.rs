@@ -140,11 +140,19 @@ mod tests {
     fn log_coordinators_flag_test() {
         let (parser, handles) = prepare_parser();
         assert!(parser.parse(vec!["coordinators=true"]).is_ok());
-        assert!(super::LogOption::from_handles(handles).unwrap().coordinators);
+        assert!(
+            super::LogOption::from_handles(handles)
+                .unwrap()
+                .coordinators
+        );
 
         let (parser, handles) = prepare_parser();
         assert!(parser.parse(vec!["coordinators=false"]).is_ok());
-        assert!(!super::LogOption::from_handles(handles).unwrap().coordinators);
+        assert!(
+            !super::LogOption::from_handles(handles)
+                .unwrap()
+                .coordinators
+        );
     }
 
     #[test]
