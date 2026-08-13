@@ -59,6 +59,57 @@ by providing it to `ops()` parameter along with other operations defined by the 
 
 To enable the `user` mode, the tool needs to be compiled with `user-profile` feature. This feature is enabled by default.
 
+#### Strongly consistent keyspaces
+
+ScyllaDB supports strongly consistent (Raft-per-tablet) tables, where each tablet has a
+Raft group with a distinguished leader that coordinates writes and most reads. To benchmark
+these meaningfully the client must route requests to the leader rather than spreading them
+across replicas — otherwise most requests land on a follower and are bounced to the leader,
+adding a hop that destroys the measurement.
+
+`cql-stress` can create such a keyspace itself. `consistency` is a **cql-stress extension**
+to the `replication(...)` sub-parameters: it is not passed through into the CQL replication
+map, but lifted out into the top-level `consistency` keyspace property.
+
+```
+cql-stress-cassandra-stress write cl=QUORUM duration=10m \
+  -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3,consistency=global)' \
+  -rate threads=100 -node 127.0.0.1
+```
+
+emits
+
+```sql
+CREATE KEYSPACE IF NOT EXISTS "keyspace1"
+  WITH REPLICATION = {'class': 'NetworkTopologyStrategy', 'replication_factor': '3'}
+  AND consistency = 'global';
+```
+
+Accepted values are `global` and `eventual`. When `consistency` is not given the clause is
+omitted from the DDL entirely, so existing invocations are unaffected.
+
+Requirements and caveats:
+
+- The server must run with `--experimental-features=strongly-consistent-tables`. Without it
+  the `consistency` option is rejected outright, and the driver's leader-aware
+  `TABLETS_ROUTING_V2` extension is not advertised at all.
+- The keyspace must be tablet-based. `NetworkTopologyStrategy` enables tablets by default on
+  recent ScyllaDB; `SimpleStrategy` keyspaces may not get tablets, and non-tablet keyspaces
+  reject the `consistency` option.
+- Leader routing is **disabled at `cl=one` and `cl=local_one`**, which keep normal spread
+  routing. Note that `local_one` is the default — pass `cl=QUORUM` explicitly.
+- `CREATE KEYSPACE IF NOT EXISTS` will not upgrade a pre-existing eventually consistent
+  keyspace. Drop it between consistency-mode changes.
+- Only `write`/`counterwrite` create the keyspace; a `read`-only run requires it to already
+  exist.
+
+When `consistency=global` is requested, `cql-stress` reads the keyspace's consistency mode
+back from the driver's cluster metadata at startup and **fails immediately** if it is not
+`Global`, rather than producing plausible but meaningless numbers.
+
+To verify that requests really are concentrated on tablet leaders, enable the per-coordinator
+histogram with `-log coordinators=true`; see [Verifying leader routing](#verifying-leader-routing).
+
 ## Development
 
 ### Prerequisites
