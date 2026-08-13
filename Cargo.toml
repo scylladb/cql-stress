@@ -83,7 +83,7 @@ timerfd = ["dep:tokio-timerfd"]
 ntest = "0.9"
 num-bigint = "0.4"
 bigdecimal = "0.4"
-scylla = { version = "1.6.0", features = [
+scylla = { version = "1.7.0", features = [
     "openssl-010",
     "num-bigint-04",
     "bigdecimal-04",
@@ -93,3 +93,14 @@ scylla = { version = "1.6.0", features = [
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(fetch_extended_version_info)',
 ] }
+
+# Build against scylla-rust-driver PR #1788 (leader-aware TABLETS_ROUTING_V2 routing),
+# which is required to benchmark strongly consistent (Raft-per-tablet) tables: the server
+# places the tablet's Raft leader first in the V2 replica list and `DefaultPolicy` routes
+# there deterministically. Negotiation is automatic - there is no client-side opt-in.
+#
+# NOTE: this tracks an OPEN, currently conflicting PR. The rev below is pinned deliberately
+# and is no longer the branch head (`dawmd:leader-awareness` has moved on). Revisit when the
+# PR merges and drop this patch in favour of a released `scylla` version.
+[patch.crates-io]
+scylla = { git = "https://github.com/dawmd/scylla-rust-driver", rev = "3377407235bfd452b5a5b3716977b6aa397ed14c" }

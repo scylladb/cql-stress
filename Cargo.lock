@@ -388,9 +388,9 @@ dependencies = [
 
 [[package]]
 name = "darling"
-version = "0.20.11"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc7f46116c46ff9ab3eb1597a45688b6715c6e628b5c133e288e709a29bcb4ee"
+checksum = "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
 dependencies = [
  "darling_core",
  "darling_macro",
@@ -398,11 +398,10 @@ dependencies = [
 
 [[package]]
 name = "darling_core"
-version = "0.20.11"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d00b9596d185e565c2207a0b01f8bd1a135483d02d9b7b0a54b11da8d53412e"
+checksum = "9865a50f7c335f53564bb694ef660825eb8610e0a53d3e11bf1b0d3df31e03b0"
 dependencies = [
- "fnv",
  "ident_case",
  "proc-macro2",
  "quote",
@@ -412,9 +411,9 @@ dependencies = [
 
 [[package]]
 name = "darling_macro"
-version = "0.20.11"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc34b93ccb385b40dc71c6fceac4b2ad23662c7eeb248cf10d529b7e055b6ead"
+checksum = "ac3984ec7bd6cfa798e62b4a642426a5be0e68f9401cfc2a01e3fa9ea2fcdb8d"
 dependencies = [
  "darling_core",
  "quote",
@@ -521,6 +520,12 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "foreign-types"
@@ -730,9 +735,7 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
- "allocator-api2",
- "equivalent",
- "foldhash",
+ "foldhash 0.1.5",
 ]
 
 [[package]]
@@ -740,6 +743,11 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+]
 
 [[package]]
 name = "hdrhistogram"
@@ -871,7 +879,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.4",
+ "socket2",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -1047,9 +1055,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -1235,9 +1243,9 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "lz4_flex"
-version = "0.11.6"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
+checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
 dependencies = [
  "twox-hash",
 ]
@@ -1520,7 +1528,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.2",
  "rustls",
- "socket2 0.6.4",
+ "socket2",
  "thiserror",
  "tokio",
  "tracing",
@@ -1558,7 +1566,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.4",
+ "socket2",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -1910,8 +1918,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "scylla"
 version = "1.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4febc4a3c0b2b6a6ab0b25670a28015a7b87f6998b01ad324be19bb583237ad9"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -1919,15 +1926,15 @@ dependencies = [
  "chrono",
  "dashmap",
  "futures",
- "hashbrown 0.15.5",
- "itertools 0.14.0",
+ "hashbrown 0.17.1",
+ "itertools 0.15.0",
  "openssl",
  "rand 0.9.4",
  "rand_pcg 0.9.0",
  "scylla-cql",
  "scylla-cql-core",
  "smallvec",
- "socket2 0.5.10",
+ "socket2",
  "thiserror",
  "tokio",
  "tokio-openssl",
@@ -1938,14 +1945,13 @@ dependencies = [
 [[package]]
 name = "scylla-cql"
 version = "1.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7898c851387b20e0996b33d6d98426c432cc0b45ed9af3cb4bd8b4d540ad7ade"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
 dependencies = [
  "bigdecimal",
  "byteorder",
  "bytes",
  "chrono",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "lz4_flex",
  "num-bigint",
  "scylla-cql-core",
@@ -1960,14 +1966,13 @@ dependencies = [
 [[package]]
 name = "scylla-cql-core"
 version = "1.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e609d59933b27489fb329e0e290469f0a027fd75a598f8d219b1479ed6213d0"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
 dependencies = [
  "bigdecimal",
  "byteorder",
  "bytes",
  "chrono",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "num-bigint",
  "scylla-macros",
  "thiserror",
@@ -1977,8 +1982,7 @@ dependencies = [
 [[package]]
 name = "scylla-macros"
 version = "1.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "275a0290cc00fc50a46b302ad09490ccce2eff1203d648addab1bd8ae833b96e"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2168,16 +2172,6 @@ checksum = "1b6b67fb9a61334225b5b790716f609cd58395f895b3fe8b328786812a40bc3b"
 
 [[package]]
 name = "socket2"
-version = "0.5.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
-dependencies = [
- "libc",
- "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "socket2"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
@@ -2359,7 +2353,7 @@ dependencies = [
  "mio",
  "pin-project-lite",
  "signal-hook-registry",
- "socket2 0.6.4",
+ "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
 ]
