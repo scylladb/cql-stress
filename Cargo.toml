@@ -65,7 +65,9 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 rust-strictmath = "0.1.2"
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_yaml = { version = "0.9", optional = true }
-uuid = { version = "1.23", optional = true }
+# Not optional: coordinator accounting identifies nodes by `Node::host_id`, which is a
+# `uuid::Uuid`, and that is unconditional. Unifies with the driver's own uuid dependency.
+uuid = "1.23"
 
 [build-dependencies]
 reqwest = { version = "0.13", features = ["json", "blocking"] }
@@ -76,7 +78,7 @@ git2 = "0.21"
 
 [features]
 default = ["user-profile"]
-user-profile = ["dep:serde", "dep:serde_yaml", "dep:uuid"]
+user-profile = ["dep:serde", "dep:serde_yaml"]
 timerfd = ["dep:tokio-timerfd"]
 
 [dev-dependencies]

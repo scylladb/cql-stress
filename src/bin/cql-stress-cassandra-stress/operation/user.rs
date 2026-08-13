@@ -21,8 +21,8 @@ use crate::{
 };
 
 use super::{
-    row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,
-    OperationSampler,
+    coordinator_of, row_generator::RowGenerator, CassandraStressOperation,
+    CassandraStressOperationFactory, OperationOutcome, OperationSampler,
 };
 
 const SEED_STR: &str = "seed for stress";
@@ -37,7 +37,7 @@ pub struct UserDefinedOperation {
 impl CassandraStressOperation for UserDefinedOperation {
     type Factory = UserDefinedOperationFactory;
 
-    async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+    async fn execute(&self, row: &[CqlValue]) -> Result<OperationOutcome> {
         let mut bound_row = Vec::with_capacity(self.argument_index.len());
 
         for i in &self.argument_index {
@@ -46,11 +46,12 @@ impl CassandraStressOperation for UserDefinedOperation {
 
         // User can provide a custom query here. In addition, we don't care
         // about the result of this query. This is why we can use `execute_unpaged`.
-        self.session
+        let result = self
+            .session
             .execute_unpaged(&self.statement, bound_row)
             .await?;
 
-        Ok(ControlFlow::Continue(()))
+        Ok(OperationOutcome::proceed(coordinator_of(&result)))
     }
 
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {
@@ -121,7 +122,7 @@ impl UserOperation {
             self.cached_row = None;
         }
 
-        op_result
+        op_result.map(|outcome| outcome.control_flow)
     }
 }
 

@@ -107,8 +107,33 @@ When `consistency=global` is requested, `cql-stress` reads the keyspace's consis
 back from the driver's cluster metadata at startup and **fails immediately** if it is not
 `Global`, rather than producing plausible but meaningless numbers.
 
-To verify that requests really are concentrated on tablet leaders, enable the per-coordinator
-histogram with `-log coordinators=true`; see [Verifying leader routing](#verifying-leader-routing).
+#### Verifying leader routing
+
+Pass `-log coordinators=true` to tally operations per coordinator host. The distribution is
+printed in the run summary:
+
+```
+Operations per coordinator:
+  172.17.0.3:9042                   412031 ( 68.4%)
+  172.17.0.2:9042                   109882 ( 18.2%)
+  172.17.0.4:9042                    80512 ( 13.4%)
+```
+
+Interpreting it:
+
+- On a **strongly consistent** keyspace at `cl=quorum`, the distribution must follow the
+  leader distribution across tablets. It will not be uniform.
+- On an **eventually consistent** keyspace — the control — the same workload spreads across
+  all replicas.
+- On a strongly consistent keyspace at `cl=local_one`, the distribution also spreads, because
+  the driver disables leader routing at that level.
+
+Run the control comparison; a single distribution in isolation does not prove much. Accounting
+is off by default and the per-coordinator map is not touched at all when disabled.
+
+Note that the driver only learns a tablet's leader ordering after it has seen a
+`TABLETS_ROUTING_V2` payload for it, so the first requests to each tablet are not leader-routed.
+Discard a warm-up window before drawing conclusions from a short run.
 
 ## Development
 

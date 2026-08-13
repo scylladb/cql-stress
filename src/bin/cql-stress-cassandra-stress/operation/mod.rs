@@ -24,6 +24,7 @@ pub use mixed::MixedOperationFactory;
 pub use row_generator::RowGeneratorFactory;
 use scylla::response::query_result::QueryResult;
 use scylla::value::{CqlValue, Row};
+use uuid::Uuid;
 
 #[cfg(feature = "user-profile")]
 pub use user::UserOperationFactory;
@@ -37,6 +38,39 @@ use self::row_generator::RowGenerator;
 
 const DEFAULT_TABLE_NAME: &str = "standard1";
 const DEFAULT_COUNTER_TABLE_NAME: &str = "counter1";
+
+/// The outcome of a single successfully executed database operation.
+///
+/// Carries the request's coordinator alongside the control flow so that
+/// [`crate::stats::Stats`] can tally operations per host. That tally is the acceptance
+/// evidence for leader-aware routing: on a strongly consistent keyspace the coordinator
+/// distribution must follow the tablet leaders rather than spread across all replicas.
+///
+/// The coordinator is a `Copy` [`Uuid`] read straight off the [`QueryResult`], so carrying
+/// it costs no allocation - which matters, since this is on the per-operation hot path
+/// (see the constraint documented at `src/configuration.rs`).
+pub struct OperationOutcome {
+    pub control_flow: ControlFlow<()>,
+    /// Host ID of the node that coordinated the request.
+    ///
+    /// `None` for operations that complete without a server round-trip.
+    pub coordinator: Option<Uuid>,
+}
+
+impl OperationOutcome {
+    /// A completed operation that should be followed by another one.
+    fn proceed(coordinator: Option<Uuid>) -> Self {
+        Self {
+            control_flow: ControlFlow::Continue(()),
+            coordinator,
+        }
+    }
+}
+
+/// Host ID of the node that coordinated the request, for per-coordinator accounting.
+fn coordinator_of(query_result: &QueryResult) -> Option<Uuid> {
+    Some(query_result.request_coordinator().node().host_id)
+}
 
 /// A specific CassandraStress operation.
 ///
@@ -60,7 +94,7 @@ const DEFAULT_COUNTER_TABLE_NAME: &str = "counter1";
 pub trait CassandraStressOperation: Sync + Send {
     type Factory: CassandraStressOperationFactory<Operation = Self>;
 
-    fn execute(&self, row: &[CqlValue]) -> impl Future<Output = Result<ControlFlow<()>>> + Send;
+    fn execute(&self, row: &[CqlValue]) -> impl Future<Output = Result<OperationOutcome>> + Send;
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue>;
     fn operation_tag(&self) -> &str;
 }
@@ -117,7 +151,7 @@ impl<O: CassandraStressOperation> GenericCassandraStressOperation<O> {
             self.cached_row = None;
         }
 
-        op_result
+        op_result.map(|outcome| outcome.control_flow)
     }
 }
 

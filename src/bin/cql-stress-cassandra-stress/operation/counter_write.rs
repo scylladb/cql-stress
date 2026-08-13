@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use std::{ops::ControlFlow, sync::Arc};
+use std::sync::Arc;
 
 use scylla::client::session::Session;
 use scylla::statement::prepared::PreparedStatement;
@@ -9,7 +9,8 @@ use scylla::value::{Counter, CqlValue};
 use crate::{java_generate::distribution::Distribution, settings::CassandraStressSettings};
 
 use super::{
-    row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,
+    coordinator_of, row_generator::RowGenerator, CassandraStressOperation,
+    CassandraStressOperationFactory, OperationOutcome,
 };
 
 pub struct CounterWriteOperation {
@@ -28,7 +29,7 @@ pub struct CounterWriteOperationFactory {
 impl CassandraStressOperation for CounterWriteOperation {
     type Factory = CounterWriteOperationFactory;
 
-    async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+    async fn execute(&self, row: &[CqlValue]) -> Result<OperationOutcome> {
         // execute_unpaged, since it's an UPDATE statement.
         let result = self.session.execute_unpaged(&self.statement, row).await;
 
@@ -40,8 +41,7 @@ impl CassandraStressOperation for CounterWriteOperation {
             );
         }
 
-        result?;
-        Ok(ControlFlow::Continue(()))
+        Ok(OperationOutcome::proceed(coordinator_of(&result?)))
     }
 
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {

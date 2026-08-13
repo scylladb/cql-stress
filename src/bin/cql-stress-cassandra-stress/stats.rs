@@ -3,8 +3,12 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use anyhow::Result;
 use cql_stress::{configuration::OperationContext, sharded_stats};
 use hdrhistogram::Histogram;
+use scylla::client::session::Session;
 use tokio::time::Instant;
 
+use uuid::Uuid;
+
+use crate::operation::OperationOutcome;
 use crate::settings::{CassandraStressSettings, ThreadsInfo};
 
 const HISTOGRAM_PRECISION: u8 = 3;
@@ -72,6 +76,7 @@ pub type ShardedStats = sharded_stats::ShardedStats<StatsFactory>;
 
 pub struct StatsFactory {
     coordinated_omission_fixed: bool,
+    track_coordinators: bool,
 }
 
 pub struct Stats {
@@ -80,6 +85,11 @@ pub struct Stats {
     latency_calculator: Box<dyn LatencyCalculator>,
     latency_histogram: Histogram<u64>, // combined histograms across all tags
     histograms: HashMap<String, Histogram<u64>>, // Map of tag to histogram
+    /// Operations per coordinator host, enabled by `-log coordinators=true`.
+    ///
+    /// `None` when disabled, so the map is never touched on the hot path. When enabled,
+    /// bumping an existing entry does not allocate - the map holds one entry per node.
+    coordinators: Option<HashMap<Uuid, u64>>,
 }
 
 impl StatsFactory {
@@ -95,6 +105,7 @@ impl StatsFactory {
 
         Self {
             coordinated_omission_fixed,
+            track_coordinators: settings.log.coordinators,
         }
     }
 }
@@ -116,20 +127,27 @@ impl sharded_stats::StatsFactory for StatsFactory {
                 Box::new(RawLatencyCalculator)
             },
             histograms: HashMap::new(),
+            coordinators: self.track_coordinators.then(HashMap::new),
         }
     }
 }
 
 impl Stats {
-    pub fn account_operation<T, E>(
+    pub fn account_operation<E>(
         &mut self,
         ctx: &OperationContext,
-        result: &Result<T, E>,
+        result: &Result<OperationOutcome, E>,
         tag: &str,
     ) {
         self.operations += 1;
         match result {
-            Ok(_) => {
+            Ok(outcome) => {
+                if let (Some(coordinators), Some(host_id)) =
+                    (self.coordinators.as_mut(), outcome.coordinator)
+                {
+                    *coordinators.entry(host_id).or_insert(0) += 1;
+                }
+
                 let metrics = self.latency_calculator.calculate(ctx);
                 let default_latency = self.latency_calculator.default_latency(&metrics);
                 self.latency_histogram.record(default_latency).unwrap();
@@ -196,6 +214,10 @@ impl sharded_stats::Stats for Stats {
         self.errors = 0;
         self.latency_histogram.reset();
         self.histograms.clear();
+        // Retain the capacity - the key set is the (small, fixed) set of cluster nodes.
+        if let Some(coordinators) = self.coordinators.as_mut() {
+            coordinators.clear();
+        }
     }
 
     fn combine(&mut self, other: &Self) {
@@ -211,6 +233,13 @@ impl sharded_stats::Stats for Stats {
                 .or_insert_with(|| Histogram::new(HISTOGRAM_PRECISION).unwrap());
             hist.add(other_hist).unwrap();
         }
+        if let (Some(coordinators), Some(other_coordinators)) =
+            (self.coordinators.as_mut(), other.coordinators.as_ref())
+        {
+            for (host_id, count) in other_coordinators {
+                *coordinators.entry(*host_id).or_insert(0) += count;
+            }
+        }
     }
 }
 
@@ -218,14 +247,18 @@ pub struct StatsPrinter {
     start_time: Instant,
     previous_time: Instant,
     total_ops: u64,
+    /// Used to resolve coordinator host IDs to node addresses when printing the
+    /// per-coordinator distribution. `None` when coordinator accounting is disabled.
+    session: Option<Arc<Session>>,
 }
 
 impl StatsPrinter {
-    pub fn new() -> Self {
+    pub fn new(session: Option<Arc<Session>>) -> Self {
         Self {
             start_time: Instant::now(),
             previous_time: Instant::now(),
             total_ops: 0,
+            session,
         }
     }
 
@@ -300,5 +333,53 @@ impl StatsPrinter {
         let minutes = (benchmark_duration.as_secs() / 60) % 60;
         let hours = (benchmark_duration.as_secs() / 60) / 60;
         println!("Total operation time      : {hours:0>2}:{minutes:0>2}:{seconds:0>2}");
+
+        self.print_coordinators(final_stats);
+    }
+
+    /// Prints the distribution of operations across coordinator hosts.
+    ///
+    /// On a strongly consistent keyspace at `cl=quorum` this must be concentrated on the
+    /// tablet leaders. A uniform spread across all replicas means leader-aware routing is
+    /// not in effect - the same shape an eventually consistent keyspace produces.
+    fn print_coordinators(&self, final_stats: &Stats) {
+        let Some(coordinators) = final_stats.coordinators.as_ref() else {
+            return;
+        };
+
+        println!();
+        println!("Operations per coordinator:");
+        if coordinators.is_empty() {
+            println!("  (no operations recorded)");
+            return;
+        }
+
+        // Resolve host IDs to addresses. New nodes that joined mid-run and unknown IDs
+        // simply fall back to printing the raw host ID.
+        let addresses: HashMap<Uuid, String> = self
+            .session
+            .as_ref()
+            .map(|session| {
+                session
+                    .get_cluster_state()
+                    .get_nodes_info()
+                    .iter()
+                    .map(|node| (node.host_id, node.address.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let total: u64 = coordinators.values().sum();
+        let mut entries = coordinators.iter().collect::<Vec<_>>();
+        // Descending by count, then by host ID so the output is deterministic.
+        entries.sort_unstable_by_key(|(host_id, count)| (std::cmp::Reverse(**count), **host_id));
+
+        for (host_id, count) in entries {
+            let share = *count as f64 * 100.0 / total as f64;
+            match addresses.get(host_id) {
+                Some(address) => println!("  {address:<24} {count:>12} ({share:>5.1}%)"),
+                None => println!("  {host_id:<24} {count:>12} ({share:>5.1}%)"),
+            }
+        }
     }
 }
