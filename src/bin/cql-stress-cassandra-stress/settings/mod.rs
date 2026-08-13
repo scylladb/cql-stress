@@ -20,6 +20,8 @@ pub use option::LogOption;
 pub use option::ThreadsInfo;
 use regex::Regex;
 use scylla::client::session::Session;
+use scylla::cluster::metadata::ConsistencyMode;
+use scylla::statement::Consistency;
 
 use crate::settings::command::print_help;
 
@@ -96,6 +98,76 @@ impl CassandraStressSettings {
                     .context("Failed to create counter table")?;
             }
             _ => (),
+        }
+
+        Ok(())
+    }
+
+    /// Reads the keyspace's consistency mode back from the driver's cluster metadata and
+    /// reports it, so the mode a run actually measured is recorded alongside its numbers.
+    ///
+    /// When `consistency=global` was requested, a mode other than [`ConsistencyMode::Global`]
+    /// is a hard startup failure. Every way this can go wrong otherwise produces a full,
+    /// plausible, meaningless result set:
+    /// - `CREATE KEYSPACE IF NOT EXISTS` no-ops over a leftover eventually consistent
+    ///   keyspace from an earlier run;
+    /// - a `read`-only run never creates the keyspace at all;
+    /// - the server lacks `--experimental-features=strongly-consistent-tables`, so
+    ///   `system_schema.scylla_keyspaces.consistency` does not exist and every keyspace
+    ///   reads back as eventual.
+    ///
+    /// When `consistency` was not requested the mode is only logged - existing
+    /// eventually consistent runs must keep working unchanged.
+    pub async fn verify_consistency_mode(&self, session: &Session) -> Result<()> {
+        // The DDL above may have raced the background metadata refresh, so force one
+        // before reading the mode back.
+        session
+            .refresh_metadata()
+            .await
+            .context("Failed to refresh cluster metadata")?;
+
+        let keyspace = &self.schema.keyspace;
+        let mode = session
+            .get_cluster_state()
+            .get_keyspace(keyspace)
+            .map(|ks| ks.consistency_mode);
+
+        match mode {
+            Some(mode) => println!("Keyspace '{keyspace}' consistency mode: {mode:?}"),
+            None => println!("Keyspace '{keyspace}' consistency mode: unknown (keyspace not found in cluster metadata)"),
+        }
+
+        if !self.schema.wants_strong_consistency() {
+            return Ok(());
+        }
+
+        anyhow::ensure!(
+            mode == Some(ConsistencyMode::Global),
+            "Requested consistency=global, but keyspace '{keyspace}' reports {mode:?}. \
+             This run would not measure strong consistency. Check that:\n\
+             - the server runs with --experimental-features=strongly-consistent-tables;\n\
+             - keyspace '{keyspace}' does not already exist as an eventually consistent \
+             keyspace (CREATE KEYSPACE IF NOT EXISTS will not upgrade it - drop it first);\n\
+             - the keyspace is tablet-based (non-tablet keyspaces reject the consistency \
+             option; SimpleStrategy may not get tablets).\n\
+             DDL used: {ddl}",
+            ddl = self.schema.construct_keyspace_creation_query(),
+        );
+
+        // Leader routing is gated on the request's consistency level: the driver keeps
+        // normal spread routing at ONE/LOCAL_ONE. See `DefaultPolicy::should_route_to_leader`.
+        // `local_one` is the default `cl`, so this is a real drift hazard.
+        let cl = self.command_params.common.consistency_level;
+        if matches!(cl, Consistency::One | Consistency::LocalOne) {
+            println!();
+            println!(
+                "WARNING: keyspace '{keyspace}' is strongly consistent, but cl={cl} disables \
+                 leader-aware routing - the driver keeps normal spread routing at ONE and \
+                 LOCAL_ONE (see DefaultPolicy::should_route_to_leader). Requests will be \
+                 spread over replicas and bounced to the leader. Use cl=QUORUM to measure \
+                 strong consistency."
+            );
+            println!();
         }
 
         Ok(())

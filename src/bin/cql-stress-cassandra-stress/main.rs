@@ -195,6 +195,10 @@ async fn prepare_run(
         .await
         .context("Failed to create schema")?;
 
+    // Fail fast if the run would not measure what it claims to. Must happen before any
+    // operation is issued.
+    settings.verify_consistency_mode(&session).await?;
+
     let duration = settings.command_params.common.duration;
 
     let (concurrency, throttle) = match settings.rate.threads_info {
