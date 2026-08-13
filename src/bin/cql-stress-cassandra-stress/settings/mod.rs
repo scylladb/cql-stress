@@ -137,6 +137,29 @@ impl CassandraStressSettings {
             None => println!("Keyspace '{keyspace}' consistency mode: unknown (keyspace not found in cluster metadata)"),
         }
 
+        // Leader routing is gated on the request's consistency level: the driver keeps
+        // normal spread routing at ONE/LOCAL_ONE. See `DefaultPolicy::should_route_to_leader`.
+        // `local_one` is the default `cl`, so this is a real drift hazard.
+        //
+        // Keyed on the mode the keyspace actually has, not on what was requested: a
+        // pre-provisioned strongly consistent keyspace is leader-routed whether or not
+        // `consistency=global` was passed, since `CREATE KEYSPACE IF NOT EXISTS` no-ops
+        // over it and the mode is a property of the keyspace, not of the CLI flag.
+        if mode == Some(ConsistencyMode::Global) {
+            let cl = self.command_params.common.consistency_level;
+            if matches!(cl, Consistency::One | Consistency::LocalOne) {
+                println!();
+                println!(
+                    "WARNING: keyspace '{keyspace}' is strongly consistent, but cl={cl} \
+                     disables leader-aware routing - the driver keeps normal spread routing \
+                     at ONE and LOCAL_ONE (see DefaultPolicy::should_route_to_leader). \
+                     Requests will be spread over replicas and bounced to the leader. \
+                     Use cl=QUORUM to measure strong consistency."
+                );
+                println!();
+            }
+        }
+
         if !self.schema.wants_strong_consistency() {
             return Ok(());
         }
@@ -158,22 +181,6 @@ impl CassandraStressSettings {
              DDL used: {ddl}",
             ddl = self.schema.construct_keyspace_creation_query(),
         );
-
-        // Leader routing is gated on the request's consistency level: the driver keeps
-        // normal spread routing at ONE/LOCAL_ONE. See `DefaultPolicy::should_route_to_leader`.
-        // `local_one` is the default `cl`, so this is a real drift hazard.
-        let cl = self.command_params.common.consistency_level;
-        if matches!(cl, Consistency::One | Consistency::LocalOne) {
-            println!();
-            println!(
-                "WARNING: keyspace '{keyspace}' is strongly consistent, but cl={cl} disables \
-                 leader-aware routing - the driver keeps normal spread routing at ONE and \
-                 LOCAL_ONE (see DefaultPolicy::should_route_to_leader). Requests will be \
-                 spread over replicas and bounced to the leader. Use cl=QUORUM to measure \
-                 strong consistency."
-            );
-            println!();
-        }
 
         Ok(())
     }
