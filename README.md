@@ -94,10 +94,10 @@ Requirements and caveats:
   the `consistency` option is rejected outright.
 - **The server must also advertise the `TABLETS_ROUTING_V2_EXPERIMENTAL` protocol
   extension.** These are two separate capabilities and a released ScyllaDB can have the
-  first without the second — ScyllaDB 2026.2.3 accepts `consistency = 'global'` but only
+  first without the second — ScyllaDB 2026.2.x accepts `consistency = 'global'` but only
   advertises `TABLETS_ROUTING_V1`. Without V2 the driver never receives a leader-ordered
-  replica list, so no leader routing happens, and the same gate makes it report every
-  keyspace as eventually consistent. The startup check below turns this into a hard failure
+  replica list, so no leader routing happens and every request is bounced to the leader by
+  whichever replica received it. The startup check below turns this into a hard failure
   rather than a silently meaningless run. A server build with the V2 extension is required.
 - The keyspace must be tablet-based. `NetworkTopologyStrategy` enables tablets by default on
   recent ScyllaDB; `SimpleStrategy` keyspaces may not get tablets, and non-tablet keyspaces
@@ -109,9 +109,20 @@ Requirements and caveats:
 - Only `write`/`counterwrite` create the keyspace; a `read`-only run requires it to already
   exist.
 
-When `consistency=global` is requested, `cql-stress` reads the keyspace's consistency mode
-back from the driver's cluster metadata at startup and **fails immediately** if it is not
-`Global`, rather than producing plausible but meaningless numbers.
+When `consistency=global` is requested, `cql-stress` checks both capabilities at startup and
+**fails immediately** if either is missing, rather than producing plausible but meaningless
+numbers:
+
+- the keyspace's consistency mode is read back from `system_schema.scylla_keyspaces`, and
+  must be `global`;
+- the node is asked for its protocol extensions with a bare `OPTIONS` request, and must
+  advertise `TABLETS_ROUTING_V2_EXPERIMENTAL`.
+
+The run prints `Leader-aware routing: enabled` once both hold. For a keyspace that is already
+strongly consistent without `consistency=global` having been passed, the same findings are
+reported as warnings and the run proceeds. The extension probe opens its own plaintext
+connection, so it is skipped with a warning on a TLS run; verify the routing from the
+coordinator distribution below in that case.
 
 #### Verifying leader routing
 

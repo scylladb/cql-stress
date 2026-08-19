@@ -29,11 +29,10 @@ def leader_aware_routing_supported(session, node, cql_stress) -> str:
        exists even when the feature is disabled, so its presence proves nothing.
 
     2. the `TABLETS_ROUTING_V2_EXPERIMENTAL` protocol extension. Without it the driver
-       never learns a leader-ordered replica list, and - because it also gates the
-       driver's consistency-mode query - reports every keyspace as eventually consistent.
-       There is no CQL-visible signal for this, so it is probed through cql-stress: on a
-       keyspace the server calls `global`, the tool reporting anything but `Global` means
-       the extension was not negotiated.
+       never learns a leader-ordered replica list, so requests are spread over the
+       tablet's replicas and bounced to the leader. There is no CQL-visible signal for
+       this - it is advertised in the `SUPPORTED` frame - so it is probed through
+       cql-stress, which asks the node itself and refuses to run without it.
     """
     probe = f"ks_sc_probe_{random.randint(0, 100000)}"
     session.execute(f"DROP KEYSPACE IF EXISTS {probe}")
@@ -47,13 +46,16 @@ def leader_aware_routing_supported(session, node, cql_stress) -> str:
         except Exception as e:
             return f"server does not support the strongly-consistent-tables feature: {e}"
 
+        # n must stay above 1: a single-operation run cannot build its sequence
+        # distribution, and the probe would report every server as unsupported.
         result = cql_stress.run_raw(
-            stress_args("write", node, probe, cl="QUORUM", consistency="global", n=1),
+            stress_args("write", node, probe, cl="QUORUM", consistency="global", n=10),
             check=False)
-        if "consistency mode: Global" not in result.stdout:
+        if "Leader-aware routing: enabled" not in result.stdout:
             return ("server does not advertise TABLETS_ROUTING_V2_EXPERIMENTAL, so the "
                     "driver cannot do leader-aware routing (the keyspace is 'global' "
-                    "server-side but the driver reports it as eventually consistent)")
+                    "server-side, but no leader-ordered replica list ever reaches the "
+                    "driver)")
     finally:
         session.execute(f"DROP KEYSPACE IF EXISTS {probe}")
     return ""
@@ -99,6 +101,8 @@ def run_strong_consistency(node: ScyllaDockerNode, session,
 
     assert "consistency mode: Global" in result.stdout, (
         "cql-stress did not report the keyspace as strongly consistent")
+    assert "Leader-aware routing: enabled" in result.stdout, (
+        "cql-stress did not confirm that the node can route to tablet leaders")
     assert "Operations per coordinator:" in result.stdout, (
         "coordinator accounting was requested but not reported")
 
