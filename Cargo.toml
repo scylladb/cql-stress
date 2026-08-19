@@ -101,8 +101,13 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # places the tablet's Raft leader first in the V2 replica list and `DefaultPolicy` routes
 # there deterministically. Negotiation is automatic - there is no client-side opt-in.
 #
-# NOTE: this tracks an OPEN, currently conflicting PR. The rev below is pinned deliberately
-# and is no longer the branch head (`dawmd:leader-awareness` has moved on). Revisit when the
-# PR merges and drop this patch in favour of a released `scylla` version.
+# NOTE: this tracks an OPEN PR. The rev below is the current head of `dawmd:leader-awareness`
+# (the branch was rebased onto a newer upstream master, so it is not a descendant of the rev
+# pinned before). Revisit when the PR merges and drop this patch in favour of a released
+# `scylla` version.
+#
+# The patched crate declares version 1.8.0, which the `scylla = "1.7.0"` requirement above
+# accepts; the requirement is deliberately left at 1.7.0 so that dropping this patch resolves
+# to a released version rather than to one that does not exist on crates.io yet.
 [patch.crates-io]
-scylla = { git = "https://github.com/dawmd/scylla-rust-driver", rev = "3377407235bfd452b5a5b3716977b6aa397ed14c" }
+scylla = { git = "https://github.com/dawmd/scylla-rust-driver", rev = "f9b6ec4f291575a6e83c6a04aa80be4f72df654b" }

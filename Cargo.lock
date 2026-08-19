@@ -388,9 +388,9 @@ dependencies = [
 
 [[package]]
 name = "darling"
-version = "0.23.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25ae13da2f202d56bd7f91c25fba009e7717a1e4a1cc98a76d844b65ae912e9d"
+checksum = "88490bf1b990d87eaaa7ac8aa887f629a08e7359765b4911faf63c3763347d23"
 dependencies = [
  "darling_core",
  "darling_macro",
@@ -398,26 +398,26 @@ dependencies = [
 
 [[package]]
 name = "darling_core"
-version = "0.23.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9865a50f7c335f53564bb694ef660825eb8610e0a53d3e11bf1b0d3df31e03b0"
+checksum = "084e274f91c482280130e1e34e0b8d6e66776a060d7b6de7b84289ca778868c4"
 dependencies = [
  "ident_case",
  "proc-macro2",
  "quote",
  "strsim",
- "syn 2.0.118",
+ "syn 3.0.3",
 ]
 
 [[package]]
 name = "darling_macro"
-version = "0.23.0"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac3984ec7bd6cfa798e62b4a642426a5be0e68f9401cfc2a01e3fa9ea2fcdb8d"
+checksum = "68f5792fa0d41cd2325ce0ffa64f0a340eaebd4971a3a0c5e1ffd2cc488a355e"
 dependencies = [
  "darling_core",
  "quote",
- "syn 2.0.118",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -490,7 +490,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1347,7 +1347,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1858,7 +1858,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1917,8 +1917,8 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scylla"
-version = "1.7.0"
-source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
+version = "1.8.0"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=f9b6ec4f291575a6e83c6a04aa80be4f72df654b#f9b6ec4f291575a6e83c6a04aa80be4f72df654b"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -1944,8 +1944,8 @@ dependencies = [
 
 [[package]]
 name = "scylla-cql"
-version = "1.7.0"
-source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
+version = "1.8.0"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=f9b6ec4f291575a6e83c6a04aa80be4f72df654b#f9b6ec4f291575a6e83c6a04aa80be4f72df654b"
 dependencies = [
  "bigdecimal",
  "byteorder",
@@ -1965,8 +1965,8 @@ dependencies = [
 
 [[package]]
 name = "scylla-cql-core"
-version = "1.7.0"
-source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
+version = "1.8.0"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=f9b6ec4f291575a6e83c6a04aa80be4f72df654b#f9b6ec4f291575a6e83c6a04aa80be4f72df654b"
 dependencies = [
  "bigdecimal",
  "byteorder",
@@ -1981,13 +1981,13 @@ dependencies = [
 
 [[package]]
 name = "scylla-macros"
-version = "1.7.0"
-source = "git+https://github.com/dawmd/scylla-rust-driver?rev=3377407235bfd452b5a5b3716977b6aa397ed14c#3377407235bfd452b5a5b3716977b6aa397ed14c"
+version = "1.8.0"
+source = "git+https://github.com/dawmd/scylla-rust-driver?rev=f9b6ec4f291575a6e83c6a04aa80be4f72df654b#f9b6ec4f291575a6e83c6a04aa80be4f72df654b"
 dependencies = [
  "darling",
  "proc-macro2",
  "quote",
- "syn 2.0.118",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -2177,7 +2177,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2232,6 +2232,17 @@ name = "syn"
 version = "2.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "syn"
+version = "3.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2844,7 +2855,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

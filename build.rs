@@ -15,7 +15,7 @@ const SCYLLA_DEFAULT_REPO: &str = "scylladb/scylla-rust-driver";
 /// repo for non-GitHub or unparseable sources.
 ///
 /// Cargo git sources look like:
-///   git+https://github.com/dawmd/scylla-rust-driver?rev=3377407...#3377407...
+///   git+https://github.com/dawmd/scylla-rust-driver?rev=f9b6ec4...#f9b6ec4...
 fn github_repo_from_source(source: &str) -> String {
     let url = source
         .strip_prefix("git+")
