@@ -110,4 +110,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # accepts; the requirement is deliberately left at 1.7.0 so that dropping this patch resolves
 # to a released version rather than to one that does not exist on crates.io yet.
 [patch.crates-io]
-scylla = { git = "https://github.com/dawmd/scylla-rust-driver", rev = "f9b6ec4f291575a6e83c6a04aa80be4f72df654b" }
+scylla = { git = "https://github.com/dawmd/scylla-rust-driver", rev = "cbe2929c74f8f52a139645b52f404015f447dba6" }

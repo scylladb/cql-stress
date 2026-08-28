@@ -118,13 +118,24 @@ def run_strong_consistency(node: ScyllaDockerNode, session,
 
 def run_local_one_warns(node: ScyllaDockerNode,
                         cql_stress: CqlStressCassandraStress, keyspace: str):
-    """cl=local_one disables leader routing; the run must warn but not fail."""
+    """cl=local_one disables leader routing; cql-stress must warn, not refuse to start.
+
+    Whether the run then *completes* is the server's call, not ours: a ScyllaDB that
+    supports leader-aware routing rejects strongly consistent writes below
+    QUORUM/LOCAL_QUORUM outright, so every operation may fail. What is guarded here is
+    that cql-stress lets the run start and says why the measurement would be
+    meaningless - the warning is the only thing standing between a user and a
+    plausible-looking result set that never went near a leader.
+    """
     print("\n=== Writing to a strongly consistent keyspace at cl=local_one ===\n")
     result = cql_stress.run_raw(stress_args(
-        "write", node, keyspace, cl="local_one", consistency="global"))
+        "write", node, keyspace, cl="local_one", consistency="global"), check=False)
 
+    output = result.stdout + result.stderr
     assert "disables leader-aware routing" in result.stdout, (
         "no warning was emitted for a strongly consistent keyspace driven at cl=local_one")
+    assert result.returncode == 0 or "QUORUM/LOCAL_QUORUM" in output, (
+        f"the run failed for a reason other than the server rejecting the CL:\n{output}")
 
 
 def run_eventually_consistent_keyspace_is_rejected(
