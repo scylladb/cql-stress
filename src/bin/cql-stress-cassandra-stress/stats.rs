@@ -142,10 +142,8 @@ impl Stats {
         self.operations += 1;
         match result {
             Ok(outcome) => {
-                if let (Some(coordinators), Some(host_id)) =
-                    (self.coordinators.as_mut(), outcome.coordinator)
-                {
-                    *coordinators.entry(host_id).or_insert(0) += 1;
+                if let Some(coordinators) = self.coordinators.as_mut() {
+                    *coordinators.entry(outcome.coordinator).or_insert(0) += 1;
                 }
 
                 let metrics = self.latency_calculator.calculate(ctx);

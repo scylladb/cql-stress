@@ -52,14 +52,12 @@ const DEFAULT_COUNTER_TABLE_NAME: &str = "counter1";
 pub struct OperationOutcome {
     pub control_flow: ControlFlow<()>,
     /// Host ID of the node that coordinated the request.
-    ///
-    /// `None` for operations that complete without a server round-trip.
-    pub coordinator: Option<Uuid>,
+    pub coordinator: Uuid,
 }
 
 impl OperationOutcome {
     /// A completed operation that should be followed by another one.
-    fn proceed(coordinator: Option<Uuid>) -> Self {
+    fn proceed(coordinator: Uuid) -> Self {
         Self {
             control_flow: ControlFlow::Continue(()),
             coordinator,
@@ -68,8 +66,8 @@ impl OperationOutcome {
 }
 
 /// Host ID of the node that coordinated the request, for per-coordinator accounting.
-fn coordinator_of(query_result: &QueryResult) -> Option<Uuid> {
-    Some(query_result.request_coordinator().node().host_id)
+fn coordinator_of(query_result: &QueryResult) -> Uuid {
+    query_result.request_coordinator().node().host_id
 }
 
 /// A specific CassandraStress operation.
