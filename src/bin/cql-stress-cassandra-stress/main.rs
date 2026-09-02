@@ -206,6 +206,9 @@ async fn prepare_run(
         }
     };
 
+    let max_retries_per_op = settings.errors.retries;
+    let ignore_errors = settings.errors.ignore;
+
     let operation_factory = create_operation_factory(session, settings, stats).await?;
 
     Ok(Configuration {
@@ -213,8 +216,8 @@ async fn prepare_run(
         concurrency,
         rate_limit_per_second: throttle,
         operation_factory,
-        // TODO: adjust when -errors option is supported
-        max_retries_per_op: 9,
+        max_retries_per_op,
+        ignore_errors,
     })
 }
 

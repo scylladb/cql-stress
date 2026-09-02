@@ -88,6 +88,7 @@ pub struct UserOperation {
     stats: Arc<ShardedStats>,
     max_operations: Option<u64>,
     cached_row: Option<Vec<CqlValue>>,
+    last_operation_id: Option<u64>,
 }
 
 make_runnable!(UserOperation);
@@ -98,6 +99,11 @@ impl UserOperation {
             .is_some_and(|max_ops| ctx.operation_id >= max_ops)
         {
             return Ok(ControlFlow::Break(()));
+        }
+
+        if self.last_operation_id != Some(ctx.operation_id) {
+            self.last_operation_id = Some(ctx.operation_id);
+            self.cached_row = None;
         }
 
         let (op, row) = match &mut self.cached_row {
@@ -114,12 +120,6 @@ impl UserOperation {
         self.stats
             .get_shard_mut()
             .account_operation(ctx, &op_result, op.operation_tag());
-
-        if op_result.is_ok() {
-            // Operation was successful - we will generate new row
-            // for the next operation.
-            self.cached_row = None;
-        }
 
         op_result
     }
@@ -331,6 +331,7 @@ impl OperationFactory for UserOperationFactory {
             max_operations: self.max_operations,
             sampler,
             cached_row: None,
+            last_operation_id: None,
         })
     }
 }

@@ -53,6 +53,16 @@ impl Parsable for u64 {
     }
 }
 
+impl Parsable for usize {
+    type Parsed = usize;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        ensure_regex!(s, r"^[0-9]+$");
+        s.parse::<usize>()
+            .with_context(|| format!("Invalid usize value: {s}"))
+    }
+}
+
 impl Parsable for NonZeroUsize {
     type Parsed = NonZeroUsize;
 

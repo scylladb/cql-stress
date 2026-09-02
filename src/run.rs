@@ -55,6 +55,7 @@ struct WorkerContext {
 
     rate_limiter: Option<RateLimiter>,
     max_retries_per_op: usize,
+    ignore_errors: bool,
 }
 
 impl WorkerContext {
@@ -66,6 +67,7 @@ impl WorkerContext {
                 .rate_limit_per_second
                 .map(|rate| RateLimiter::new(now, rate)),
             max_retries_per_op: config.max_retries_per_op,
+            ignore_errors: config.ignore_errors,
         }
     }
 
@@ -140,13 +142,25 @@ impl WorkerSession {
                 self.trial_idx = 0;
                 Ok(flow)
             }
-            Err(err) if self.trial_idx >= self.context.max_retries_per_op => Err(err),
-            Err(err) if self.context.should_stop() => Err(err),
+            Err(err) if self.trial_idx >= self.context.max_retries_per_op => {
+                self.give_up_on_operation(err)
+            }
+            Err(err) if self.context.should_stop() => self.give_up_on_operation(err),
             Err(_) => {
                 self.trial_idx += 1;
                 Ok(ControlFlow::Continue(()))
             }
         }
+    }
+
+    fn give_up_on_operation(&mut self, err: anyhow::Error) -> Result<ControlFlow<()>> {
+        if !self.context.ignore_errors {
+            return Err(err);
+        }
+
+        tracing::error!("Operation failed, ignoring the error: {:?}", err);
+        self.trial_idx = 0;
+        Ok(ControlFlow::Continue(()))
     }
 }
 
@@ -321,6 +335,7 @@ mod tests {
             rate_limit_per_second: None,
             operation_factory: Arc::new(FnOperationFactory(f)),
             max_retries_per_op: 0,
+            ignore_errors: false,
         }
     }
 
@@ -489,6 +504,37 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await; // Make sure we don't enter a spin loop
             Err(anyhow::anyhow!("fail"))
         }
+    }
+
+    #[tokio::test]
+    #[ntest::timeout(1000)]
+    async fn test_ignore_errors_on_constant_failures() {
+        let mut cfg = make_test_cfg(|| AlwaysFailsOp(None));
+        cfg.max_duration = Some(Duration::from_millis(100));
+        cfg.max_retries_per_op = 1;
+        cfg.ignore_errors = true;
+
+        let (_, fut) = run(cfg);
+        fut.await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ntest::timeout(1000)]
+    async fn test_ignore_errors_when_asked_to_stop() {
+        let sem = Arc::new(Semaphore::new(0));
+        let sem_clone = Arc::clone(&sem);
+
+        let mut cfg = make_test_cfg(move || AlwaysFailsOp(Some(sem_clone.clone())));
+        cfg.max_retries_per_op = usize::MAX;
+        cfg.ignore_errors = true;
+        let concurrency = cfg.concurrency as u32;
+
+        let (ctrl, fut) = run(cfg);
+
+        let _ = sem.acquire_many(concurrency).await.unwrap();
+
+        ctrl.ask_to_stop();
+        fut.await.unwrap();
     }
 
     #[tokio::test]

@@ -36,6 +36,11 @@ pub struct Configuration {
     /// The maximum number of attempts an operation should be retried
     /// before giving up.
     pub max_retries_per_op: usize,
+
+    /// Continues the run when an operation keeps failing after
+    /// `max_retries_per_op` attempts. The failed operation is abandoned
+    /// and the worker proceeds with the next one.
+    pub ignore_errors: bool,
 }
 
 /// Contains all necessary context needed to execute an Operation.

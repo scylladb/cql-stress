@@ -88,6 +88,7 @@ pub struct GenericCassandraStressOperation<O: CassandraStressOperation> {
     // This is why we cache the row so it can be used
     // during the retry.
     cached_row: Option<Vec<CqlValue>>,
+    last_operation_id: Option<u64>,
 }
 
 make_runnable!(GenericCassandraStressOperation<O: CassandraStressOperation>);
@@ -100,6 +101,11 @@ impl<O: CassandraStressOperation> GenericCassandraStressOperation<O> {
             return Ok(ControlFlow::Break(()));
         }
 
+        if self.last_operation_id != Some(ctx.operation_id) {
+            self.last_operation_id = Some(ctx.operation_id);
+            self.cached_row = None;
+        }
+
         let row = self
             .cached_row
             .get_or_insert_with(|| self.cs_operation.generate_row(&mut self.workload));
@@ -110,12 +116,6 @@ impl<O: CassandraStressOperation> GenericCassandraStressOperation<O> {
             &op_result,
             self.cs_operation.operation_tag(),
         );
-
-        if op_result.is_ok() {
-            // Operation was successful - we will generate new row
-            // for the next operation.
-            self.cached_row = None;
-        }
 
         op_result
     }
@@ -228,6 +228,7 @@ impl<O: CassandraStressOperation + 'static> OperationFactory
             workload: self.workload_factory.create(),
             max_operations: self.max_operations,
             cached_row: None,
+            last_operation_id: None,
         })
     }
 }
@@ -376,5 +377,102 @@ impl<T> OperationSampler<T> {
 
     pub fn previous_sample(&self) -> &T {
         &self.items[self.current_item_index]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use tokio::time::Instant;
+
+    use super::*;
+    use crate::settings::{parse_cassandra_stress_args, CassandraStressParsingResult};
+    use crate::stats::StatsFactory;
+
+    struct FailingOperationFactory {
+        executed_rows: Arc<Mutex<Vec<Vec<CqlValue>>>>,
+    }
+
+    struct FailingOperation {
+        executed_rows: Arc<Mutex<Vec<Vec<CqlValue>>>>,
+    }
+
+    impl CassandraStressOperationFactory for FailingOperationFactory {
+        type Operation = FailingOperation;
+
+        fn create(&self) -> Self::Operation {
+            FailingOperation {
+                executed_rows: Arc::clone(&self.executed_rows),
+            }
+        }
+    }
+
+    impl CassandraStressOperation for FailingOperation {
+        type Factory = FailingOperationFactory;
+
+        async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+            self.executed_rows.lock().unwrap().push(row.to_vec());
+            Err(anyhow::anyhow!("operation failed"))
+        }
+
+        fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {
+            row_generator.generate_row()
+        }
+
+        fn operation_tag(&self) -> &'static str {
+            "TEST"
+        }
+    }
+
+    fn make_operation_context(operation_id: u64) -> OperationContext {
+        let now = Instant::now();
+        OperationContext {
+            operation_id,
+            scheduled_start_time: now,
+            actual_start_time: now,
+        }
+    }
+
+    #[tokio::test]
+    async fn generic_operation_regenerates_row_for_new_operation_id() {
+        let args =
+            "cql-stress-cassandra-stress write n=100 -node 127.0.0.1".split_ascii_whitespace();
+        let settings = match parse_cassandra_stress_args(args).unwrap() {
+            CassandraStressParsingResult::Workload(settings) => Arc::new(*settings),
+            CassandraStressParsingResult::SpecialCommand => panic!("Expected a workload"),
+        };
+
+        let executed_rows = Arc::new(Mutex::new(Vec::new()));
+        let stats_factory = Arc::new(StatsFactory::new(&settings));
+        let mut operation = GenericCassandraStressOperation {
+            cs_operation: FailingOperationFactory {
+                executed_rows: Arc::clone(&executed_rows),
+            }
+            .create(),
+            stats: Arc::new(ShardedStats::new(stats_factory)),
+            workload: RowGeneratorFactory::new(Arc::clone(&settings)).create(),
+            max_operations: None,
+            cached_row: None,
+            last_operation_id: None,
+        };
+
+        operation
+            .execute(&make_operation_context(0))
+            .await
+            .unwrap_err();
+        operation
+            .execute(&make_operation_context(0))
+            .await
+            .unwrap_err();
+        operation
+            .execute(&make_operation_context(1))
+            .await
+            .unwrap_err();
+
+        let rows = executed_rows.lock().unwrap();
+        assert_eq!(3, rows.len());
+        assert_eq!(rows[0], rows[1]);
+        assert_ne!(rows[1], rows[2]);
     }
 }

@@ -39,6 +39,7 @@ pub struct MixedOperation {
     clustering_distribution: Box<dyn Distribution>,
     current_operation: MixedSubcommand,
     current_operation_remaining: usize,
+    last_operation_id: Option<u64>,
 }
 
 pub struct MixedOperationFactory {
@@ -81,6 +82,7 @@ impl OperationFactory for MixedOperationFactory {
             clustering_distribution: mixed_params.clustering.create(),
             current_operation: MixedSubcommand::Read,
             current_operation_remaining: 0,
+            last_operation_id: None,
         })
     }
 }
@@ -172,6 +174,12 @@ impl MixedOperation {
             return Ok(ControlFlow::Break(()));
         }
 
+        if self.last_operation_id != Some(ctx.operation_id) {
+            self.last_operation_id = Some(ctx.operation_id);
+            self.cached_row = None;
+            self.current_operation_remaining = self.current_operation_remaining.saturating_sub(1);
+        }
+
         if self.current_operation_remaining == 0 {
             self.current_operation = self.operation_ratio.sample();
             self.current_operation_remaining =
@@ -237,11 +245,6 @@ impl MixedOperation {
                 result
             }
         };
-
-        if result.is_ok() {
-            self.current_operation_remaining -= 1;
-            self.cached_row = None;
-        }
 
         result
     }
