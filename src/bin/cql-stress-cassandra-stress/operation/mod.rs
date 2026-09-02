@@ -71,6 +71,28 @@ pub trait CassandraStressOperationFactory: Sync + Send + Sized {
     fn create(&self) -> Self::Operation;
 }
 
+#[derive(Default)]
+pub struct CachedRow {
+    row: Option<Vec<CqlValue>>,
+    last_operation_id: Option<u64>,
+}
+
+impl CachedRow {
+    pub fn begin_operation(&mut self, ctx: &OperationContext) -> bool {
+        if self.last_operation_id == Some(ctx.operation_id) {
+            return false;
+        }
+
+        self.last_operation_id = Some(ctx.operation_id);
+        self.row = None;
+        true
+    }
+
+    pub fn get_or_generate(&mut self, generate: impl FnOnce() -> Vec<CqlValue>) -> &[CqlValue] {
+        self.row.get_or_insert_with(generate)
+    }
+}
+
 /// Generic CassandraStress operation.
 ///
 /// It handles the common logic for all of the operations, such as:
@@ -84,11 +106,7 @@ pub struct GenericCassandraStressOperation<O: CassandraStressOperation> {
     stats: Arc<ShardedStats>,
     workload: RowGenerator,
     max_operations: Option<u64>,
-    // The operation may need to be retried.
-    // This is why we cache the row so it can be used
-    // during the retry.
-    cached_row: Option<Vec<CqlValue>>,
-    last_operation_id: Option<u64>,
+    cached_row: CachedRow,
 }
 
 make_runnable!(GenericCassandraStressOperation<O: CassandraStressOperation>);
@@ -101,14 +119,13 @@ impl<O: CassandraStressOperation> GenericCassandraStressOperation<O> {
             return Ok(ControlFlow::Break(()));
         }
 
-        if self.last_operation_id != Some(ctx.operation_id) {
-            self.last_operation_id = Some(ctx.operation_id);
-            self.cached_row = None;
-        }
+        self.cached_row.begin_operation(ctx);
 
+        let cs_operation = &self.cs_operation;
+        let workload = &mut self.workload;
         let row = self
             .cached_row
-            .get_or_insert_with(|| self.cs_operation.generate_row(&mut self.workload));
+            .get_or_generate(|| cs_operation.generate_row(workload));
 
         let op_result = self.cs_operation.execute(row).await;
         self.stats.get_shard_mut().account_operation(
@@ -227,8 +244,7 @@ impl<O: CassandraStressOperation + 'static> OperationFactory
             stats: Arc::clone(&self.stats),
             workload: self.workload_factory.create(),
             max_operations: self.max_operations,
-            cached_row: None,
-            last_operation_id: None,
+            cached_row: CachedRow::default(),
         })
     }
 }
@@ -453,8 +469,7 @@ mod tests {
             stats: Arc::new(ShardedStats::new(stats_factory)),
             workload: RowGeneratorFactory::new(Arc::clone(&settings)).create(),
             max_operations: None,
-            cached_row: None,
-            last_operation_id: None,
+            cached_row: CachedRow::default(),
         };
 
         operation
