@@ -59,6 +59,99 @@ by providing it to `ops()` parameter along with other operations defined by the 
 
 To enable the `user` mode, the tool needs to be compiled with `user-profile` feature. This feature is enabled by default.
 
+#### Strongly consistent keyspaces
+
+ScyllaDB supports strongly consistent (Raft-per-tablet) tables, where each tablet has a
+Raft group with a distinguished leader that coordinates writes and most reads. To benchmark
+these meaningfully the client must route requests to the leader rather than spreading them
+across replicas — otherwise most requests land on a follower and are bounced to the leader,
+adding a hop that destroys the measurement.
+
+`cql-stress` can create such a keyspace itself. `consistency` is a **cql-stress extension**
+to the `replication(...)` sub-parameters: it is not passed through into the CQL replication
+map, but lifted out into the top-level `consistency` keyspace property.
+
+```
+cql-stress-cassandra-stress write cl=QUORUM duration=10m \
+  -schema 'replication(strategy=NetworkTopologyStrategy,replication_factor=3,consistency=global)' \
+  -rate threads=100 -node 127.0.0.1
+```
+
+emits
+
+```sql
+CREATE KEYSPACE IF NOT EXISTS "keyspace1"
+  WITH REPLICATION = {'class': 'NetworkTopologyStrategy', 'replication_factor': '3'}
+  AND consistency = 'global';
+```
+
+Accepted values are `global` and `eventual`. When `consistency` is not given the clause is
+omitted from the DDL entirely, so existing invocations are unaffected.
+
+Requirements and caveats:
+
+- The server must run with `--experimental-features=strongly-consistent-tables`. Without it
+  the `consistency` option is rejected outright.
+- **The server must also advertise the `TABLETS_ROUTING_V2_EXPERIMENTAL` protocol
+  extension.** These are two separate capabilities and a released ScyllaDB can have the
+  first without the second — ScyllaDB 2026.2.x accepts `consistency = 'global'` but only
+  advertises `TABLETS_ROUTING_V1`. Without V2 the driver never receives a leader-ordered
+  replica list, so no leader routing happens and every request is bounced to the leader by
+  whichever replica received it. The startup check below turns this into a hard failure
+  rather than a silently meaningless run. A server build with the V2 extension is required.
+- The keyspace must be tablet-based. `NetworkTopologyStrategy` enables tablets by default on
+  recent ScyllaDB; `SimpleStrategy` keyspaces may not get tablets, and non-tablet keyspaces
+  reject the `consistency` option.
+- Leader routing is **disabled at `cl=one` and `cl=local_one`**, which keep normal spread
+  routing. Note that `local_one` is the default — pass `cl=QUORUM` explicitly.
+- `CREATE KEYSPACE IF NOT EXISTS` will not upgrade a pre-existing eventually consistent
+  keyspace. Drop it between consistency-mode changes.
+- Only `write`/`counterwrite` create the keyspace; a `read`-only run requires it to already
+  exist.
+
+When `consistency=global` is requested, `cql-stress` checks both capabilities at startup and
+**fails immediately** if either is missing, rather than producing plausible but meaningless
+numbers:
+
+- the keyspace's consistency mode is read back from `system_schema.scylla_keyspaces`, and
+  must be `global`;
+- the node is asked for its protocol extensions with a bare `OPTIONS` request, and must
+  advertise `TABLETS_ROUTING_V2_EXPERIMENTAL`.
+
+The run prints `Leader-aware routing: enabled` once both hold. For a keyspace that is already
+strongly consistent without `consistency=global` having been passed, the same findings are
+reported as warnings and the run proceeds. The extension probe opens its own plaintext
+connection, so it is skipped with a warning on a TLS run; verify the routing from the
+coordinator distribution below in that case.
+
+#### Verifying leader routing
+
+Pass `-log coordinators=true` to tally operations per coordinator host. The distribution is
+printed in the run summary:
+
+```
+Operations per coordinator:
+  172.17.0.3:9042                   412031 ( 68.4%)
+  172.17.0.2:9042                   109882 ( 18.2%)
+  172.17.0.4:9042                    80512 ( 13.4%)
+```
+
+Interpreting it:
+
+- On a **strongly consistent** keyspace at `cl=quorum`, the distribution must follow the
+  leader distribution across tablets. It will not be uniform.
+- On an **eventually consistent** keyspace — the control — the same workload spreads across
+  all replicas.
+- On a strongly consistent keyspace at `cl=local_one`, the distribution also spreads, because
+  the driver disables leader routing at that level.
+
+Run the control comparison; a single distribution in isolation does not prove much. Accounting
+is off by default and the per-coordinator map is not touched at all when disabled.
+
+Note that the driver only learns a tablet's leader ordering after it has seen a
+`TABLETS_ROUTING_V2` payload for it, so the first requests to each tablet are not leader-routed.
+Discard a warm-up window before drawing conclusions from a short run.
+
 ## Development
 
 ### Prerequisites

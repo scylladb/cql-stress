@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
     let stats_factory = Arc::new(StatsFactory::new(&settings));
     let sharded_stats = Arc::new(ShardedStats::new(Arc::clone(&stats_factory)));
 
-    let run_config = prepare_run(Arc::clone(&settings), Arc::clone(&sharded_stats))
+    let (run_config, session) = prepare_run(Arc::clone(&settings), Arc::clone(&sharded_stats))
         .await
         .context("Failed to prepare benchmark")?;
 
@@ -95,7 +95,9 @@ async fn main() -> Result<()> {
     // Run a background task waiting for a stop-signal (Ctrl+C).
     tokio::task::spawn(stop_on_signal(ctrl));
 
-    let mut printer = StatsPrinter::new();
+    // The session is only kept around to resolve coordinator host IDs to node addresses
+    // in the summary.
+    let mut printer = StatsPrinter::new(settings.log.coordinators.then_some(session));
 
     let mut ticker = tokio::time::interval(settings.log.interval);
 
@@ -150,7 +152,7 @@ async fn stop_on_signal(runner: RunController) {
 async fn prepare_run(
     settings: Arc<CassandraStressSettings>,
     stats: Arc<ShardedStats>,
-) -> Result<Configuration> {
+) -> Result<(Configuration, Arc<Session>)> {
     let mut builder = SessionBuilder::new()
         .known_nodes(&settings.node.nodes)
         .compression(settings.mode.compression);
@@ -195,6 +197,10 @@ async fn prepare_run(
         .await
         .context("Failed to create schema")?;
 
+    // Fail fast if the run would not measure what it claims to. Must happen before any
+    // operation is issued.
+    settings.verify_consistency_mode(&session).await?;
+
     let duration = settings.command_params.common.duration;
 
     let (concurrency, throttle) = match settings.rate.threads_info {
@@ -206,16 +212,19 @@ async fn prepare_run(
         }
     };
 
-    let operation_factory = create_operation_factory(session, settings, stats).await?;
+    let operation_factory = create_operation_factory(Arc::clone(&session), settings, stats).await?;
 
-    Ok(Configuration {
-        max_duration: duration,
-        concurrency,
-        rate_limit_per_second: throttle,
-        operation_factory,
-        // TODO: adjust when -errors option is supported
-        max_retries_per_op: 9,
-    })
+    Ok((
+        Configuration {
+            max_duration: duration,
+            concurrency,
+            rate_limit_per_second: throttle,
+            operation_factory,
+            // TODO: adjust when -errors option is supported
+            max_retries_per_op: 9,
+        },
+        session,
+    ))
 }
 
 async fn create_operation_factory(

@@ -1,4 +1,7 @@
-FROM rust:1.85-slim-bookworm AS builder
+# Must be >= the `rust-version` in Cargo.toml (1.89.0). The pinned scylla-rust-driver is
+# edition 2024 / rust-version 1.88, so an older toolchain fails outright rather than just
+# warning.
+FROM rust:1.89-slim-bookworm AS builder
 
 WORKDIR /app
 

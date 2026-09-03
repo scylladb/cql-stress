@@ -243,6 +243,6 @@ impl MixedOperation {
             self.cached_row = None;
         }
 
-        result
+        result.map(|outcome| outcome.control_flow)
     }
 }

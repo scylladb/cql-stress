@@ -2,7 +2,10 @@ use anyhow::Result;
 use std::{path::PathBuf, time::Duration};
 
 use crate::settings::{
-    param::{types::IntervalMillisOrSeconds, ParamsParser, SimpleParamHandle},
+    param::{
+        types::{FlagNumericOrBool, IntervalMillisOrSeconds},
+        ParamsParser, SimpleParamHandle,
+    },
     ParsePayload,
 };
 
@@ -10,6 +13,14 @@ use crate::settings::{
 pub struct LogOption {
     pub hdr_file: Option<PathBuf>,
     pub interval: Duration,
+    /// Tally operations per coordinator host and print the distribution in the summary.
+    ///
+    /// This is the acceptance evidence for leader-aware routing: on a strongly consistent
+    /// keyspace at `cl=quorum` the distribution must follow the leader distribution across
+    /// tablets, not spread uniformly over all replicas.
+    ///
+    /// Off by default, and the per-coordinator map is not even touched when disabled.
+    pub coordinators: bool,
 }
 
 impl Default for LogOption {
@@ -17,6 +28,7 @@ impl Default for LogOption {
         Self {
             hdr_file: None,
             interval: Duration::from_secs(1),
+            coordinators: false,
         }
     }
 }
@@ -46,19 +58,26 @@ impl LogOption {
             println!("  HDR Histogram file: {}", path.display());
         }
         println!("  Log interval: {:?}", self.interval);
+        println!("  Coordinator accounting: {}", self.coordinators);
     }
 
     fn from_handles(handles: LogParamHandles) -> Result<Self> {
         let hdr_file = handles.hdr_file.get().map(PathBuf::from);
         let interval = handles.interval.get().unwrap_or(Duration::from_secs(1));
+        let coordinators = handles.coordinators.get().unwrap_or(false);
 
-        Ok(Self { hdr_file, interval })
+        Ok(Self {
+            hdr_file,
+            interval,
+            coordinators,
+        })
     }
 }
 
 struct LogParamHandles {
     pub hdr_file: SimpleParamHandle<String>,
     pub interval: SimpleParamHandle<IntervalMillisOrSeconds>,
+    pub coordinators: SimpleParamHandle<FlagNumericOrBool>,
 }
 
 fn prepare_parser() -> (ParamsParser, LogParamHandles) {
@@ -78,9 +97,24 @@ fn prepare_parser() -> (ParamsParser, LogParamHandles) {
         false,
     );
 
-    parser.group(&[&hdr_file, &interval]);
+    let coordinators = parser.simple_param(
+        "coordinators=",
+        None,
+        "Tally operations per coordinator host and print the distribution in the summary. \
+         Used to verify that requests are concentrated on tablet leaders",
+        false,
+    );
 
-    (parser, LogParamHandles { hdr_file, interval })
+    parser.group(&[&hdr_file, &interval, &coordinators]);
+
+    (
+        parser,
+        LogParamHandles {
+            hdr_file,
+            interval,
+            coordinators,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -99,6 +133,26 @@ mod tests {
         let params = super::LogOption::from_handles(handles).unwrap();
         assert_eq!(None, params.hdr_file);
         assert_eq!(Duration::from_secs(1), params.interval);
+        assert!(!params.coordinators);
+    }
+
+    #[test]
+    fn log_coordinators_flag_test() {
+        let (parser, handles) = prepare_parser();
+        assert!(parser.parse(vec!["coordinators=true"]).is_ok());
+        assert!(
+            super::LogOption::from_handles(handles)
+                .unwrap()
+                .coordinators
+        );
+
+        let (parser, handles) = prepare_parser();
+        assert!(parser.parse(vec!["coordinators=false"]).is_ok());
+        assert!(
+            !super::LogOption::from_handles(handles)
+                .unwrap()
+                .coordinators
+        );
     }
 
     #[test]

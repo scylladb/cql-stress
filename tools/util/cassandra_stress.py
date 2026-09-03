@@ -98,6 +98,24 @@ class CSCliRunner:
                 node_ip=node_ip, profile_name=profile_name, runtime_args=runtime_args)
         subprocess.run(args=args, check=True)
 
+    def run_raw(self, args, check=True):
+        """Runs the stress tool with fully explicit arguments, capturing its output.
+
+        `run`/`run_user` build a fixed argument shape; this is for tests that need to
+        pass arbitrary options (e.g. `-schema replication(...consistency=global)`) or
+        that assert on the tool's output or on it failing.
+
+        Note that cql-stress writes parsing and startup errors to stdout, not stderr.
+        """
+        full_args = self.stress_cmd + args
+        print(f"Running: {' '.join(full_args)}")
+        result = subprocess.run(
+            args=full_args, check=check, capture_output=True, text=True)
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
+        return result
+
 
 class CassandraStress(CSCliRunner):
     def __init__(self, cassandra_stress_version=DEFAULT_CASSANDRA_STRESS_VERSION):

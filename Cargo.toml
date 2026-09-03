@@ -65,7 +65,9 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 rust-strictmath = "0.1.2"
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_yaml = { version = "0.9", optional = true }
-uuid = { version = "1.23", optional = true }
+# Not optional: coordinator accounting identifies nodes by `Node::host_id`, which is a
+# `uuid::Uuid`, and that is unconditional. Unifies with the driver's own uuid dependency.
+uuid = "1.23"
 
 [build-dependencies]
 reqwest = { version = "0.13", features = ["json", "blocking"] }
@@ -76,14 +78,14 @@ git2 = "0.21"
 
 [features]
 default = ["user-profile"]
-user-profile = ["dep:serde", "dep:serde_yaml", "dep:uuid"]
+user-profile = ["dep:serde", "dep:serde_yaml"]
 timerfd = ["dep:tokio-timerfd"]
 
 [dev-dependencies]
 ntest = "0.9"
 num-bigint = "0.4"
 bigdecimal = "0.4"
-scylla = { version = "1.6.0", features = [
+scylla = { version = "1.7.0", features = [
     "openssl-010",
     "num-bigint-04",
     "bigdecimal-04",
@@ -93,3 +95,19 @@ scylla = { version = "1.6.0", features = [
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(fetch_extended_version_info)',
 ] }
+
+# Build against scylla-rust-driver PR #1788 (leader-aware TABLETS_ROUTING_V2 routing),
+# which is required to benchmark strongly consistent (Raft-per-tablet) tables: the server
+# places the tablet's Raft leader first in the V2 replica list and `DefaultPolicy` routes
+# there deterministically. Negotiation is automatic - there is no client-side opt-in.
+#
+# NOTE: this tracks an OPEN PR. The rev below is the current head of `dawmd:leader-awareness`
+# (the branch was rebased onto a newer upstream master, so it is not a descendant of the rev
+# pinned before). Revisit when the PR merges and drop this patch in favour of a released
+# `scylla` version.
+#
+# The patched crate declares version 1.8.0, which the `scylla = "1.7.0"` requirement above
+# accepts; the requirement is deliberately left at 1.7.0 so that dropping this patch resolves
+# to a released version rather than to one that does not exist on crates.io yet.
+[patch.crates-io]
+scylla = { git = "https://github.com/dawmd/scylla-rust-driver", rev = "078da28ae793bba5db8fb5644d23d455a7f0b069" }

@@ -4,6 +4,7 @@ use std::iter::Iterator;
 mod command;
 mod option;
 mod param;
+mod protocol_extensions;
 use anyhow::Context;
 use anyhow::Result;
 
@@ -20,6 +21,8 @@ pub use option::LogOption;
 pub use option::ThreadsInfo;
 use regex::Regex;
 use scylla::client::session::Session;
+use scylla::errors::{DbError, ExecutionError, RequestAttemptError};
+use scylla::statement::Consistency;
 
 use crate::settings::command::print_help;
 
@@ -31,6 +34,7 @@ use self::option::PopulationOption;
 use self::option::RateOption;
 use self::option::SchemaOption;
 use self::option::TransportOption;
+use self::protocol_extensions::fetch_protocol_features;
 
 pub struct CassandraStressSettings {
     pub command: Command,
@@ -100,6 +104,252 @@ impl CassandraStressSettings {
 
         Ok(())
     }
+
+    /// Reads the keyspace's consistency mode back from the server and reports it, so the
+    /// mode a run actually measured is recorded alongside its numbers, and checks that the
+    /// node can actually route to tablet leaders.
+    ///
+    /// When `consistency=global` was requested, anything short of a strongly consistent
+    /// keyspace on a leader-routing-capable node is a hard startup failure. Every way this
+    /// can go wrong otherwise produces a full, plausible, meaningless result set:
+    /// - `CREATE KEYSPACE IF NOT EXISTS` no-ops over a leftover eventually consistent
+    ///   keyspace from an earlier run;
+    /// - a `read`-only run never creates the keyspace at all;
+    /// - the server lacks `--experimental-features=strongly-consistent-tables`, so
+    ///   `system_schema.scylla_keyspaces.consistency` does not exist and every keyspace
+    ///   reads back as eventual;
+    /// - the server takes `consistency = 'global'` but advertises no
+    ///   `TABLETS_ROUTING_V2_EXPERIMENTAL`, so the driver never sees a leader-ordered
+    ///   replica list and spreads the load over followers.
+    ///
+    /// When `consistency` was not requested the findings are only logged - existing
+    /// eventually consistent runs must keep working unchanged.
+    pub async fn verify_consistency_mode(&self, session: &Session) -> Result<()> {
+        // The DDL above may have raced the background metadata refresh, so force one before
+        // reading the mode back: the keyspace's existence is checked against cluster metadata,
+        // and the driver's own routing decisions read the same snapshot.
+        session
+            .refresh_metadata()
+            .await
+            .context("Failed to refresh cluster metadata")?;
+
+        let keyspace = &self.schema.keyspace;
+        // `None` means the keyspace does not exist at all, which is a different thing from
+        // existing as eventually consistent, and the two get different messages below.
+        let mode = match session.get_cluster_state().get_keyspace(keyspace) {
+            Some(_) => Some(read_consistency_mode(session, keyspace).await?),
+            None => None,
+        };
+
+        match mode {
+            Some(mode) => println!("Keyspace '{keyspace}' consistency mode: {mode:?}"),
+            None => println!("Keyspace '{keyspace}' consistency mode: unknown (keyspace not found in cluster metadata)"),
+        }
+
+        let wants_strong_consistency = self.schema.wants_strong_consistency();
+
+        if wants_strong_consistency {
+            anyhow::ensure!(
+                mode == Some(ConsistencyMode::Global),
+                "Requested consistency=global, but keyspace '{keyspace}' reports {mode:?}. \
+                 This run would not measure strong consistency. Check that:\n\
+                 - the server runs with --experimental-features=strongly-consistent-tables;\n\
+                 - keyspace '{keyspace}' does not already exist as an eventually consistent \
+                 keyspace (CREATE KEYSPACE IF NOT EXISTS will not upgrade it - drop it first);\n\
+                 - the keyspace is tablet-based (non-tablet keyspaces reject the consistency \
+                 option; SimpleStrategy may not get tablets).\n\
+                 DDL used: {ddl}",
+                ddl = self.schema.construct_keyspace_creation_query(),
+            );
+        }
+
+        if mode != Some(ConsistencyMode::Global) {
+            return Ok(());
+        }
+
+        // Leader routing is gated on the request's consistency level: the driver keeps
+        // normal spread routing at ONE/LOCAL_ONE. See `DefaultPolicy::should_route_to_leader`.
+        // `local_one` is the default `cl`, so this is a real drift hazard.
+        //
+        // This and the extension check below are keyed on the mode the keyspace actually
+        // has, not on what was requested: a pre-provisioned strongly consistent keyspace is
+        // leader-routed whether or not `consistency=global` was passed, since
+        // `CREATE KEYSPACE IF NOT EXISTS` no-ops over it and the mode is a property of the
+        // keyspace, not of the CLI flag.
+        let cl = self.command_params.common.consistency_level;
+        if matches!(cl, Consistency::One | Consistency::LocalOne) {
+            println!();
+            println!(
+                "WARNING: keyspace '{keyspace}' is strongly consistent, but cl={cl} \
+                 disables leader-aware routing - the driver keeps normal spread routing \
+                 at ONE and LOCAL_ONE (see DefaultPolicy::should_route_to_leader). \
+                 Requests will be spread over replicas and bounced to the leader. \
+                 Use cl=QUORUM to measure strong consistency."
+            );
+            println!();
+        }
+
+        self.verify_leader_aware_routing(wants_strong_consistency)
+            .await
+    }
+
+    /// Checks that the node can hand the driver a leader-ordered replica list at all, which
+    /// is a server capability separate from accepting `consistency = 'global'`: ScyllaDB
+    /// 2026.2.x accepts the keyspace option while advertising only `TABLETS_ROUTING_V1`.
+    ///
+    /// Without the V2 extension every request is spread over the tablet's replicas and
+    /// bounced to the leader, which is exactly the extra hop a strong-consistency benchmark
+    /// is meant to measure the absence of - so for a run that asked for `consistency=global`
+    /// this is a startup failure, the same as an eventually consistent keyspace would be.
+    ///
+    /// The probe needs its own plaintext connection, so a TLS run cannot have one; nor can a
+    /// run whose contact point is unreachable by the time this executes. Neither is evidence
+    /// that routing is broken, so both only warn.
+    async fn verify_leader_aware_routing(&self, wants_strong_consistency: bool) -> Result<()> {
+        let keyspace = &self.schema.keyspace;
+
+        let Some(node) = self.node.nodes.first() else {
+            return Ok(());
+        };
+
+        if self.transport.truststore.is_some() || self.transport.keystore.is_some() {
+            println!();
+            println!(
+                "WARNING: cannot verify that node '{node}' supports leader-aware routing: \
+                 the protocol extension probe speaks plaintext CQL and this run uses TLS. \
+                 Confirm the routing from the operations-per-coordinator distribution \
+                 (-log coordinators=true) instead."
+            );
+            println!();
+            return Ok(());
+        }
+
+        let features = match fetch_protocol_features(node).await {
+            Ok(features) => features,
+            Err(error) => {
+                println!();
+                println!(
+                    "WARNING: cannot verify that node '{node}' supports leader-aware routing: \
+                     {error:#}. Confirm the routing from the operations-per-coordinator \
+                     distribution (-log coordinators=true) instead."
+                );
+                println!();
+                return Ok(());
+            }
+        };
+
+        if features.tablets_v2_supported {
+            println!(
+                "Leader-aware routing: enabled (node '{node}' advertises \
+                 TABLETS_ROUTING_V2_EXPERIMENTAL)"
+            );
+            return Ok(());
+        }
+
+        anyhow::ensure!(
+            !wants_strong_consistency,
+            "Requested consistency=global, and keyspace '{keyspace}' is strongly consistent, \
+             but node '{node}' does not advertise the TABLETS_ROUTING_V2_EXPERIMENTAL \
+             protocol extension. This is a capability separate from accepting \
+             consistency='global' (e.g. ScyllaDB 2026.2.x accepts the option while \
+             advertising only TABLETS_ROUTING_V1). Without it the driver never receives a \
+             leader-ordered replica list, so requests are spread over the tablet's replicas \
+             and bounced to the leader - this run would measure that extra hop, not strong \
+             consistency."
+        );
+
+        println!();
+        println!(
+            "WARNING: keyspace '{keyspace}' is strongly consistent, but node '{node}' does \
+             not advertise TABLETS_ROUTING_V2_EXPERIMENTAL - the driver cannot route to \
+             tablet leaders, so requests will be spread over replicas and bounced to the \
+             leader."
+        );
+        println!();
+
+        Ok(())
+    }
+}
+
+/// The consistency mode of a keyspace, as reported by the `consistency` column of
+/// `system_schema.scylla_keyspaces`.
+///
+/// Mirrors the driver's own `ConsistencyMode`, which is deliberately crate-private: strong
+/// consistency is an experimental server-side feature, so the driver does not want to freeze
+/// these names in its public API yet, and it exposes no accessor for the mode either. Reading
+/// the column directly is the only way to report the mode, and it is the same column the
+/// driver's routing decision is based on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConsistencyMode {
+    /// Eventual consistency. Covers every non-tablet keyspace and every keyspace on a
+    /// server that does not report a consistency mode.
+    Eventual,
+    /// Reserved for a future per-datacenter strong-consistency mode (`consistency = 'local'`).
+    Local,
+    /// Global strong consistency (`consistency = 'global'`): the keyspace uses
+    /// strongly-consistent (Raft-based) tablets.
+    Global,
+}
+
+/// Reads `keyspace`'s consistency mode from `system_schema.scylla_keyspaces`.
+///
+/// The whole (tiny) table is scanned and filtered here rather than queried by primary key, so
+/// that the statement carries no values and is therefore never prepared: on a server without
+/// the table a prepare would fail differently from a request, and one error shape to recognise
+/// is enough.
+///
+/// A keyspace with no row there, an unrecognised value, a missing `consistency` column and a
+/// missing table all mean the same thing - eventual consistency - exactly as they do in the
+/// driver.
+async fn read_consistency_mode(session: &Session, keyspace: &str) -> Result<ConsistencyMode> {
+    let result = match session
+        .query_unpaged(
+            "SELECT keyspace_name, consistency FROM system_schema.scylla_keyspaces",
+            (),
+        )
+        .await
+    {
+        Ok(result) => result,
+        // Cassandra has no `scylla_keyspaces` table, and ScyllaDB versions predating strong
+        // consistency have the table but not the column. Both answer `Invalid`, which is the
+        // same signal the driver itself keys on.
+        Err(error) if is_missing_table_or_column(&error) => return Ok(ConsistencyMode::Eventual),
+        Err(error) => {
+            return Err(error).context("Failed to query system_schema.scylla_keyspaces");
+        }
+    };
+
+    let rows_result = result
+        .into_rows_result()
+        .context("Failed to convert system_schema.scylla_keyspaces result to rows")?;
+
+    for row in rows_result
+        .rows::<(String, Option<String>)>()
+        .context("Failed to deserialize system_schema.scylla_keyspaces")?
+    {
+        let (keyspace_name, consistency) =
+            row.context("Failed to deserialize a system_schema.scylla_keyspaces row")?;
+        if keyspace_name == keyspace {
+            return Ok(match consistency.as_deref() {
+                Some("global") => ConsistencyMode::Global,
+                Some("local") => ConsistencyMode::Local,
+                _ => ConsistencyMode::Eventual,
+            });
+        }
+    }
+
+    Ok(ConsistencyMode::Eventual)
+}
+
+/// Whether the error says that a ScyllaDB-specific system table or column is not there.
+///
+/// Same detection as the driver's, down to the caveat: this catches every database error
+/// carrying `Invalid`, not only the ones a missing table or column causes.
+fn is_missing_table_or_column(error: &ExecutionError) -> bool {
+    matches!(
+        error,
+        ExecutionError::LastAttemptError(RequestAttemptError::DbError(DbError::Invalid, _))
+    )
 }
 
 pub enum CassandraStressParsingResult {

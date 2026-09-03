@@ -5,11 +5,24 @@ use crate::settings::{
 use anyhow::Result;
 use std::collections::HashMap;
 
+/// The key recognised inside `replication(...)` which is hoisted out of the CQL
+/// replication map into the top-level `consistency` keyspace property.
+const CONSISTENCY_KEY: &str = "consistency";
+
+#[derive(Debug)]
 pub struct SchemaOption {
     pub replication_opts: HashMap<String, String>,
     pub keyspace: String,
     pub compaction_opts: HashMap<String, String>,
     pub compression: Option<String>,
+    /// Keyspace-level consistency mode, i.e. the `consistency` keyspace property.
+    ///
+    /// `Some("global")` requests a strongly consistent (Raft-per-tablet) keyspace.
+    /// `None` means the clause is omitted from the DDL entirely - which is what
+    /// every pre-existing invocation must keep producing, since emitting the
+    /// clause at all fails on servers without the `strongly-consistent-tables`
+    /// experimental feature.
+    pub consistency: Option<String>,
 }
 
 impl SchemaOption {
@@ -23,7 +36,7 @@ impl SchemaOption {
         let params = cl_args.remove(Self::CLI_STRING).unwrap_or_default();
         let (parser, handles) = prepare_parser();
         parser.parse(params)?;
-        Ok(Self::from_handles(handles))
+        Self::from_handles(handles)
     }
 
     pub fn print_help() {
@@ -40,9 +53,10 @@ impl SchemaOption {
         );
         println!("  Table Compression: {:?}", self.compression);
         println!("  Table Compaction Options: {:?}", self.compaction_opts);
+        println!("  Keyspace Consistency: {:?}", self.consistency);
     }
 
-    fn from_handles(handles: SchemaParamHandles) -> Self {
+    fn from_handles(handles: SchemaParamHandles) -> Result<Self> {
         let replication_strategy = handles.replication_strategy.get().unwrap();
         let replication_factor = handles.replication_factor.get().unwrap();
         let mut replication_opts = handles.replication_opts.get_arbitrary().unwrap();
@@ -50,6 +64,23 @@ impl SchemaOption {
         let compaction_strategy = handles.compaction_strategy.get();
         let mut compaction_opts = handles.compaction_opts.get_arbitrary().unwrap();
         let compression = handles.compression.get();
+
+        // `consistency` is a top-level keyspace property, not a replication option, so it
+        // must be lifted out of the map before the `class`/`replication_factor` defaults
+        // are inserted. Leaving it in would produce a replication map that the server
+        // rejects, since the map is validated by the replication strategy itself.
+        let consistency = replication_opts.remove(CONSISTENCY_KEY);
+        if let Some(consistency) = consistency.as_deref() {
+            match consistency {
+                "global" | "eventual" => (),
+                // Mirror the server's own wording so the failure is recognisable, and
+                // raise it at parse time rather than after a cluster round-trip.
+                "local" => anyhow::bail!("Local consistency is not supported yet"),
+                other => anyhow::bail!(
+                    "Invalid keyspace consistency: {other}. Must be one of: global, eventual"
+                ),
+            }
+        }
 
         replication_opts
             .entry(String::from("replication_factor"))
@@ -64,12 +95,18 @@ impl SchemaOption {
                 .or_insert(compaction_strategy);
         }
 
-        Self {
+        Ok(Self {
             replication_opts,
             keyspace,
             compaction_opts,
             compression,
-        }
+            consistency,
+        })
+    }
+
+    /// True when the user explicitly asked for a strongly consistent keyspace.
+    pub fn wants_strong_consistency(&self) -> bool {
+        self.consistency.as_deref() == Some("global")
     }
 
     fn construct_replication_string(&self) -> String {
@@ -84,11 +121,19 @@ impl SchemaOption {
     }
 
     pub fn construct_keyspace_creation_query(&self) -> String {
-        format!(
-            "CREATE KEYSPACE IF NOT EXISTS \"{keyspace}\" WITH REPLICATION = {replication};",
+        let mut query = format!(
+            "CREATE KEYSPACE IF NOT EXISTS \"{keyspace}\" WITH REPLICATION = {replication}",
             keyspace = self.keyspace,
             replication = self.construct_replication_string()
-        )
+        );
+        // Only emit the clause when the user asked for it. A default of 'eventual' would
+        // fail on every server without the `strongly-consistent-tables` feature and break
+        // all existing eventually-consistent runs.
+        if let Some(consistency) = &self.consistency {
+            query += &format!(" AND consistency = '{consistency}'");
+        }
+        query += ";";
+        query
     }
 
     fn construct_compaction_string(&self) -> Option<String> {
@@ -162,10 +207,16 @@ fn prepare_parser() -> (ParamsParser, SchemaParamHandles) {
     let replication_factor =
         parser.simple_subparam("factor=", Some("1"), "The number of replicas", false);
     // Multiparameter with two predefined parameters: `strategy` and `factor`.
+    // Arbitrary keys are passed straight through into the CQL replication map, with the
+    // single exception of `consistency`, which is a cql-stress extension hoisted into the
+    // top-level `consistency` keyspace property. See `SchemaOption::from_handles`.
     let replication = parser.multi_param(
         "replication",
         &[&replication_strategy, &replication_factor],
-        "Define the replication strategy and any parameters",
+        "Define the replication strategy and any parameters. \
+         The `consistency` key is a cql-stress extension: it is lifted out of the \
+         replication map into the keyspace-level `consistency` property \
+         (global|eventual); omitted from the DDL entirely when not given",
         false,
     );
     let keyspace = parser.simple_param(
@@ -222,7 +273,7 @@ mod tests {
         let (parser, handles) = prepare_parser();
         assert!(parser.parse(args).is_ok());
 
-        let params = SchemaOption::from_handles(handles);
+        let params = SchemaOption::from_handles(handles).unwrap();
 
         assert_eq!(4, params.replication_opts.len());
         assert_eq!(
@@ -251,5 +302,77 @@ mod tests {
             params.compaction_opts.get("key1").map(String::as_str)
         );
         assert_eq!(None, params.compression);
+        assert_eq!(None, params.consistency);
+    }
+
+    fn parse_schema(args: Vec<&str>) -> anyhow::Result<SchemaOption> {
+        let (parser, handles) = prepare_parser();
+        parser.parse(args)?;
+        SchemaOption::from_handles(handles)
+    }
+
+    /// `consistency` must be hoisted out of the replication map and emitted as a
+    /// top-level keyspace clause - it is not a valid key inside `REPLICATION = {...}`.
+    #[test]
+    fn schema_consistency_is_hoisted_out_of_replication_map_test() {
+        let params = parse_schema(vec![
+            "replication(strategy=NetworkTopologyStrategy,replication_factor=3,consistency=global)",
+        ])
+        .unwrap();
+
+        assert_eq!(Some("global"), params.consistency.as_deref());
+        assert!(params.wants_strong_consistency());
+        assert_eq!(None, params.replication_opts.get("consistency"));
+        assert_eq!(2, params.replication_opts.len());
+
+        let query = params.construct_keyspace_creation_query();
+        assert!(
+            query.ends_with(" AND consistency = 'global';"),
+            "unexpected DDL: {query}"
+        );
+        assert!(!query.contains("'consistency'"), "unexpected DDL: {query}");
+    }
+
+    /// Backward compatibility: without `consistency`, the DDL must be byte-for-byte
+    /// what master emits. Emitting `consistency = 'eventual'` would fail on any server
+    /// lacking the `strongly-consistent-tables` experimental feature.
+    #[test]
+    fn schema_without_consistency_emits_unchanged_ddl_test() {
+        let params = parse_schema(vec!["replication(strategy=SimpleStrategy,factor=1)"]).unwrap();
+
+        assert_eq!(None, params.consistency);
+        assert!(!params.wants_strong_consistency());
+        assert_eq!(
+            "CREATE KEYSPACE IF NOT EXISTS \"keyspace1\" WITH REPLICATION = \
+             {'class': 'SimpleStrategy', 'replication_factor': '1'};",
+            // `replication_opts` is a HashMap, so normalise the map ordering before
+            // comparing against the expected literal.
+            sort_replication_map(&params.construct_keyspace_creation_query()),
+        );
+    }
+
+    #[test]
+    fn schema_consistency_local_is_rejected_test() {
+        let err = parse_schema(vec!["replication(consistency=local)"]).unwrap_err();
+        assert_eq!("Local consistency is not supported yet", err.to_string());
+    }
+
+    #[test]
+    fn schema_consistency_unknown_value_is_rejected_test() {
+        let err = parse_schema(vec!["replication(consistency=strong)"]).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid keyspace consistency"),
+            "unexpected error: {err}"
+        );
+    }
+
+    /// Sorts the entries of the `REPLICATION = {...}` map so that a query built from a
+    /// `HashMap` can be compared against a fixed literal.
+    fn sort_replication_map(query: &str) -> String {
+        let (prefix, rest) = query.split_once('{').unwrap();
+        let (map, suffix) = rest.split_once('}').unwrap();
+        let mut entries = map.split(", ").collect::<Vec<_>>();
+        entries.sort_unstable();
+        format!("{prefix}{{{}}}{suffix}", entries.join(", "))
     }
 }
