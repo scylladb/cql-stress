@@ -56,3 +56,12 @@ cassandra-stress write -transport foo=bar
 cassandra-stress write -transport garbage
 
 # --- END: SSL/TLS -transport negative cases ---
+
+# --- BEGIN: -errors negative cases ---
+cassandra-stress write -errors ignore=true
+cassandra-stress write -errors retries=foo
+cassandra-stress write -errors ignore fail-fast
+cassandra-stress write -errors delay-policy=
+cassandra-stress write -errors min-delay-ms=fast
+cassandra-stress write -errors foo
+# --- END: -errors negative cases ---

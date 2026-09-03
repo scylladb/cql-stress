@@ -6,6 +6,7 @@ from util.cassandra_stress import CassandraStress, CqlStressCassandraStress, CSC
 from test_cs_write_and_validate import run as run_write_and_validate
 from test_cs_equal_db import run as run_equal_db, run_user
 from test_hdr_logging import run as run_hdr_logging
+from test_cs_errors_ignore import run as run_errors_ignore
 
 
 # Utils for test cases
@@ -50,6 +51,11 @@ def test_write_and_validate_with_hdr_log(hdr_log_runtime_args, scylla_docker_nod
                                         cql_stress):
     run_hdr_logging(runtime_args=hdr_log_runtime_args, node=scylla_docker_node,
                            cql_stress=cql_stress)
+
+
+def test_errors_ignore(default_runtime_args, scylla_docker_node, cql_stress):
+    run_errors_ignore(runtime_args=default_runtime_args, node=scylla_docker_node,
+                      cql_stress=cql_stress)
 
 
 def test_equal_db(default_runtime_args, scylla_docker_node,

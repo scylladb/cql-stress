@@ -62,3 +62,13 @@ cassandra-stress write -transport hostname-verification=true
 # Only -transport with no suboptions (should be accepted and default to no SSL)
 cassandra-stress write -transport
 # --- END: SSL/TLS -transport positive cases ---
+
+# --- BEGIN: -errors positive cases ---
+cassandra-stress write -errors ignore
+cassandra-stress write -errors retries=20
+cassandra-stress read -errors ignore retries=3
+cassandra-stress write -errors fail-fast
+cassandra-stress write -errors skip-unsupported-columns
+cassandra-stress write -errors ignore skip-read-validation skip-unsupported-columns
+cassandra-stress write -errors ignore retries=3 delay-policy=fixed min-delay-ms=10 max-delay-ms=1000
+# --- END: -errors positive cases ---

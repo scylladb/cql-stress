@@ -12,7 +12,6 @@ use cql_stress::{
     make_runnable,
 };
 use scylla::client::session::Session;
-use scylla::value::CqlValue;
 
 use super::{
     counter_write::{CounterWriteOperation, CounterWriteOperationFactory},
@@ -22,7 +21,7 @@ use super::{
     },
     row_generator::RowGenerator,
     write::{WriteOperation, WriteOperationFactory},
-    CassandraStressOperation, CassandraStressOperationFactory, RowGeneratorFactory,
+    CachedRow, CassandraStressOperation, CassandraStressOperationFactory, RowGeneratorFactory,
     DEFAULT_COUNTER_TABLE_NAME, DEFAULT_TABLE_NAME,
 };
 
@@ -31,14 +30,45 @@ pub struct MixedOperation {
     counter_write_operation: Option<CounterWriteOperation>,
     read_operation: Option<RegularReadOperation>,
     counter_read_operation: Option<CounterReadOperation>,
-    cached_row: Option<Vec<CqlValue>>,
+    cached_row: CachedRow,
     workload: RowGenerator,
     max_operations: Option<u64>,
     stats: Arc<ShardedStats>,
+    schedule: SubcommandSchedule,
+}
+
+struct SubcommandSchedule {
     operation_ratio: Arc<OperationRatio>,
     clustering_distribution: Box<dyn Distribution>,
-    current_operation: MixedSubcommand,
-    current_operation_remaining: usize,
+    current: MixedSubcommand,
+    remaining: usize,
+}
+
+impl SubcommandSchedule {
+    fn new(
+        operation_ratio: Arc<OperationRatio>,
+        clustering_distribution: Box<dyn Distribution>,
+    ) -> Self {
+        Self {
+            operation_ratio,
+            clustering_distribution,
+            current: MixedSubcommand::Read,
+            remaining: 0,
+        }
+    }
+
+    fn advance(&mut self, started_new_operation: bool) -> MixedSubcommand {
+        if started_new_operation {
+            self.remaining = self.remaining.saturating_sub(1);
+        }
+
+        if self.remaining == 0 {
+            self.current = self.operation_ratio.sample();
+            self.remaining = (self.clustering_distribution.next_i64() as usize).max(1);
+        }
+
+        self.current
+    }
 }
 
 pub struct MixedOperationFactory {
@@ -73,14 +103,14 @@ impl OperationFactory for MixedOperationFactory {
             counter_write_operation,
             read_operation,
             counter_read_operation,
-            cached_row: None,
+            cached_row: CachedRow::default(),
             workload: self.workload_factory.create(),
             max_operations: self.max_operations,
             stats: Arc::clone(&self.stats),
-            operation_ratio: Arc::clone(&self.operation_ratio),
-            clustering_distribution: mixed_params.clustering.create(),
-            current_operation: MixedSubcommand::Read,
-            current_operation_remaining: 0,
+            schedule: SubcommandSchedule::new(
+                Arc::clone(&self.operation_ratio),
+                mixed_params.clustering.create(),
+            ),
         })
     }
 }
@@ -172,20 +202,19 @@ impl MixedOperation {
             return Ok(ControlFlow::Break(()));
         }
 
-        if self.current_operation_remaining == 0 {
-            self.current_operation = self.operation_ratio.sample();
-            self.current_operation_remaining =
-                (self.clustering_distribution.next_i64() as usize).max(1);
-        }
+        let started_new_operation = self.cached_row.begin_operation(ctx);
+        let current_operation = self.schedule.advance(started_new_operation);
+
+        let workload = &mut self.workload;
 
         // FIXME: Get rid of these unwraps once async traits are considered object-safe.
-        let result = match &self.current_operation {
+        let result = match current_operation {
             MixedSubcommand::Read => {
                 // This is safe. We create a given operation only if corresponding `MixedSubcommand` is defined in `operation_ratio` map.
                 let read_operation = self.read_operation.as_ref().unwrap();
                 let row = self
                     .cached_row
-                    .get_or_insert_with(|| read_operation.generate_row(&mut self.workload));
+                    .get_or_generate(|| read_operation.generate_row(workload));
                 let result = read_operation.execute(row).await;
                 self.stats.get_shard_mut().account_operation(
                     ctx,
@@ -199,7 +228,7 @@ impl MixedOperation {
                 let counter_read_operation = self.counter_read_operation.as_ref().unwrap();
                 let row = self
                     .cached_row
-                    .get_or_insert_with(|| counter_read_operation.generate_row(&mut self.workload));
+                    .get_or_generate(|| counter_read_operation.generate_row(workload));
                 let result = counter_read_operation.execute(row).await;
                 self.stats.get_shard_mut().account_operation(
                     ctx,
@@ -213,7 +242,7 @@ impl MixedOperation {
                 let write_operation = self.write_operation.as_ref().unwrap();
                 let row = self
                     .cached_row
-                    .get_or_insert_with(|| write_operation.generate_row(&mut self.workload));
+                    .get_or_generate(|| write_operation.generate_row(workload));
                 let result = write_operation.execute(row).await;
                 self.stats.get_shard_mut().account_operation(
                     ctx,
@@ -225,9 +254,9 @@ impl MixedOperation {
             MixedSubcommand::CounterWrite => {
                 // This is safe. We create a given operation only if corresponding `MixedSubcommand` is defined in `operation_ratio` map.
                 let counter_write_operation = self.counter_write_operation.as_ref().unwrap();
-                let row = self.cached_row.get_or_insert_with(|| {
-                    counter_write_operation.generate_row(&mut self.workload)
-                });
+                let row = self
+                    .cached_row
+                    .get_or_generate(|| counter_write_operation.generate_row(workload));
                 let result = counter_write_operation.execute(row).await;
                 self.stats.get_shard_mut().account_operation(
                     ctx,
@@ -238,11 +267,85 @@ impl MixedOperation {
             }
         };
 
-        if result.is_ok() {
-            self.current_operation_remaining -= 1;
-            self.cached_row = None;
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use crate::java_generate::distribution::enumerated::EnumeratedDistribution;
+
+    use super::*;
+
+    struct ScriptedDistribution {
+        values: Mutex<std::collections::VecDeque<i64>>,
+    }
+
+    impl ScriptedDistribution {
+        fn boxed(values: &[i64]) -> Box<dyn Distribution> {
+            Box::new(Self {
+                values: Mutex::new(values.iter().copied().collect()),
+            })
+        }
+    }
+
+    impl Distribution for ScriptedDistribution {
+        fn next_i64(&self) -> i64 {
+            self.values
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("clustering distribution sampled more times than the test scripted")
         }
 
-        result
+        fn next_f64(&self) -> f64 {
+            self.next_i64() as f64
+        }
+
+        fn set_seed(&self, _seed: i64) {}
+    }
+
+    fn schedule(clustering: &[i64]) -> SubcommandSchedule {
+        let ratio = EnumeratedDistribution::new(vec![(MixedSubcommand::Write, 1.0)]).unwrap();
+        SubcommandSchedule::new(Arc::new(ratio), ScriptedDistribution::boxed(clustering))
+    }
+
+    #[test]
+    fn burst_spans_exactly_the_sampled_number_of_operations() {
+        let mut schedule = schedule(&[2, 5]);
+
+        assert_eq!(MixedSubcommand::Write, schedule.advance(true));
+        assert_eq!(2, schedule.remaining);
+
+        assert_eq!(MixedSubcommand::Write, schedule.advance(true));
+        assert_eq!(1, schedule.remaining);
+
+        assert_eq!(MixedSubcommand::Write, schedule.advance(true));
+        assert_eq!(5, schedule.remaining);
+    }
+
+    #[test]
+    fn retries_do_not_consume_the_burst() {
+        let mut schedule = schedule(&[2]);
+
+        schedule.advance(true);
+        assert_eq!(2, schedule.remaining);
+
+        schedule.advance(false);
+        schedule.advance(false);
+        assert_eq!(2, schedule.remaining);
+    }
+
+    #[test]
+    fn zero_length_burst_runs_a_single_operation() {
+        let mut schedule = schedule(&[0, 0, 0]);
+
+        schedule.advance(true);
+        assert_eq!(1, schedule.remaining);
+
+        schedule.advance(true);
+        assert_eq!(1, schedule.remaining);
     }
 }

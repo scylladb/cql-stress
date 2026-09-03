@@ -169,6 +169,7 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
         rate_limit_per_second,
         operation_factory,
         max_retries_per_op: args.max_retries_per_op as usize,
+        ignore_errors: false,
     })
 }
 

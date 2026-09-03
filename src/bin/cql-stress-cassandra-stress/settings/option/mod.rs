@@ -1,4 +1,5 @@
 mod column;
+mod errors;
 mod log;
 mod mode;
 mod node;
@@ -10,6 +11,7 @@ mod transport;
 use anyhow::Result;
 
 pub use column::ColumnOption;
+pub use errors::ErrorsOption;
 pub use log::LogOption;
 pub use mode::ModeOption;
 pub use node::NodeOption;
@@ -34,6 +36,7 @@ impl Options {
                 PopulationOption::description(),
             ),
             (LogOption::CLI_STRING, LogOption::description()),
+            (ErrorsOption::CLI_STRING, ErrorsOption::description()),
             (TransportOption::CLI_STRING, TransportOption::description()),
         ]
         .into_iter()
@@ -55,6 +58,7 @@ impl Options {
             PopulationOption::CLI_STRING => PopulationOption::print_help(),
             ModeOption::CLI_STRING => ModeOption::print_help(),
             LogOption::CLI_STRING => LogOption::print_help(),
+            ErrorsOption::CLI_STRING => ErrorsOption::print_help(),
             TransportOption::CLI_STRING => {
                 TransportOption::print_help();
             }

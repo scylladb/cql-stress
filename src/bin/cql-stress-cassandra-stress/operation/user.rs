@@ -21,8 +21,8 @@ use crate::{
 };
 
 use super::{
-    row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,
-    OperationSampler,
+    row_generator::RowGenerator, CachedRow, CassandraStressOperation,
+    CassandraStressOperationFactory, OperationSampler,
 };
 
 const SEED_STR: &str = "seed for stress";
@@ -87,7 +87,7 @@ pub struct UserOperation {
     workload: RowGenerator,
     stats: Arc<ShardedStats>,
     max_operations: Option<u64>,
-    cached_row: Option<Vec<CqlValue>>,
+    cached_row: CachedRow,
 }
 
 make_runnable!(UserOperation);
@@ -100,26 +100,22 @@ impl UserOperation {
             return Ok(ControlFlow::Break(()));
         }
 
-        let (op, row) = match &mut self.cached_row {
-            Some(cached_row) => (self.sampler.previous_sample(), cached_row),
-            None => {
-                let op = self.sampler.sample();
-                let row = self.cached_row.insert(op.generate_row(&mut self.workload));
-                (op, row)
-            }
+        let op = if self.cached_row.begin_operation(ctx) {
+            self.sampler.sample()
+        } else {
+            self.sampler.previous_sample()
         };
+
+        let workload = &mut self.workload;
+        let row = self
+            .cached_row
+            .get_or_generate(|| op.generate_row(workload));
 
         let op_result = op.execute(row).await;
 
         self.stats
             .get_shard_mut()
             .account_operation(ctx, &op_result, op.operation_tag());
-
-        if op_result.is_ok() {
-            // Operation was successful - we will generate new row
-            // for the next operation.
-            self.cached_row = None;
-        }
 
         op_result
     }
@@ -330,7 +326,7 @@ impl OperationFactory for UserOperationFactory {
             stats: Arc::clone(&self.stats),
             max_operations: self.max_operations,
             sampler,
-            cached_row: None,
+            cached_row: CachedRow::default(),
         })
     }
 }

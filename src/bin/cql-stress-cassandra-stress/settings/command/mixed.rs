@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use super::{common::CommonParamHandles, counter::CounterParams, Command, CommandParams};
 
 // Available subcommands for mixed command.
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum MixedSubcommand {
     Read,
     Write,
