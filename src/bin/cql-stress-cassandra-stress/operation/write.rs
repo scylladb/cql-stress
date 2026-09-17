@@ -1,4 +1,4 @@
-use std::{ops::ControlFlow, sync::Arc};
+use std::sync::Arc;
 
 use crate::settings::CassandraStressSettings;
 use anyhow::{Context, Result};
@@ -7,7 +7,8 @@ use scylla::statement::prepared::PreparedStatement;
 use scylla::value::CqlValue;
 
 use super::{
-    row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,
+    coordinator_of, row_generator::RowGenerator, CassandraStressOperation,
+    CassandraStressOperationFactory, OperationOutcome,
 };
 
 pub struct WriteOperation {
@@ -23,7 +24,7 @@ pub struct WriteOperationFactory {
 impl CassandraStressOperation for WriteOperation {
     type Factory = WriteOperationFactory;
 
-    async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+    async fn execute(&self, row: &[CqlValue]) -> Result<OperationOutcome> {
         // execute_unpaged, since it's an INSERT statement.
         let result = self.session.execute_unpaged(&self.statement, &row).await;
 
@@ -35,9 +36,7 @@ impl CassandraStressOperation for WriteOperation {
             );
         }
 
-        result?;
-
-        Ok(ControlFlow::Continue(()))
+        Ok(OperationOutcome::proceed(coordinator_of(&result?)))
     }
 
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {

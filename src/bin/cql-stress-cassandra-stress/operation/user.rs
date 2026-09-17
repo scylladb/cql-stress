@@ -5,8 +5,12 @@ use cql_stress::{
     make_runnable,
 };
 use scylla::client::session::Session;
+#[cfg(feature = "strong-consistency")]
+use scylla::cluster::metadata::ConsistencyMode;
 use scylla::cluster::metadata::Table;
 use scylla::statement::prepared::PreparedStatement;
+#[cfg(feature = "strong-consistency")]
+use scylla::statement::Consistency;
 use scylla::value::CqlValue;
 
 use anyhow::{Context, Result};
@@ -21,11 +25,37 @@ use crate::{
 };
 
 use super::{
-    row_generator::RowGenerator, CachedRow, CassandraStressOperation,
-    CassandraStressOperationFactory, OperationSampler,
+    coordinator_of, row_generator::RowGenerator, CachedRow, CassandraStressOperation,
+    CassandraStressOperationFactory, OperationOutcome, OperationSampler,
 };
 
 const SEED_STR: &str = "seed for stress";
+
+/// What a strongly consistent keyspace makes of one statement's consistency level.
+#[cfg(feature = "strong-consistency")]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum ConsistencyVerdict {
+    /// Works, and routes to the tablet's Raft leader.
+    Accepted,
+    /// Works, but keeps normal spread routing - so it measures something else.
+    NotLeaderRouted,
+    /// The server rejects every request at this level.
+    Rejected,
+}
+
+/// Decides what a strongly consistent keyspace does with `consistency` on a read or a write.
+///
+/// Measured on 2026.4.0~dev: writes take `QUORUM`/`LOCAL_QUORUM` only; reads additionally
+/// take `ONE`/`LOCAL_ONE`, but any replica may serve those, so they are not leader-routed.
+/// Everything else - `ALL`, `TWO`, `THREE`, `ANY`, `EACH_QUORUM`, ... - is rejected for both.
+#[cfg(feature = "strong-consistency")]
+fn classify_consistency(consistency: Consistency, is_read: bool) -> ConsistencyVerdict {
+    match consistency {
+        Consistency::Quorum | Consistency::LocalQuorum => ConsistencyVerdict::Accepted,
+        Consistency::One | Consistency::LocalOne if is_read => ConsistencyVerdict::NotLeaderRouted,
+        _ => ConsistencyVerdict::Rejected,
+    }
+}
 
 pub struct UserDefinedOperation {
     session: Arc<Session>,
@@ -37,7 +67,7 @@ pub struct UserDefinedOperation {
 impl CassandraStressOperation for UserDefinedOperation {
     type Factory = UserDefinedOperationFactory;
 
-    async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+    async fn execute(&self, row: &[CqlValue]) -> Result<OperationOutcome> {
         let mut bound_row = Vec::with_capacity(self.argument_index.len());
 
         for i in &self.argument_index {
@@ -46,11 +76,12 @@ impl CassandraStressOperation for UserDefinedOperation {
 
         // User can provide a custom query here. In addition, we don't care
         // about the result of this query. This is why we can use `execute_unpaged`.
-        self.session
+        let result = self
+            .session
             .execute_unpaged(&self.statement, bound_row)
             .await?;
 
-        Ok(ControlFlow::Continue(()))
+        Ok(OperationOutcome::proceed(coordinator_of(&result)))
     }
 
     fn generate_row(&self, row_generator: &mut RowGenerator) -> Vec<CqlValue> {
@@ -117,7 +148,7 @@ impl UserOperation {
             .get_shard_mut()
             .account_operation(ctx, &op_result, op.operation_tag());
 
-        op_result
+        op_result.map(|outcome| outcome.control_flow)
     }
 }
 
@@ -156,6 +187,91 @@ impl UserOperationFactory {
             .prepare(statement_str)
             .await
             .context("Failed to prepare statement for 'insert' operation.")
+    }
+
+    /// Checks each prepared statement's effective consistency level against what a strongly
+    /// consistent keyspace accepts.
+    ///
+    /// The accepted sets are asymmetric and the server rejects per request rather than at
+    /// connect time:
+    ///
+    /// - **writes** take `QUORUM` and `LOCAL_QUORUM`, nothing else;
+    /// - **reads** additionally take `ONE` and `LOCAL_ONE`, at the cost of leader-aware
+    ///   routing: any replica may serve such a read, so it keeps normal spread routing.
+    ///
+    /// Reads and writes are told apart by the prepared statement's own result metadata - a
+    /// statement that returns columns is a read - rather than by inspecting the CQL text,
+    /// which the server has already parsed for us.
+    ///
+    /// A statement with no `consistencyLevel:` in the yaml inherits the driver's
+    /// execution-profile default, which is `LOCAL_QUORUM` and therefore legal for both. That
+    /// covers the predefined `insert` operation, which sets no level of its own.
+    ///
+    /// Every violation in the profile is reported at once: fixing them one run at a time is
+    /// needless, and a profile can easily have several.
+    #[cfg(feature = "strong-consistency")]
+    fn verify_profile_consistency_levels(
+        queries: &HashMap<String, (PreparedStatement, OpWeight)>,
+        keyspace: &str,
+    ) -> Result<()> {
+        // Sorted so the report is stable - `queries` is a HashMap.
+        let mut names = queries.keys().collect::<Vec<_>>();
+        names.sort_unstable();
+
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+
+        for name in names {
+            let (statement, _weight) = &queries[name];
+            // `None` means the statement carries no level of its own and takes the execution
+            // profile's, which cql-stress leaves at the driver's LOCAL_QUORUM default.
+            let Some(consistency) = statement.get_consistency() else {
+                continue;
+            };
+            // A statement that returns columns is a read - except a conditional write, whose
+            // result set is the `[applied]` flag. Classifying an LWT as a write is both
+            // correct and the stricter of the two.
+            let is_read = !statement.is_confirmed_lwt()
+                && statement.get_current_result_set_col_specs().get().len() > 0;
+
+            match classify_consistency(consistency, is_read) {
+                ConsistencyVerdict::Accepted => (),
+                ConsistencyVerdict::NotLeaderRouted => warnings.push(format!(
+                    "  - '{name}' reads at {consistency}, which is accepted but not \
+                     leader-routed: at ONE and LOCAL_ONE any replica may serve the read, so \
+                     it keeps normal spread routing"
+                )),
+                ConsistencyVerdict::Rejected if is_read => errors.push(format!(
+                    "  - '{name}' reads at {consistency}; strongly consistent reads take only \
+                     QUORUM, LOCAL_QUORUM, ONE or LOCAL_ONE"
+                )),
+                ConsistencyVerdict::Rejected => errors.push(format!(
+                    "  - '{name}' writes at {consistency}; strongly consistent writes take \
+                     only QUORUM or LOCAL_QUORUM"
+                )),
+            }
+        }
+
+        if !warnings.is_empty() {
+            println!();
+            println!(
+                "WARNING: keyspace '{keyspace}' is strongly consistent and some queries in \
+                 this profile are not leader-routed:\n{}\nUse consistencyLevel: QUORUM to \
+                 measure strong consistency.",
+                warnings.join("\n")
+            );
+            println!();
+        }
+
+        anyhow::ensure!(
+            errors.is_empty(),
+            "Keyspace '{keyspace}' is strongly consistent, but this profile declares \
+             consistency levels the server would reject on every request:\n{}\nSet \
+             consistencyLevel: QUORUM on those queries.",
+            errors.join("\n")
+        );
+
+        Ok(())
     }
 
     pub async fn new(
@@ -221,6 +337,23 @@ impl UserOperationFactory {
 
             queries_payload
         };
+
+        // A strongly consistent keyspace accepts far fewer consistency levels than an
+        // ordinary one and rejects them per request, so an unvalidated profile produces a run
+        // in which every operation fails - numbers that read like a catastrophic cluster
+        // problem and are really a profile mistake. `cl=` cannot stand in for this check:
+        // user mode never applies it to anything. Each statement carries the level from its
+        // yaml `consistencyLevel:`, or the driver's default, so the levels have to be read
+        // back off the prepared statements.
+        #[cfg(feature = "strong-consistency")]
+        if matches!(
+            cluster_state
+                .get_keyspace(&user_profile.keyspace)
+                .map(|ks| &ks.consistency_mode),
+            Some(ConsistencyMode::Global)
+        ) {
+            Self::verify_profile_consistency_levels(&queries_payload, &user_profile.keyspace)?;
+        }
 
         let pk_seed_distribution = settings.population.pk_seed_distribution.create().into();
         let max_operations = settings.command_params.common.operation_count;
@@ -328,5 +461,50 @@ impl OperationFactory for UserOperationFactory {
             sampler,
             cached_row: CachedRow::default(),
         })
+    }
+}
+
+#[cfg(all(test, feature = "strong-consistency"))]
+mod tests {
+    use super::*;
+
+    /// The rules a strongly consistent keyspace enforces per request. Getting these wrong
+    /// does not fail loudly at connect time - it fails every single operation of the run, so
+    /// the table is pinned here rather than left to an integration test that needs a server
+    /// built with an experimental feature.
+    #[test]
+    fn strongly_consistent_consistency_levels_test() {
+        use ConsistencyVerdict::*;
+
+        // Writes take QUORUM/LOCAL_QUORUM and nothing else.
+        for cl in [Consistency::Quorum, Consistency::LocalQuorum] {
+            assert_eq!(Accepted, classify_consistency(cl, false), "write at {cl}");
+            assert_eq!(Accepted, classify_consistency(cl, true), "read at {cl}");
+        }
+
+        // Reads additionally take ONE/LOCAL_ONE, but lose leader-aware routing; the same
+        // levels are rejected outright for writes.
+        for cl in [Consistency::One, Consistency::LocalOne] {
+            assert_eq!(
+                NotLeaderRouted,
+                classify_consistency(cl, true),
+                "read at {cl}"
+            );
+            assert_eq!(Rejected, classify_consistency(cl, false), "write at {cl}");
+        }
+
+        // Everything else is rejected for both.
+        for cl in [
+            Consistency::All,
+            Consistency::Two,
+            Consistency::Three,
+            Consistency::Any,
+            Consistency::EachQuorum,
+            Consistency::Serial,
+            Consistency::LocalSerial,
+        ] {
+            assert_eq!(Rejected, classify_consistency(cl, true), "read at {cl}");
+            assert_eq!(Rejected, classify_consistency(cl, false), "write at {cl}");
+        }
     }
 }

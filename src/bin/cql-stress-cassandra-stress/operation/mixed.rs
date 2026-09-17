@@ -267,7 +267,7 @@ impl MixedOperation {
             }
         };
 
-        result
+        result.map(|outcome| outcome.control_flow)
     }
 }
 

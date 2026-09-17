@@ -6,7 +6,14 @@ on:
       - "v*"
 
 env:
-  RUSTFLAGS: "--cfg fetch_extended_version_info"
+  # A RUSTFLAGS environment variable *replaces* `.cargo/config.toml`'s `[build] rustflags`
+  # rather than adding to it, so `--cfg scylla_unstable` is repeated here. Release artifacts
+  # are built without the `strong-consistency` feature, which is what makes that cfg
+  # load-bearing, so nothing here would fail without it today - it is kept so that the day
+  # this workflow does build with the feature, the cfg is already in place instead of the
+  # build failing after the GitHub release has been created. Keep in sync with `Dockerfile`
+  # and `.github/workflows/rust.yml`.
+  RUSTFLAGS: "--cfg fetch_extended_version_info --cfg scylla_unstable"
   CARGO_TERM_COLOR: always
   PYTHONUNBUFFERED: "1"
 

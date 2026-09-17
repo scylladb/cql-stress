@@ -7,6 +7,40 @@ use std::path::Path;
 
 const UNKNOWN: &str = "unknown";
 const SCYLLA_PKG_NAME: &str = "scylla";
+/// Repo to consult for commit dates when the driver comes from crates.io rather than git.
+const SCYLLA_DEFAULT_REPO: &str = "scylladb/scylla-rust-driver";
+
+/// Extracts the `owner/repo` slug from a Cargo git source string, so that a driver pinned
+/// to a fork (e.g. a PR branch) still resolves its commit date. Falls back to the upstream
+/// repo for non-GitHub or unparseable sources.
+///
+/// Cargo git sources look like:
+///   git+https://github.com/dawmd/scylla-rust-driver?rev=f9b6ec4...#f9b6ec4...
+fn github_repo_from_source(source: &str) -> String {
+    let url = source
+        .strip_prefix("git+")
+        .unwrap_or(source)
+        // Strip the `?rev=`/`?branch=` query and the `#sha` fragment.
+        .split(['?', '#'])
+        .next()
+        .unwrap_or_default();
+
+    let Some(path) = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("http://github.com/"))
+        .or_else(|| url.strip_prefix("ssh://git@github.com/"))
+        .or_else(|| url.strip_prefix("git@github.com:"))
+    else {
+        return SCYLLA_DEFAULT_REPO.to_string();
+    };
+
+    let path = path.trim_end_matches('/').trim_end_matches(".git");
+    // Must be exactly `owner/repo`.
+    match path.split('/').collect::<Vec<_>>()[..] {
+        [owner, repo] if !owner.is_empty() && !repo.is_empty() => format!("{owner}/{repo}"),
+        _ => SCYLLA_DEFAULT_REPO.to_string(),
+    }
+}
 
 #[cfg(fetch_extended_version_info)]
 mod scylla_date_utils {
@@ -16,16 +50,14 @@ mod scylla_date_utils {
 
     const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-    pub fn get_scylla_commit_date_from_github(sha: &str) -> Option<String> {
+    pub fn get_scylla_commit_date_from_github(repo: &str, sha: &str) -> Option<String> {
         let client = Client::builder()
             .timeout(FETCH_TIMEOUT)
             .user_agent("cql-stress (github.com/scylladb/cql-stress)")
             .build()
             .ok()?;
         let resp = client
-            .get(format!(
-                "https://api.github.com/repos/scylladb/scylla-rust-driver/commits/{sha}"
-            ))
+            .get(format!("https://api.github.com/repos/{repo}/commits/{sha}"))
             .send()
             .ok()?;
         if !resp.status().is_success() {
@@ -98,7 +130,7 @@ mod scylla_date_utils {
         Some(UNKNOWN_EXTENDED.into())
     }
 
-    pub fn get_scylla_commit_date_from_github(_sha: &str) -> Option<String> {
+    pub fn get_scylla_commit_date_from_github(_repo: &str, _sha: &str) -> Option<String> {
         Some(UNKNOWN_EXTENDED.into())
     }
 }
@@ -146,8 +178,11 @@ fn main() {
             .nth(1)
             .unwrap_or(UNKNOWN)
             .to_string();
+        // Derive the repo from the source rather than assuming upstream, so that a driver
+        // pinned to a fork (e.g. an unmerged PR branch) still resolves its commit date.
+        let repo = github_repo_from_source(&scylla_source);
         (
-            scylla_date_utils::get_scylla_commit_date_from_github(&commit_sha)
+            scylla_date_utils::get_scylla_commit_date_from_github(&repo, &commit_sha)
                 .unwrap_or(UNKNOWN.into()),
             commit_sha,
         )

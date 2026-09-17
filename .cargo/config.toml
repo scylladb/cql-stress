@@ -1,0 +1,25 @@
+# `scylla::cluster::metadata::ConsistencyMode` and `Keyspace::consistency_mode` are the
+# driver's own answer to "is this keyspace strongly consistent, and did this driver negotiate
+# TABLETS_ROUTING_V2 to find out". They are public only behind BOTH the crate's
+# `unstable-strong-consistency` feature and this cfg, because strong consistency is an
+# experimental server feature whose API the driver is not ready to freeze.
+#
+# cql-stress turns that crate feature on through its own `strong-consistency` feature, which
+# is OFF by default - so in an ordinary build this cfg is inert and no unstable driver API is
+# compiled in at all. It is still set unconditionally, because a cargo feature cannot set
+# RUSTFLAGS: if the cfg had to be remembered separately every time someone enabled the
+# feature, it would eventually be forgotten.
+#
+# Cargo applies this to every crate in the build, which is harmless: no other crate here reads
+# the cfg.
+#
+# A RUSTFLAGS environment variable *replaces* this setting rather than adding to it, so every
+# place that sets RUSTFLAGS must repeat `--cfg scylla_unstable`: `Dockerfile`, and the `env:`
+# blocks of both `.github/workflows/rust.yml` and `.github/workflows/release.yml`. That
+# includes tools which set RUSTFLAGS on your behalf - `actions-rust-lang/setup-rust-toolchain`
+# exports `RUSTFLAGS=-D warnings` unless it is already set, which is why CI sets it explicitly
+# rather than relying on this file. Getting it wrong is a compile error (`field
+# consistency_mode is private`) in a `strong-consistency` build, never a silently wrong
+# benchmark.
+[build]
+rustflags = ["--cfg", "scylla_unstable"]

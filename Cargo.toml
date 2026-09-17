@@ -46,7 +46,12 @@ rand = "0.10"
 rand_distr = "0.6"
 rand_pcg = "0.10"
 regex = "1.12.3"
-scylla = { version = "1.7.0", features = ["openssl-010"] }
+# Leader-aware routing for strongly consistent (Raft-per-tablet) tables arrived in 1.9.0
+# (scylla-rust-driver #1788 / #1887); it is in no earlier release. The API it is read through -
+# `cluster::metadata::ConsistencyMode` and `Keyspace::consistency_mode` - is public only behind
+# the crate's `unstable-strong-consistency` feature *and* `--cfg scylla_unstable`, so it is not
+# enabled here: see the `strong-consistency` feature below.
+scylla = { version = "1.9.0", features = ["openssl-010"] }
 sha2 = "0.11"
 strum = "0.28.0"
 strum_macros = "0.28.0"
@@ -65,7 +70,9 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 rust-strictmath = "0.1.2"
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_yaml = { version = "0.9", optional = true }
-uuid = { version = "1.23", optional = true }
+# Not optional: coordinator accounting identifies nodes by `Node::host_id`, which is a
+# `uuid::Uuid`, and that is unconditional. Unifies with the driver's own uuid dependency.
+uuid = "1.23"
 
 [build-dependencies]
 reqwest = { version = "0.13", features = ["json", "blocking"] }
@@ -76,14 +83,28 @@ git2 = "0.21"
 
 [features]
 default = ["user-profile"]
-user-profile = ["dep:serde", "dep:serde_yaml", "dep:uuid"]
+user-profile = ["dep:serde", "dep:serde_yaml"]
 timerfd = ["dep:tokio-timerfd"]
+# Drive strongly consistent (Raft-per-tablet) keyspaces and verify that a run really routed to
+# tablet Raft leaders. OFF by default and deliberately so: it turns on an unstable driver API
+# whose shape the driver has not frozen, and the binary SCT runs day to day must not depend on
+# that. A build without it refuses `-schema replication(consistency=...)` at parse time rather
+# than emitting the DDL it cannot verify.
+#
+# The feature alone is not enough - the driver also gates the API on `--cfg scylla_unstable`,
+# which `.cargo/config.toml` supplies. A cargo feature cannot set RUSTFLAGS, so anything that
+# overrides RUSTFLAGS has to repeat that cfg; forgetting it is a compile error, never a
+# silently unverified run.
+strong-consistency = ["scylla/unstable-strong-consistency"]
 
 [dev-dependencies]
 ntest = "0.9"
 num-bigint = "0.4"
 bigdecimal = "0.4"
-scylla = { version = "1.6.0", features = [
+# Feature-unified with the `[dependencies]` entry above, so `unstable-strong-consistency` must
+# not be listed here: doing so would switch it on for every test build regardless of whether
+# the `strong-consistency` feature was asked for.
+scylla = { version = "1.9.0", features = [
     "openssl-010",
     "num-bigint-04",
     "bigdecimal-04",
