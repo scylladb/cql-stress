@@ -35,8 +35,10 @@ def prepare_args(command, node_ip, keyspace, runtime_args: CSCliRuntimeArguments
         rate_args.append(f"throttle={runtime_args.throttle}")
     args.extend(["-rate"] + rate_args)
     
-    args.extend(["-schema", "replication(strategy=NetworkTopologyStrategy)",
-                 f"keyspace={keyspace}"])
+    # Deliberately no `replication(...)`: the frontend default has to work against the
+    # test server on its own. Overriding it here is what let the broken default reach a
+    # release unnoticed.
+    args.extend(["-schema", f"keyspace={keyspace}"])
 
     # Add HDR logging options if specified
     if runtime_args.hdr_log_file:

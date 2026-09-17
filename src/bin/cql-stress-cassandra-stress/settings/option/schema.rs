@@ -155,7 +155,11 @@ fn prepare_parser() -> (ParamsParser, SchemaParamHandles) {
 
     let replication_strategy = parser.simple_subparam(
         "strategy=",
-        Some("SimpleStrategy"),
+        // Not SimpleStrategy, which Java cassandra-stress defaults to: ScyllaDB 2026.2+
+        // enables tablets by default and rejects it outright, so that default fails at
+        // keyspace creation on every current server. NetworkTopologyStrategy with a bare
+        // `replication_factor` is accepted by every version this tool targets.
+        Some("NetworkTopologyStrategy"),
         "The replication strategy to use",
         false,
     );
@@ -210,6 +214,27 @@ fn prepare_parser() -> (ParamsParser, SchemaParamHandles) {
 #[cfg(test)]
 mod tests {
     use super::{prepare_parser, SchemaOption};
+
+    /// The default keyspace DDL has to work against a server with tablets enabled, which is
+    /// every ScyllaDB from 2026.2 on. This is the one path a user takes with no `-schema` at
+    /// all, so it is pinned here rather than left to an integration test that overrides it.
+    #[test]
+    fn schema_default_replication_strategy_supports_tablets_test() {
+        let (parser, handles) = prepare_parser();
+        assert!(parser.parse(vec![]).is_ok());
+        let params = SchemaOption::from_handles(handles);
+
+        assert_eq!(
+            Some("NetworkTopologyStrategy"),
+            params.replication_opts.get("class").map(String::as_str)
+        );
+
+        let query = params.construct_keyspace_creation_query();
+        assert!(
+            !query.contains("SimpleStrategy"),
+            "the default DDL still asks for SimpleStrategy: {query}"
+        );
+    }
 
     #[test]
     fn schema_param_good_test() {
