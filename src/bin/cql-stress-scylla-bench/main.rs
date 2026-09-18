@@ -217,8 +217,11 @@ fn generate_ssl_context(args: &ScyllaBenchArgs) -> Result<SslContext> {
 
 async fn create_schema(session: &Session, args: &ScyllaBenchArgs) -> Result<()> {
     let create_keyspace_query_str = format!(
+        // SimpleStrategy is rejected by any server with tablets enabled, and scylla-bench
+        // exposes no flag to override the class, so that DDL left the binary unable to
+        // create a keyspace at all on ScyllaDB 2026.2+.
         "CREATE KEYSPACE IF NOT EXISTS {} WITH REPLICATION = \
-        {{'class': 'SimpleStrategy', 'replication_factor': {}}}",
+        {{'class': 'NetworkTopologyStrategy', 'replication_factor': {}}}",
         args.keyspace_name, args.replication_factor,
     );
     session.query_unpaged(create_keyspace_query_str, ()).await?;
