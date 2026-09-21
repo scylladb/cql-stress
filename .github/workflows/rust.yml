@@ -11,6 +11,18 @@ on:
 env:
   CARGO_TERM_COLOR: always
   PYTHONUNBUFFERED: "1"
+  # `scylla::cluster::metadata::ConsistencyMode` is public only behind this cfg AND the
+  # crate's `unstable-strong-consistency` feature, which cql-stress turns on through its own
+  # `strong-consistency` feature. The cfg is inert without that feature, but it is set for
+  # every Rust job anyway so a step that does enable the feature can never be missing it.
+  #
+  # It cannot be left to `.cargo/config.toml`: a RUSTFLAGS environment variable *replaces*
+  # that file's `[build] rustflags` rather than adding to it, and
+  # `actions-rust-lang/setup-rust-toolchain` exports `RUSTFLAGS=-D warnings` of its own --
+  # which would silently drop the cfg. The action only sets RUSTFLAGS when it is not already
+  # set, so defining it here keeps both halves, and `-D warnings` has to be repeated because
+  # the action no longer supplies it.
+  RUSTFLAGS: "-D warnings --cfg scylla_unstable"
 
 jobs:
   check:
@@ -26,8 +38,27 @@ jobs:
       - run: cargo clippy --tests --no-default-features -- -D warnings
       - name: Clippy check with `user-profile` feature
         run: cargo clippy --tests --features "user-profile" -- -D warnings
+      # `strong-consistency` is off by default, so the default jobs above never compile the
+      # code behind it. Check it in both feature combinations: on its own, and alongside
+      # `user-profile`, which gates the per-statement consistency-level validation.
+      - name: Clippy check with `strong-consistency` feature
+        run: cargo clippy --all --all-targets --features "strong-consistency" -- -D warnings
+      - name: Clippy check with `strong-consistency` and no default features
+        run: cargo clippy --tests --no-default-features --features "strong-consistency" -- -D warnings
       - name: Clippy check with cfg(fetch_extended_version_info)
-        run: RUSTFLAGS="--cfg fetch_extended_version_info" cargo clippy --tests -- -D warnings
+        # Overrides the job-wide RUSTFLAGS, so both cfgs have to be repeated here.
+        run: RUSTFLAGS="--cfg fetch_extended_version_info --cfg scylla_unstable" cargo clippy --tests -- -D warnings
+      - name: Build the release profile with the release workflow's RUSTFLAGS
+        # `release.yml` builds the tagged artifacts with its own RUSTFLAGS, which replaces
+        # `.cargo/config.toml`'s. Build the same way here so that dropping a cfg there breaks
+        # a PR rather than a tag: a release build is otherwise never exercised until a tag is
+        # pushed, and the failure mode is a compile error after the GitHub release has already
+        # been created.
+        run: RUSTFLAGS="--cfg fetch_extended_version_info --cfg scylla_unstable" cargo build --profile dist --all
+      - name: Build the release profile with `strong-consistency`
+        # The strongly consistent Docker image is built this way, and it is the one build
+        # where `--cfg scylla_unstable` is load-bearing rather than inert.
+        run: RUSTFLAGS="--cfg fetch_extended_version_info --cfg scylla_unstable" cargo build --profile dist --all --features strong-consistency
   fmt:
     name: Format
     runs-on: ubuntu-24.04
@@ -66,6 +97,19 @@ jobs:
           path: "./target/dist/cql-stress-scylla-bench"
           if-no-files-found: error
           retention-days: 1
+
+      # A second binary with `strong-consistency` on, for `strong-consistency-tests`. The
+      # artifacts above are the ordinary build and cannot drive a strongly consistent
+      # keyspace at all - they refuse `-schema replication(consistency=...)` at parse time -
+      # so that job needs its own.
+      - name: Build cql-stress-cassandra-stress with `strong-consistency`
+        run: cargo build --profile dist --bin cql-stress-cassandra-stress --features strong-consistency
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cql-stress-cassandra-stress-strong-consistency
+          path: "./target/dist/cql-stress-cassandra-stress"
+          if-no-files-found: error
+          retention-days: 1
   test:
     runs-on: ubuntu-24.04
     steps:
@@ -86,6 +130,10 @@ jobs:
         command: test
         # test threads must be one because else database tests will run in parallel and will result in flaky tests
         args: --features "user-profile" -- --test-threads=1
+    # The strong-consistency unit tests - the consistency-level table, the diagnostic
+    # wording, the parse-time rejections - compile only with the feature on.
+    - name: Test with `strong-consistency` feature
+      run: cargo test --features "user-profile,strong-consistency" -- --test-threads=1
 
   integration-tests:
     needs: [build, test]
@@ -116,3 +164,30 @@ jobs:
           mv ${{ matrix.binary }} /usr/local/bin
           chmod +x /usr/local/bin/${{ matrix.binary }}
           pytest -s ./tools/${{ matrix.binary }}-ci.py
+
+  strong-consistency-tests:
+    needs: [build]
+    cancel-timeout-minutes: 1
+    timeout-minutes: 20
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install python driver
+        run: pip install scylla-driver
+      - name: Install pytest
+        run: pip install -U pytest
+      - name: Start ScyllaDB with strongly consistent tables
+        run: |
+          docker compose -f ./docker/scylla-test/compose.yml --profile strong-consistency up -d scylla-sc-test --wait
+          until docker logs scylla_sc_test 2>&1 | grep "Starting listening for CQL clients" > /dev/null; do sleep 0.2; done
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cql-stress-cassandra-stress-strong-consistency
+      # The tests skip themselves if the image does not support the
+      # `strongly-consistent-tables` experimental feature, so this job stays green on
+      # older images rather than blocking on a ScyllaDB release.
+      - name: Strong consistency tests
+        run: |
+          mv cql-stress-cassandra-stress /usr/local/bin
+          chmod +x /usr/local/bin/cql-stress-cassandra-stress
+          pytest -s ./tools/cql-stress-cassandra-stress-ci.py -k "strong_consistency" -v

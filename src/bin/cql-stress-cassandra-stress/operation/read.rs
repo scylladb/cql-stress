@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ops::ControlFlow, sync::Arc};
+use std::{marker::PhantomData, sync::Arc};
 
 use crate::settings::CassandraStressSettings;
 use anyhow::{Context, Result};
@@ -7,8 +7,9 @@ use scylla::statement::prepared::PreparedStatement;
 use scylla::value::CqlValue;
 
 use super::{
-    row_generator::RowGenerator, CassandraStressOperation, CassandraStressOperationFactory,
-    EqualRowValidator, ExistsRowValidator, RowValidator,
+    coordinator_of, row_generator::RowGenerator, CassandraStressOperation,
+    CassandraStressOperationFactory, EqualRowValidator, ExistsRowValidator, OperationOutcome,
+    RowValidator,
 };
 
 pub struct ReadOperation<V: RowValidator> {
@@ -30,7 +31,7 @@ pub type CounterReadOperation = ReadOperation<ExistsRowValidator>;
 pub type CounterReadOperationFactory = GenericReadOperationFactory<ExistsRowValidator>;
 
 impl<V: RowValidator> ReadOperation<V> {
-    async fn do_execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+    async fn do_execute(&self, row: &[CqlValue]) -> Result<OperationOutcome> {
         let pk = &row[0];
 
         // The tool works in a way, that it generates one row per partition.
@@ -45,7 +46,11 @@ impl<V: RowValidator> ReadOperation<V> {
             );
         }
 
-        let validation_result = self.row_validator.validate_row(row, result?);
+        // Read the coordinator before the result is consumed by validation.
+        let result = result?;
+        let coordinator = coordinator_of(&result);
+
+        let validation_result = self.row_validator.validate_row(row, result);
         if let Err(err) = validation_result.as_ref() {
             tracing::error!(
                 error = %err,
@@ -56,14 +61,14 @@ impl<V: RowValidator> ReadOperation<V> {
         validation_result
             .with_context(|| format!("Row with partition_key: {pk:?} could not be validated."))?;
 
-        Ok(ControlFlow::Continue(()))
+        Ok(OperationOutcome::proceed(coordinator))
     }
 }
 
 impl<V: RowValidator> CassandraStressOperation for ReadOperation<V> {
     type Factory = GenericReadOperationFactory<V>;
 
-    async fn execute(&self, row: &[CqlValue]) -> Result<ControlFlow<()>> {
+    async fn execute(&self, row: &[CqlValue]) -> Result<OperationOutcome> {
         self.do_execute(row).await
     }
 
