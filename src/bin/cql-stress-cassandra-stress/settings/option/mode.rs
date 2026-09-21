@@ -1,9 +1,12 @@
 use anyhow::{Context, Result};
 use scylla::client::{Compression, PoolSize};
+use scylla::routing::ShardAwarePortRange;
 
 use crate::settings::{
     param::{
-        types::{ConnectionsPerHost, ConnectionsPerShard},
+        types::{
+            ConnectionsPerHost, ConnectionsPerShard, FlagNumericOrBool, ShardAwarePortRangeParam,
+        },
         ParamsParser, SimpleParamHandle,
     },
     ParsePayload,
@@ -19,6 +22,8 @@ pub struct ModeOption {
     pub compression: Option<Compression>,
     pub user_credentials: Option<Credentials>,
     pub pool_size: PoolSize,
+    pub shard_aware_port_range: Option<ShardAwarePortRange>,
+    pub tcp_reuse_address: Option<bool>,
 }
 
 impl ModeOption {
@@ -50,6 +55,12 @@ impl ModeOption {
             println!("  Password: {}", creds.password);
         }
         println!("  Pool size: {:?}", self.pool_size);
+        if let Some(range) = &self.shard_aware_port_range {
+            println!("  Shard-aware port range: {range:?}");
+        }
+        if let Some(reuse) = self.tcp_reuse_address {
+            println!("  TCP SO_REUSEADDR: {reuse}");
+        }
     }
 
     fn from_handles(handles: ModeParamHandles) -> Result<ModeOption> {
@@ -67,11 +78,15 @@ impl ModeOption {
             Some(per_shard) => per_shard,
             None => handles.connections_per_host.get().unwrap(),
         };
+        let shard_aware_port_range = handles.shard_aware_port_range.get();
+        let tcp_reuse_address = handles.tcp_reuse_address.get();
 
         Ok(Self {
             compression,
             user_credentials,
             pool_size,
+            shard_aware_port_range,
+            tcp_reuse_address,
         })
     }
 }
@@ -82,6 +97,8 @@ struct ModeParamHandles {
     password: SimpleParamHandle<String>,
     connections_per_host: SimpleParamHandle<ConnectionsPerHost>,
     connections_per_shard: SimpleParamHandle<ConnectionsPerShard>,
+    shard_aware_port_range: SimpleParamHandle<ShardAwarePortRangeParam>,
+    tcp_reuse_address: SimpleParamHandle<FlagNumericOrBool>,
 }
 
 fn prepare_parser() -> (ParamsParser, ModeParamHandles) {
@@ -113,11 +130,30 @@ fn prepare_parser() -> (ParamsParser, ModeParamHandles) {
         "Number of connections per host",
         false,
     );
+    // Both knobs below lift the per-client-IP ceiling on shard-aware connections.
+    // The driver binds each shard-aware connection to a local port from a fixed range
+    // (49152..65535 by default) without SO_REUSEADDR, which caps one client IP at
+    // 16384 such connections across all nodes. The range only matters for a per-shard
+    // pool (the driver picks shard-aware ports only for `PoolSize::PerShard`), so it is
+    // absent from the `connectionsPerHost` group; SO_REUSEADDR is set on every
+    // connection socket and stays available in both.
+    let shard_aware_port_range = parser.simple_param(
+        "shardAwarePortRange=",
+        None,
+        "Inclusive local port range for shard-aware connections, e.g. 1024..65535 (default: 49152..65535; connectionsPerShard only)",
+        false,
+    );
+    let tcp_reuse_address = parser.simple_param(
+        "tcpReuseAddress=",
+        None,
+        "Set SO_REUSEADDR on connection sockets (true/false), so a local port can be reused towards each node",
+        false,
+    );
 
-    // $ ./cql-stress-cassandra-stress help -node
-    // Usage: -mode cql3 native [compression=?] [user=?] [password=?] [connectionsPerShard=?]
+    // $ ./cql-stress-cassandra-stress help -mode
+    // Usage: -mode cql3 native [compression=?] [user=?] [password=?] [connectionsPerShard=?] [shardAwarePortRange=?] [tcpReuseAddress=?]
     //  OR
-    // Usage: -mode cql3 native [compression=?] [user=?] [password=?] [connectionsPerHost=?]
+    // Usage: -mode cql3 native [compression=?] [user=?] [password=?] [connectionsPerHost=?] [tcpReuseAddress=?]
     parser.group(&[
         &cql3,
         &native,
@@ -125,6 +161,8 @@ fn prepare_parser() -> (ParamsParser, ModeParamHandles) {
         &username,
         &password,
         &connections_per_shard,
+        &shard_aware_port_range,
+        &tcp_reuse_address,
     ]);
     parser.group(&[
         &cql3,
@@ -133,6 +171,7 @@ fn prepare_parser() -> (ParamsParser, ModeParamHandles) {
         &username,
         &password,
         &connections_per_host,
+        &tcp_reuse_address,
     ]);
 
     (
@@ -143,6 +182,8 @@ fn prepare_parser() -> (ParamsParser, ModeParamHandles) {
             password,
             connections_per_host,
             connections_per_shard,
+            shard_aware_port_range,
+            tcp_reuse_address,
         },
     )
 }
@@ -156,6 +197,7 @@ mod tests {
         ModeOption,
     };
     use scylla::client::{Compression, PoolSize};
+    use scylla::routing::ShardAwarePortRange;
 
     #[test]
     fn mode_good_params_test() {
@@ -184,6 +226,80 @@ mod tests {
             PoolSize::PerShard(v) if v == NonZeroUsize::new(1).unwrap() => (),
             _ => panic!("Expected PoolSize::PerShard(1)"),
         }
+        assert!(params.shard_aware_port_range.is_none());
+        assert!(params.tcp_reuse_address.is_none());
+    }
+
+    #[test]
+    fn mode_good_params_test_with_port_range_and_reuse_address() {
+        let args = vec![
+            "connectionsPerShard=1200",
+            "shardAwarePortRange=1024..65535",
+            "tcpReuseAddress=true",
+        ];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+
+        let params = ModeOption::from_handles(handles).unwrap();
+        assert_eq!(Some(true), params.tcp_reuse_address);
+        // ShardAwarePortRange doesn't derive Eq/PartialEq outside the driver's own tests,
+        // so compare Debug output against a value built the same way.
+        assert_eq!(
+            format!("{:?}", ShardAwarePortRange::new(1024..=65535).unwrap()),
+            format!("{:?}", params.shard_aware_port_range.unwrap())
+        );
+    }
+
+    #[test]
+    fn mode_bad_params_port_range_and_reuse_address_test() {
+        let bad_args = [
+            // below the driver's 1024 floor
+            vec!["shardAwarePortRange=100..200"],
+            // empty range
+            vec!["shardAwarePortRange=65535..1024"],
+            // wrong separator
+            vec!["shardAwarePortRange=1024-65535"],
+            // out of u16
+            vec!["shardAwarePortRange=1024..70000"],
+            // takes a value: true/false/1/0
+            vec!["tcpReuseAddress"],
+            vec!["tcpReuseAddress=yes"],
+            // a per-host pool never binds a shard-aware port, so the range is meaningless there
+            vec!["connectionsPerHost=3", "shardAwarePortRange=1024..65535"],
+        ];
+        for args in bad_args {
+            let (parser, _handles) = prepare_parser();
+            assert!(
+                parser.parse(args.clone()).is_err(),
+                "expected {args:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn mode_reuse_address_accepts_bool_and_numeric_values() {
+        for (value, expected) in [("true", true), ("1", true), ("false", false), ("0", false)] {
+            let arg = format!("tcpReuseAddress={value}");
+            let (parser, handles) = prepare_parser();
+            assert!(parser.parse(vec![arg.as_str()]).is_ok());
+            assert_eq!(
+                Some(expected),
+                ModeOption::from_handles(handles).unwrap().tcp_reuse_address
+            );
+        }
+    }
+
+    #[test]
+    fn mode_good_params_test_with_connections_per_host_and_reuse_address() {
+        let args = vec!["connectionsPerHost=3", "tcpReuseAddress=true"];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+
+        let params = ModeOption::from_handles(handles).unwrap();
+        assert_eq!(Some(true), params.tcp_reuse_address);
+        assert!(params.shard_aware_port_range.is_none());
     }
 
     #[test]

@@ -8,6 +8,7 @@ use std::{
 use anyhow::{Context, Result};
 use cql_stress::distribution::{parse_description, SyntaxFlavor};
 use scylla::client::{Compression, PoolSize};
+use scylla::routing::ShardAwarePortRange;
 
 use crate::java_generate::distribution::{
     fixed::FixedDistributionFactory, normal::NormalDistributionFactory,
@@ -344,6 +345,28 @@ impl Parsable for ConnectionsPerShard {
     fn parse(s: &str) -> Result<Self::Parsed> {
         let value = <NonZeroUsize as Parsable>::parse(s)?;
         Ok(PoolSize::PerShard(value))
+    }
+}
+
+/// Inclusive local port range for shard-aware connections, e.g. `1024..65535`.
+/// The driver rejects empty ranges and ranges starting below 1024.
+pub struct ShardAwarePortRangeParam;
+
+impl Parsable for ShardAwarePortRangeParam {
+    type Parsed = ShardAwarePortRange;
+
+    fn parse(s: &str) -> Result<Self::Parsed> {
+        ensure_regex!(s, r"^[0-9]+\.\.[0-9]+$");
+        let (start, end) = s.split_once("..").unwrap();
+        let start = start
+            .parse::<u16>()
+            .with_context(|| format!("Invalid port range start: {start}"))?;
+        let end = end
+            .parse::<u16>()
+            .with_context(|| format!("Invalid port range end: {end}"))?;
+        ShardAwarePortRange::new(start..=end).with_context(|| {
+            format!("Invalid port range {s}; must be a non-empty sub-range of 1024..65535")
+        })
     }
 }
 

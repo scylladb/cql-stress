@@ -45,6 +45,19 @@ To validate that the data inserted in the previous step is correct, make use of 
 cql-stress-cassandra-stress read n=1000000 -pop seq=1..1000000 -rate threads=20 -node 127.0.0.1
 ```
 
+#### Many connections per client
+
+The driver binds each shard-aware connection to a local port from a fixed range (49152..65535 by default) and does not set `SO_REUSEADDR`, so a single client IP tops out at 16384 shard-aware connections across all nodes.
+
+```bash
+cql-stress-cassandra-stress mixed duration=1h -rate threads=8 -node 10.0.0.1 \
+    -mode cql3 native connectionsPerShard=1200 shardAwarePortRange=1024..65535 tcpReuseAddress=true
+```
+
+`shardAwarePortRange` widens the pool of local ports (up to ~64K) and applies to `connectionsPerShard` pools only, since a per-host pool never binds a shard-aware port. The driver strides the range by the node's shard count, so each shard gets about `range_size / nr_shards` ports and `connectionsPerShard` has to stay below that. `1024..65535` is 64512 ports: enough for 1200 connections per shard on nodes with up to 53 shards, but 5000 per shard only up to 12. Past the limit the driver falls back to the non-shard-aware port for that shard, so the pool fills slowly and churns excess connections, the ceiling this parameter exists to lift.
+
+`tcpReuseAddress=true` sets `SO_REUSEADDR` on every connection socket, so the same local port can carry one connection to every node; it works with either pool type. If you widen the range, also set `tcpReuseAddress=true`: otherwise cql-stress holds low ports as established client sockets, and a co-located service that restarts during the run (a metrics exporter on 9100, say) cannot rebind its own port. With `SO_REUSEADDR` on both sides the two do not conflict; Go and Java listeners set it by default, check that the co-located service does the same.
+
 #### User profiles
 
 Commands mentioned above are very limited. They do not, for example, allow to test other native types than `blob`.
