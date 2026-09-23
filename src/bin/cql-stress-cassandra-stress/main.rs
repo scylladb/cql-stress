@@ -188,6 +188,12 @@ async fn prepare_run(
     }
 
     builder = builder.pool_size(settings.mode.pool_size);
+    if let Some(range) = settings.mode.shard_aware_port_range.clone() {
+        builder = builder.shard_aware_local_port_range(range);
+    }
+    if let Some(reuse) = settings.mode.tcp_reuse_address {
+        builder = builder.tcp_reuse_address(reuse);
+    }
 
     let session = builder.build().await?;
     let session = Arc::new(session);

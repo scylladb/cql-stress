@@ -65,3 +65,6 @@ cassandra-stress write -errors delay-policy=
 cassandra-stress write -errors min-delay-ms=fast
 cassandra-stress write -errors foo
 # --- END: -errors negative cases ---
+cassandra-stress write -mode shardAwarePortRange=100..200
+cassandra-stress write -mode tcpReuseAddress
+cassandra-stress write -mode connectionsPerHost=3 shardAwarePortRange=1024..65535

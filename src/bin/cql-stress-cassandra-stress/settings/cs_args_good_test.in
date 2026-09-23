@@ -72,3 +72,4 @@ cassandra-stress write -errors skip-unsupported-columns
 cassandra-stress write -errors ignore skip-read-validation skip-unsupported-columns
 cassandra-stress write -errors ignore retries=3 delay-policy=fixed min-delay-ms=10 max-delay-ms=1000
 # --- END: -errors positive cases ---
+cassandra-stress read cl=QUORUM n=10000 -schema replication(factor=1, key=value) -rate threads=10 -col size=fixed(50) -pop dist=UNIFORM(1..10) -mode cql3 native connectionsPerShard=1200 shardAwarePortRange=1024..65535 tcpReuseAddress=true
