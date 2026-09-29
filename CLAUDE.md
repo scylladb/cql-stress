@@ -1,4 +1,4 @@
-# AGENTS.md
+# CLAUDE.md
 
 ## Project Overview
 
@@ -52,67 +52,32 @@ sudo apt install openjdk-11-jdk -y
 java --version
 ```
 
-#### Unit Tests
-```bash
-# Manual run all tests (requires Scylla instance running)
-docker compose -f docker/scylla-test/compose.yml up -d --wait
-cargo test -- --test-threads=1
+#### Running tests
 
-# Run specific Rust test by name
+The full verify sequence is in `## Commands`. Use these commands for a smaller run:
+
+```bash
+# Format the code
+cargo fmt --all
+
+# Run one Rust test by name (Scylla must be running)
 cargo test <test_name> -- --test-threads=1
 
-# Run tests with filter
-python3 tools/test_with_scylla.py --test-filter <filter>
+# test_with_scylla.py uses the same Scylla container as `## Commands`.
+# By default it removes the container after the run. Add `--teardown never` to keep it.
+# Run all Rust tests
+uv run tools/test_with_scylla.py
 
-# Using the automated test script with Docker (recommended)
-# Note: Requires Python 3, Docker and Docker Compose V2
-python3 tools/test_with_scylla.py
+# Run the Rust tests that match a filter
+uv run tools/test_with_scylla.py --test-filter <filter>
 
-# Build tests first (to verify compilation before starting Scylla)
-cargo build --tests --features "user-profile"
+# Run one integration test (after the release build in `## Commands`)
+PATH="$PWD/target/release:$PATH" uv run --with pytest --with scylla-driver \
+    pytest -s tools/cql-stress-cassandra-stress-ci.py::test_write_and_validate -v
 
-
-```
-
-#### Integration Tests
-```bash
-# Set up Python virtual environment (first time only)
-python3 -m venv venv
-source venv/bin/activate
-pip install pytest scylla-driver
-
-# Start Scylla for testing
-docker compose -f docker/scylla-test/compose.yml up -d --wait
-
-# Set custom Scylla URI if needed
-export SCYLLA_URI="127.0.0.1:9042"
-
-# Run Python integration tests (activate venv first if not already active)
-source venv/bin/activate
-pytest -s tools/cql-stress-cassandra-stress-ci.py
-
-# Run a single integration test (most basic example)
-source venv/bin/activate
-pytest -s tools/cql-stress-cassandra-stress-ci.py::test_write_and_validate -v
-
-# Run specific test with more verbose output
-pytest -s tools/cql-stress-cassandra-stress-ci.py::test_equal_db -v
-
-# Run all user profile tests
-pytest -s tools/cql-stress-cassandra-stress-ci.py -k "user" -v
-```
-
-### Code Quality
-```bash
-# Format code
-cargo fmt
-
-# Lint with clippy
-cargo clippy --tests --no-default-features -- -D warnings
-cargo clippy --tests --features "user-profile" -- -D warnings
-
-# Check compilation without building
-cargo check --all --all-targets
+# Run all user profile integration tests
+PATH="$PWD/target/release:$PATH" uv run --with pytest --with scylla-driver \
+    pytest -s tools/cql-stress-cassandra-stress-ci.py -k "user" -v
 ```
 
 ## Architecture
@@ -165,7 +130,9 @@ When compiled with the `user-profile` feature (default), supports custom schemas
 
 ### Cargo Features
 - `user-profile` (default): Enables support for custom user profiles in cassandra-stress frontend
-- To disable: `cargo build --no-default-features`
+- `strong-consistency` (off by default): Drives strongly consistent (Raft-per-tablet) keyspaces. It uses an unstable driver API that also needs `--cfg scylla_unstable`. `.cargo/config.toml` sets that cfg. When you set `RUSTFLAGS`, add it yourself.
+- `timerfd` (off by default): Uses Linux `timerfd` timers for the rate limiter
+- To disable the default features: `cargo build --no-default-features`
 
 ### Build Profiles
 - `dev`: Development build with minimal optimization (default)
@@ -198,3 +165,54 @@ cargo run --release --bin cql-stress-cassandra-stress -- \
     user profile=tools/util/profiles/cqlstress_text_profile.yaml \
     "ops(test_query=1)" n=10000 -rate threads=10 -node 127.0.0.1
 ```
+
+## Commands
+
+```bash
+# CI sets these flags for the whole job. One value for all commands keeps one build cache.
+export RUSTFLAGS="-D warnings --cfg scylla_unstable"
+
+# Lint
+cargo fmt --all -- --check
+cargo check --all --all-targets
+cargo clippy --tests --no-default-features -- -D warnings
+cargo clippy --tests --features "user-profile" -- -D warnings
+cargo clippy --all --all-targets --features "strong-consistency" -- -D warnings
+cargo clippy --tests --no-default-features --features "strong-consistency" -- -D warnings
+RUSTFLAGS="--cfg fetch_extended_version_info --cfg scylla_unstable" cargo clippy --tests -- -D warnings
+
+# Test (needs Scylla)
+docker compose -f docker/scylla-test/compose.yml up -d --wait
+cargo test --features "user-profile" -- --test-threads=1
+cargo test --features "user-profile,strong-consistency" -- --test-threads=1
+
+# Integration tests (need Java and the binary on PATH)
+cargo build --release --bin cql-stress-cassandra-stress
+PATH="$PWD/target/release:$PATH" uv run --with pytest --with scylla-driver \
+    pytest -s tools/cql-stress-cassandra-stress-ci.py
+```
+
+<!-- qatools-sdlc:begin -->
+## Development flow
+
+This repository uses the `qatools-sdlc` plugin. Every piece of work goes
+through its flow: `/qatools-sdlc:intent <KEY>`, then `/qatools-sdlc:spec` or
+`/qatools-sdlc:rca` for a bug, then `/qatools-sdlc:plan`, then the code.
+Commit each artifact before the stage that consumes it. A review works
+through `/qatools-sdlc:review`. File a Jira issue about our work with
+`/qatools-sdlc:issue`. It needs the Atlassian connector.
+The user may skip the flow for a very small fix when they say so. The pull
+request description then states the skip in one line.
+
+If the `/qatools-sdlc:*` skills are not available, stop and ask the user to
+run these two commands, then start a new session:
+
+    /plugin marketplace add git@github.com:scylladb/qatools.git
+    /plugin install qatools-sdlc@qatools
+
+Jira keys: `QATOOLS-<n>`. Task artifacts: `tasks/<KEY>/`, or
+`tasks/<PARENT>/<KEY>/` for a subtask. Read `docs/INDEX.md` before any task
+and follow the standards in `docs/standards/`. Suggest
+`/qatools-sdlc:standards-update` when a convention comes up that no standard
+holds. Verify sequence: section `Commands` of this file.
+<!-- qatools-sdlc:end -->
