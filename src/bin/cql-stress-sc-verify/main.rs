@@ -210,8 +210,8 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
             checked.stop();
         })
     };
-    // The controller must live as long as the run: dropping it stops the run at once.
-    let (_bulk_controller, bulk_run, bulk_stats) = match bulk {
+    // Dropping the controller asks bulk to stop, so it must live as long as the run.
+    let (bulk_controller, bulk_run, bulk_stats) = match bulk {
         Some((factory, stats)) => {
             let (controller, run) =
                 cql_stress::run::run(bulk_configuration(&checked.cli, factory, Some(duration)));
@@ -261,6 +261,9 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
             }
         }
     }
+    // The slots are done. After an early stop (exit 3) bulk must stop too, not run on to
+    // --duration; on a normal run its own --duration has already passed.
+    drop(bulk_controller);
     match recorder.finish() {
         Ok(Some(closed)) => {
             if let Some(checking) = checking.as_mut() {

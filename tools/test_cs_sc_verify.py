@@ -228,6 +228,39 @@ def run_both(node, session, keyspace: str, tmp_path):
         {row["verdict"] for row in rows}
 
 
+def run_both_early_stop(node, session, keyspace: str, tmp_path):
+    """--mode both: when the checked stream stops early (too many workload errors), bulk
+    stops with it, and the run exits 3 long before --duration."""
+    profile = tmp_path / "profile.yaml"
+    write_profile(profile, keyspace)
+    with profile.open("a") as f:
+        f.write("bulk_table: bulk\n")   # bulk keeps working when the checked table is gone
+    history = tmp_path / "history"
+    cmd = [BINARY, "--profile", str(profile), "--nodes", f"{node.ip}:{node.port}",
+           "--mode", "both", "--duration", "2m", "--bulk-threads", "4",
+           "--max-workload-errors", "1", "--checker", "off", "--readback", "off",
+           "--history-dir", str(history)]
+    print(" ".join(cmd))
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    rows_file = history / "rows.jsonl"
+    deadline = time.time() + 60
+    while time.time() < deadline and not (rows_file.exists() and rows_file.read_text().strip()):
+        time.sleep(0.2)
+    assert proc.poll() is None, "the run ended before the checked table was dropped"
+    # Every checked statement now fails as invalid: a workload error.
+    session.execute(f"DROP TABLE {keyspace}.reg")
+    dropped = time.time()
+    try:
+        out, err = proc.communicate(timeout=300)
+    finally:
+        proc.kill()
+    print(out[-3000:], err[-3000:], sep="\n")
+    took = time.time() - dropped
+    assert proc.returncode == 3, f"expected exit 3, got {proc.returncode}"
+    assert took < 60, f"exit 3 came {took:.0f} s after the break; bulk kept the run alive"
+    assert scv_lines(out, "end") == [{"t": "end", "exit": 3}], scv_lines(out, "end")
+
+
 def checker_bin() -> str:
     """porcupine_checker (porcupine_validator checker-v2) on PATH. A missing checker fails the
     test rather than skipping it, so a CI job without it cannot pass by checking nothing."""
