@@ -20,6 +20,7 @@ from test_cs_sc_verify import run_schema as run_sc_verify_schema
 from test_cs_sc_verify import run_verify_quiet as run_sc_verify_quiet
 from test_cs_sc_verify import run_stale_reads as run_sc_verify_stale_reads
 from test_cs_sc_verify import run_bulk as run_sc_verify_bulk
+from test_cs_sc_verify import run_bulk_report as run_sc_verify_bulk_report
 from test_cs_sc_verify import run_both as run_sc_verify_both
 from test_cs_sc_verify import run_both_early_stop as run_sc_verify_both_early_stop
 from test_cs_sc_verify import run_checker as run_sc_verify_checker
@@ -288,6 +289,13 @@ def test_strong_consistency_sc_verify_bulk(
         tmp_path):
     run_sc_verify_bulk(node=strong_consistency_node, session=strong_consistency_session,
                        keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_bulk_report(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_bulk_report(node=strong_consistency_node, session=strong_consistency_session,
+                              keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
 
 
 def test_strong_consistency_sc_verify_both(

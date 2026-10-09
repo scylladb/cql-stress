@@ -198,6 +198,29 @@ def run_bulk(node, session, keyspace: str, tmp_path):
     assert never["bulk_misses"] == 100, never
 
 
+def run_bulk_report(node, session, keyspace: str, tmp_path):
+    """--mode bulk rewrites report.json every --report-interval, not only at exit, so a
+    loader that SCT kills still leaves its counters."""
+    profile = write_profile(tmp_path / "profile.yaml", keyspace)
+    history = tmp_path / "history"
+    cmd = [BINARY, "--profile", profile, "--nodes", f"{node.ip}:{node.port}",
+           "--mode", "bulk", "--history-dir", str(history), "--duration", "5s",
+           "--report-interval", "1s", "--bulk-op", "write"]
+    print(" ".join(cmd))
+    report = history / "report.json"
+    seen = []
+    with open(tmp_path / "out.txt", "w") as out:
+        proc = subprocess.Popen(cmd, stdout=out, stderr=subprocess.STDOUT)
+        while proc.poll() is None:
+            if report.exists():
+                seen.append(json.loads(report.read_text())["exit"])
+            time.sleep(0.1)
+    print((tmp_path / "out.txt").read_text())
+    assert proc.returncode == 0, f"bulk exited {proc.returncode}"
+    assert None in seen, f"no report.json before exit: {seen[-3:]}"
+    assert json.loads(report.read_text())["exit"] == 0
+
+
 def run_both(node, session, keyspace: str, tmp_path):
     """Checked slots and bulk load together: every checked row is checked ok."""
     profile = write_profile(tmp_path / "profile.yaml", keyspace)

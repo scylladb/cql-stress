@@ -290,11 +290,30 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
         }
     }
     if let Some(checking) = checking.as_mut() {
-        checking.drain(&checked, &mut recorder, &mut totals).await;
+        checking
+            .drain(
+                &checked,
+                &mut recorder,
+                &mut totals,
+                &mut reports,
+                bulk_stats.as_deref(),
+            )
+            .await;
     }
     // After the checker: every retired row read back once (spec §12.2).
     if checked.cli.readback == Readback::On {
-        match readback::read_back(&checked, retired, &history_dir).await {
+        let read_back = readback::read_back(&checked, retired, &history_dir);
+        tokio::pin!(read_back);
+        // report.json stays current while the rows are read (spec §14).
+        let result = loop {
+            tokio::select! {
+                result = &mut read_back => break result,
+                _ = reports.tick() => {
+                    write_report(&checked, bulk_stats.as_deref(), &mut totals, &history_dir, None);
+                }
+            }
+        };
+        match result {
             Ok(summary) => {
                 report::print(&Scv::Readback {
                     rows: summary.rows,
@@ -372,6 +391,24 @@ async fn run_bulk(cli: Cli, profile: Profile, session: Session) -> Result<()> {
         bulk_pop: Some(&cli.bulk_pop),
     });
 
+    // report.json is rewritten every --report-interval and at exit (spec §14), so a loader
+    // that SCT kills still leaves its counters.
+    let write_bulk_report = |exit: Option<u8>| -> Report {
+        let report = Report {
+            bulk_ops: stats.ops.load(Ordering::Relaxed),
+            bulk_misses: stats.misses.load(Ordering::Relaxed),
+            bulk_errors: stats.errors.load(Ordering::Relaxed),
+            exit,
+            ..Report::default()
+        };
+        if let Err(err) = std::fs::create_dir_all(&cli.history_dir)
+            .map_err(anyhow::Error::from)
+            .and_then(|()| report.write(&cli.history_dir))
+        {
+            tracing::warn!("failed to write report.json: {err:#}");
+        }
+        report
+    };
     let (_controller, run) = cql_stress::run::run(bulk_configuration(&cli, factory, cli.duration));
     tokio::pin!(run);
     let mut reports = tokio::time::interval(cli.report_interval);
@@ -388,6 +425,7 @@ async fn run_bulk(cli: Cli, profile: Profile, session: Session) -> Result<()> {
                     ..IntervalStats::default()
                 }));
                 last_report = Instant::now();
+                write_bulk_report(None);
             }
         }
     };
@@ -398,19 +436,7 @@ async fn run_bulk(cli: Cli, profile: Profile, session: Session) -> Result<()> {
             3
         }
     };
-    let report = Report {
-        bulk_ops: stats.ops.load(Ordering::Relaxed),
-        bulk_misses: stats.misses.load(Ordering::Relaxed),
-        bulk_errors: stats.errors.load(Ordering::Relaxed),
-        exit: Some(exit),
-        ..Report::default()
-    };
-    if let Err(err) = std::fs::create_dir_all(&cli.history_dir)
-        .map_err(anyhow::Error::from)
-        .and_then(|()| report.write(&cli.history_dir))
-    {
-        tracing::warn!("failed to write report.json: {err:#}");
-    }
+    let report = write_bulk_report(Some(exit));
     println!(
         "Bulk: {} operations, {} reads found no row, {} failed attempts",
         report.bulk_ops, report.bulk_misses, report.bulk_errors
@@ -595,8 +621,15 @@ impl Checking {
     }
 
     /// The end of the run: the checker gets until `--checker-deadline` for what is queued;
-    /// files left are skipped, canaries left are dropped.
-    async fn drain(&mut self, checked: &Checked, recorder: &mut Recorder, totals: &mut Report) {
+    /// files left are skipped, canaries left are dropped. report.json stays current meanwhile.
+    async fn drain(
+        &mut self,
+        checked: &Checked,
+        recorder: &mut Recorder,
+        totals: &mut Report,
+        reports: &mut tokio::time::Interval,
+        bulk: Option<&BulkStats>,
+    ) {
         self.queue.close();
         let deadline = tokio::time::sleep(checked.cli.checker_deadline);
         tokio::pin!(deadline);
@@ -607,6 +640,9 @@ impl Checking {
                     self.verdicts(checked, recorder, totals, seq, verdicts);
                 }
                 _ = &mut deadline => break,
+                _ = reports.tick() => {
+                    write_report(checked, bulk, totals, &checked.cli.history_dir, None);
+                }
             }
         }
         self.queue.abort().await;
