@@ -563,10 +563,7 @@ impl Checking {
             seq,
             path: closed.path.clone(),
             rows: closed.rows.len(),
-            archive_dir: checked
-                .cli
-                .history_dir
-                .join(format!("archive/{}", closed.seq)),
+            archive_dir: recorder.archive_dir(seq),
         };
         match self.queue.submit(job) {
             Ok(()) => {
@@ -575,31 +572,25 @@ impl Checking {
             Err(_) => skip(checked, recorder, totals, closed),
         }
 
-        // A canary is named after the file it was made from, so its name is unique across
-        // restarts too.
         if let Some(canary) = canary {
-            let n = seq;
-            let path = checked
-                .cli
-                .history_dir
-                .join(format!("sealed/canary-{n}.jsonl"));
+            let path = recorder.canary_path(seq);
             if let Err(err) = std::fs::write(&path, canary) {
                 tracing::warn!("failed to write canary {}: {err}", path.display());
                 return;
             }
             let job = Job {
-                seq: CANARY_SEQ + n,
+                seq: CANARY_SEQ + seq,
                 path: path.clone(),
                 rows: 1,
-                archive_dir: checked.cli.history_dir.join(format!("archive/canary-{n}")),
+                archive_dir: recorder.archive_dir(history::canary_name(seq)),
             };
             match self.queue.submit(job) {
                 Ok(()) => {
-                    self.canaries.insert(CANARY_SEQ + n, path);
+                    self.canaries.insert(CANARY_SEQ + seq, path);
                 }
                 Err(_) => {
                     totals.canaries_skipped += 1;
-                    let _ = std::fs::remove_file(&path);
+                    discard_canary(recorder, seq, &path);
                 }
             }
         }
@@ -614,7 +605,14 @@ impl Checking {
         verdicts: FileVerdicts,
     ) {
         if let Some(path) = self.canaries.remove(&seq) {
-            canary_verdict(checked, totals, seq - CANARY_SEQ, &path, &verdicts);
+            canary_verdict(
+                checked,
+                recorder,
+                totals,
+                seq - CANARY_SEQ,
+                &path,
+                &verdicts,
+            );
         } else if let Some(closed) = self.pending.remove(&seq) {
             file_verdicts(checked, recorder, totals, closed, &verdicts);
         }
@@ -651,9 +649,9 @@ impl Checking {
         for closed in left {
             skip(checked, recorder, totals, closed);
         }
-        for (_, path) in self.canaries.drain() {
+        for (seq, path) in self.canaries.drain() {
             totals.canaries_skipped += 1;
-            let _ = std::fs::remove_file(path);
+            discard_canary(recorder, seq - CANARY_SEQ, &path);
         }
     }
 }
@@ -662,17 +660,16 @@ impl Checking {
 /// a known-bad history, so none of its `ok`s can be trusted: `verifier-broken`, exit 1.
 fn canary_verdict(
     checked: &Checked,
+    recorder: &Recorder,
     totals: &mut Report,
     n: u64,
     path: &Path,
     verdicts: &FileVerdicts,
 ) {
-    let archive = checked.cli.history_dir.join(format!("archive/canary-{n}"));
     if !verdicts.ran {
         // The checker could not even start: no answer, so no evidence either way.
         totals.canaries_skipped += 1;
-        let _ = std::fs::remove_file(path);
-        let _ = std::fs::remove_dir_all(&archive);
+        discard_canary(recorder, n, path);
         return;
     }
     let result = match verdicts.per_key.first() {
@@ -683,8 +680,7 @@ fn canary_verdict(
     report::print(&Scv::Canary { result });
     if result == "illegal" {
         totals.canaries_ok += 1;
-        let _ = std::fs::remove_file(path);
-        let _ = std::fs::remove_dir_all(&archive);
+        discard_canary(recorder, n, path);
         return;
     }
     totals.canaries_failed += 1;
@@ -693,8 +689,16 @@ fn canary_verdict(
          order can explain; it cannot be trusted to reject a real violation"
     );
     checked.exit.raise(1);
-    let _ = std::fs::create_dir_all(&archive);
-    let _ = std::fs::rename(path, archive.join(format!("canary-{n}.jsonl")));
+    if let Err(err) = recorder.archive(history::canary_name(n), path) {
+        eprintln!("error: {err:#}");
+    }
+}
+
+/// Deletes a canary that is not evidence, with whatever the checker wrote about it.
+fn discard_canary(recorder: &Recorder, n: u64, path: &Path) {
+    if let Err(err) = recorder.discard(history::canary_name(n), path) {
+        tracing::warn!("{err:#}");
+    }
 }
 
 /// Writes the rows' final lines; deletes a file whose rows were all ok, archives any other.

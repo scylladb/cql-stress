@@ -6,6 +6,7 @@
 //! been applied at any time after it started". Each row begins with a comment line naming
 //! its key, so a check file on its own says which row every `key` is.
 
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -485,14 +486,25 @@ impl Recorder {
         Ok(closed)
     }
 
-    /// Moves a check file into `archive/<seq>/` and returns that directory, relative to
-    /// `--history-dir`. A file already copied there (a violation) only leaves `sealed/`.
-    pub fn archive(&self, seq: u64, path: &Path) -> Result<String> {
-        let relative = format!("archive/{seq}");
+    /// Where the checker writes about check file `name` (its sequence number, or a
+    /// [`canary_name`]), and where the file is kept if it is archived: `archive/<name>/`.
+    pub fn archive_dir(&self, name: impl Display) -> PathBuf {
+        self.dir.join(archive_relative(name))
+    }
+
+    /// The canary made from check file `seq`: `sealed/canary-<seq>.jsonl`.
+    pub fn canary_path(&self, seq: u64) -> PathBuf {
+        self.sealed_path(canary_name(seq))
+    }
+
+    /// Moves check file `name` into `archive/<name>/` and returns that directory, relative
+    /// to `--history-dir`. A file already copied there (a violation) only leaves `sealed/`.
+    pub fn archive(&self, name: impl Display, path: &Path) -> Result<String> {
+        let relative = archive_relative(&name);
         let dir = self.dir.join(&relative);
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("Failed to create {}", dir.display()))?;
-        let target = dir.join(format!("{seq}.jsonl"));
+        let target = dir.join(format!("{name}.jsonl"));
         if target.exists() {
             std::fs::remove_file(path)
         } else {
@@ -502,11 +514,11 @@ impl Recorder {
         Ok(relative)
     }
 
-    /// Deletes a check file whose rows were all ok, with the directory the checker made.
-    pub fn discard(&self, seq: u64, path: &Path) -> Result<()> {
+    /// Deletes check file `name`, with the directory the checker made for it.
+    pub fn discard(&self, name: impl Display, path: &Path) -> Result<()> {
         std::fs::remove_file(path)
             .with_context(|| format!("Failed to delete {}", path.display()))?;
-        let dir = self.dir.join(format!("archive/{seq}"));
+        let dir = self.archive_dir(name);
         if dir.exists() {
             std::fs::remove_dir_all(&dir)
                 .with_context(|| format!("Failed to delete {}", dir.display()))?;
@@ -521,7 +533,7 @@ impl Recorder {
         let path = file.finish()?;
         let mut recorded = Recorded::default();
         if archive {
-            let relative = format!("archive/{seq}");
+            let relative = archive_relative(seq);
             let dir = self.dir.join(&relative);
             std::fs::create_dir_all(&dir)
                 .with_context(|| format!("Failed to create {}", dir.display()))?;
@@ -539,9 +551,20 @@ impl Recorder {
         Ok(recorded)
     }
 
-    fn sealed_path(&self, seq: u64) -> PathBuf {
-        self.dir.join("sealed").join(format!("{seq}.jsonl"))
+    fn sealed_path(&self, name: impl Display) -> PathBuf {
+        self.dir.join("sealed").join(format!("{name}.jsonl"))
     }
+}
+
+/// The name of the canary made from check file `seq`. It is unique across restarts too,
+/// because a restart never reuses a file number.
+pub fn canary_name(seq: u64) -> String {
+    format!("canary-{seq}")
+}
+
+/// `archive/<name>`, relative to `--history-dir`.
+fn archive_relative(name: impl Display) -> String {
+    format!("archive/{name}")
 }
 
 #[cfg(test)]
