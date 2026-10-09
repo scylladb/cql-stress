@@ -18,7 +18,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::cli::Cli;
 use crate::history::OpRecord;
-use crate::invariants::{Expected, RowState, Seen, Violation, WriteEnd};
+use crate::invariants::{Expected, Floors, RowState, Seen, Violation, WriteEnd};
 use crate::keys::{GenMinter, RowKey};
 use crate::ops::{Failure, OpError, Statements};
 use crate::report::Stats;
@@ -288,10 +288,120 @@ fn superseded(acked: &[Acked]) -> Option<&Acked> {
         .map(|(_, write)| write)
 }
 
+/// A write that returned: its id, the cells it set, and when it was called and returned.
+#[derive(Clone, Copy, Debug)]
+struct WriteOp {
+    wid: u64,
+    mask: u8,
+    start_ns: u64,
+    end_ns: u64,
+}
+
 impl Round {
+    /// A fresh row's round, whose budget waits for the tick after `tick`.
+    fn new(cells: usize, tick: u64, start_ns: u64) -> Self {
+        Self {
+            state: RowState::new(cells),
+            ops: Vec::new(),
+            budget: Budget::new(tick),
+            started: 0,
+            reads: 0,
+            writes_ok: 0,
+            writes_indet: 0,
+            errors: 0,
+            violations: Vec::new(),
+            last_ok_ns: start_ns,
+            max_gap_ns: 0,
+            stop: None,
+            first_seen: None,
+            acked: Vec::new(),
+        }
+    }
+
     fn succeeded(&mut self, end_ns: u64) {
         self.max_gap_ns = self.max_gap_ns.max(end_ns.saturating_sub(self.last_ok_ns));
         self.last_ok_ns = self.last_ok_ns.max(end_ns);
+    }
+
+    /// Records how a write by `client` ended (spec §9). A workload error is counted and
+    /// burned but never recorded.
+    fn end_write(&mut self, client: usize, op: WriteOp, outcome: Result<(), Failure>) {
+        let WriteOp {
+            wid,
+            mask,
+            start_ns,
+            end_ns,
+        } = op;
+        match outcome {
+            Ok(()) => {
+                self.state.end_write(wid, WriteEnd::Ok(end_ns));
+                self.writes_ok += 1;
+                self.succeeded(end_ns);
+                self.acked.push(Acked {
+                    wid,
+                    mask,
+                    call_ns: start_ns,
+                    end_ns,
+                });
+            }
+            Err(Failure::Indeterminate) => {
+                self.state.end_write(wid, WriteEnd::Indeterminate);
+                self.writes_indet += 1;
+            }
+            Err(Failure::Fail) => {
+                self.state.end_write(wid, WriteEnd::Fail(end_ns));
+                self.errors += 1;
+            }
+            Err(Failure::WorkloadError | Failure::ReadFailed) => {
+                // Rejected outright: never recorded. Burned, so a cell showing it is a
+                // phantom.
+                self.state.end_write(wid, WriteEnd::Fail(end_ns));
+                self.errors += 1;
+                return;
+            }
+        }
+        let status = self.state.status(wid);
+        self.ops.push(OpRecord::Write {
+            client,
+            wid,
+            mask,
+            start_ns,
+            status,
+        });
+    }
+
+    /// Records a read by `client` that saw `seen`, or failed (`None`): a failed read is
+    /// counted and never recorded (spec §9). Returns what the read saw, served stale for the
+    /// share `fault`, and the violations it exposed against `floors`.
+    fn end_read(
+        &mut self,
+        client: usize,
+        floors: &Floors,
+        start_ns: u64,
+        end_ns: u64,
+        seen: Option<Vec<Seen>>,
+        fault: f64,
+    ) -> Option<(Vec<Seen>, Vec<Violation>)> {
+        let Some(mut seen) = seen else {
+            self.errors += 1;
+            return None;
+        };
+        match &self.first_seen {
+            None => self.first_seen = Some(seen.clone()),
+            Some(first) if fault > 0.0 && random_bool(fault) => seen = first.clone(),
+            Some(_) => {}
+        }
+        let violations = self.state.check_read(floors, &seen);
+        self.state.end_read(&seen);
+        self.reads += 1;
+        self.succeeded(end_ns);
+        self.ops.push(OpRecord::Read {
+            client,
+            start_ns,
+            end_ns,
+            seen: seen.clone(),
+        });
+        Some((seen, violations))
     }
 }
 
@@ -367,22 +477,7 @@ async fn run_round(
     let wall_start_ms = unix_ms();
     let row_start = Instant::now();
     let start_ns = checked.now_ns();
-    let round = Mutex::new(Round {
-        state: RowState::new(checked.cells),
-        ops: Vec::new(),
-        budget: Budget::new(*ticks.borrow()),
-        started: 0,
-        reads: 0,
-        writes_ok: 0,
-        writes_indet: 0,
-        errors: 0,
-        violations: Vec::new(),
-        last_ok_ns: start_ns,
-        max_gap_ns: 0,
-        stop: None,
-        first_seen: None,
-        acked: Vec::new(),
-    });
+    let round = Mutex::new(Round::new(checked.cells, *ticks.borrow(), start_ns));
 
     let clients = (0..checked.cli.clients_per_row)
         .map(|client| run_client(checked, &round, &key, client, ticks.clone(), row_start));
@@ -478,14 +573,13 @@ async fn write(checked: &Checked, round: &Mutex<Round>, key: &RowKey, client: us
         .await;
     let end_ns = checked.now_ns();
 
-    let replay = record_write(
-        checked,
-        round,
-        client,
-        (wid, mask),
-        (start_ns, end_ns),
-        result,
-    );
+    let op = WriteOp {
+        wid,
+        mask,
+        start_ns,
+        end_ns,
+    };
+    let replay = record_write(checked, round, client, op, result);
     // `--fault-replay-writes`: the older write again, unrecorded, whatever it returns.
     if let Some(old) = replay {
         let _ = checked
@@ -506,63 +600,36 @@ fn record_write(
     checked: &Checked,
     round: &Mutex<Round>,
     client: usize,
-    (wid, mask): (u64, u8),
-    (start_ns, end_ns): (u64, u64),
+    op: WriteOp,
     result: Result<(), OpError>,
 ) -> Option<Acked> {
     let mut round = round.lock().unwrap();
-    let mut replay = None;
+    round.end_write(
+        client,
+        op,
+        result.as_ref().map(|_| ()).map_err(|error| error.class),
+    );
     match result {
         Ok(()) => {
-            round.state.end_write(wid, WriteEnd::Ok(end_ns));
-            round.writes_ok += 1;
-            round.succeeded(end_ns);
-            checked.stats.write(Duration::from_nanos(end_ns - start_ns));
-            round.acked.push(Acked {
-                wid,
-                mask,
-                call_ns: start_ns,
-                end_ns,
-            });
+            checked
+                .stats
+                .write(Duration::from_nanos(op.end_ns - op.start_ns));
             let fault = checked.cli.fault_replay_writes;
             if fault > 0.0 && random_bool(fault) {
-                replay = superseded(&round.acked).copied();
+                return superseded(&round.acked).copied();
             }
         }
-        Err(error) => {
-            match error.class {
-                Failure::Indeterminate => {
-                    round.state.end_write(wid, WriteEnd::Indeterminate);
-                    round.writes_indet += 1;
-                    checked.stats.write_indeterminate();
-                }
-                Failure::Fail => {
-                    round.state.end_write(wid, WriteEnd::Fail(end_ns));
-                    round.errors += 1;
-                    checked.stats.failed();
-                }
-                Failure::WorkloadError | Failure::ReadFailed => {
-                    // Rejected outright: never recorded. Burned, so a cell showing it is a
-                    // phantom.
-                    round.state.end_write(wid, WriteEnd::Fail(end_ns));
-                    round.errors += 1;
-                    checked.stats.failed();
-                    drop(round);
-                    checked.workload_error(&error);
-                    return None;
-                }
+        Err(error) => match error.class {
+            Failure::Indeterminate => checked.stats.write_indeterminate(),
+            Failure::Fail => checked.stats.failed(),
+            Failure::WorkloadError | Failure::ReadFailed => {
+                checked.stats.failed();
+                drop(round);
+                checked.workload_error(&error);
             }
-        }
+        },
     }
-    let status = round.state.status(wid);
-    round.ops.push(OpRecord::Write {
-        client,
-        wid,
-        mask,
-        start_ns,
-        status,
-    });
-    replay
+    None
 }
 
 /// One read, recorded and checked. Returns what it saw; `None` when it failed and was not
@@ -579,19 +646,13 @@ async fn read(
     let result = checked.statements.read(&checked.session, key).await;
     let end_ns = checked.now_ns();
 
-    let mut guard = round.lock().unwrap();
-    let round = &mut *guard;
-    match result {
-        Ok(mut seen) => {
-            match &round.first_seen {
-                None => round.first_seen = Some(seen.clone()),
-                Some(first) if fault > 0.0 && random_bool(fault) => seen = first.clone(),
-                Some(_) => {}
-            }
-            let violations = round.state.check_read(&floors, &seen);
-            round.state.end_read(&seen);
-            round.reads += 1;
-            round.succeeded(end_ns);
+    let (seen, error) = match result {
+        Ok(seen) => (Some(seen), None),
+        Err(error) => (None, Some(error)),
+    };
+    let mut round = round.lock().unwrap();
+    match round.end_read(client, &floors, start_ns, end_ns, seen, fault) {
+        Some((seen, violations)) => {
             checked.stats.read(Duration::from_nanos(end_ns - start_ns));
             let wall_ms = unix_ms();
             for violation in violations {
@@ -602,19 +663,12 @@ async fn read(
                 );
                 round.violations.push(Detected { violation, wall_ms });
             }
-            round.ops.push(OpRecord::Read {
-                client,
-                start_ns,
-                end_ns,
-                seen: seen.clone(),
-            });
             Some(seen)
         }
-        Err(error) => {
-            round.errors += 1;
+        None => {
             checked.stats.failed();
-            drop(guard);
-            if error.class == Failure::WorkloadError {
+            drop(round);
+            if let Some(error) = error.filter(|error| error.class == Failure::WorkloadError) {
                 checked.workload_error(&error);
             }
             None
@@ -746,6 +800,127 @@ mod tests {
             assert_eq!(write_mask(3, 1.0), 0b111);
             assert_eq!(write_mask(1, 0.0), 0b1, "one cell: always a full insert");
         }
+    }
+
+    /// How each outcome class of a write becomes a history record and counters (spec §9):
+    /// a workload error burns the wid like `fail` but is never recorded.
+    #[test]
+    fn a_write_outcome_is_recorded_by_its_class_test() {
+        use crate::invariants::WriteStatus;
+        // Outcome; the status of the wid; recorded; writes_ok, writes_indet, errors.
+        let cases = [
+            (Ok(()), WriteStatus::Ok(20), true, (1, 0, 0)),
+            (
+                Err(Failure::Indeterminate),
+                WriteStatus::Indeterminate,
+                true,
+                (0, 1, 0),
+            ),
+            (Err(Failure::Fail), WriteStatus::Fail(20), true, (0, 0, 1)),
+            (
+                Err(Failure::WorkloadError),
+                WriteStatus::Fail(20),
+                false,
+                (0, 0, 1),
+            ),
+        ];
+        for (outcome, status, recorded, counters) in cases {
+            let mut round = Round::new(2, 0, 0);
+            let wid = round.state.begin_write(0b01, 10);
+            let op = WriteOp {
+                wid,
+                mask: 0b01,
+                start_ns: 10,
+                end_ns: 20,
+            };
+            round.end_write(3, op, outcome);
+            assert_eq!(round.state.status(wid), status, "{outcome:?}");
+            let ops: Vec<_> = round
+                .ops
+                .iter()
+                .map(|op| match op {
+                    OpRecord::Write {
+                        client,
+                        wid,
+                        mask,
+                        start_ns,
+                        status,
+                    } => (*client, *wid, *mask, *start_ns, *status),
+                    OpRecord::Read { .. } => panic!("a write recorded a read"),
+                })
+                .collect();
+            let expected: Vec<_> = recorded
+                .then_some((3, wid, 0b01, 10, status))
+                .into_iter()
+                .collect();
+            assert_eq!(ops, expected, "{outcome:?}");
+            assert_eq!(
+                (round.writes_ok, round.writes_indet, round.errors),
+                counters,
+                "{outcome:?}"
+            );
+            assert_eq!(round.acked.len() as u64, counters.0, "{outcome:?}");
+        }
+    }
+
+    #[test]
+    fn a_read_outcome_is_recorded_test() {
+        let mut round = Round::new(1, 0, 0);
+        let floors = round.state.snapshot();
+        // Wid 1 was never issued: INV-0.
+        let (seen, violations) = round
+            .end_read(2, &floors, 30, 40, Some(vec![Seen::Wid(1)]), 0.0)
+            .unwrap();
+        assert_eq!(seen, [Seen::Wid(1)]);
+        assert_eq!(
+            violations,
+            [Violation {
+                kind: crate::invariants::Inv::Inv0,
+                cell: 0
+            }]
+        );
+        assert!(matches!(
+            &round.ops[..],
+            [OpRecord::Read { client: 2, start_ns: 30, end_ns: 40, seen }] if seen == &[Seen::Wid(1)]
+        ));
+        assert_eq!((round.reads, round.errors, round.last_ok_ns), (1, 0, 40));
+
+        // A failed read is counted, never recorded.
+        assert!(round.end_read(2, &floors, 50, 60, None, 0.0).is_none());
+        assert_eq!((round.reads, round.errors, round.ops.len()), (1, 1, 1));
+
+        // `--fault-stale-reads`: a later read is served what the first one saw.
+        let (seen, _) = round
+            .end_read(2, &floors, 70, 80, Some(vec![Seen::Null]), 1.0)
+            .unwrap();
+        assert_eq!(seen, [Seen::Wid(1)]);
+    }
+
+    /// The `max_indeterminate`-th indeterminate write seals the row early.
+    #[test]
+    fn indeterminate_writes_stop_the_row_test() {
+        let limits = Limits {
+            ops: 200,
+            time: Duration::from_secs(30),
+            indeterminate: 3,
+        };
+        let mut round = Round::new(1, 0, 0);
+        for n in 0..limits.indeterminate {
+            let stop = should_stop(&limits, n, Duration::ZERO, round.writes_indet, false);
+            assert_eq!(stop, None, "after {n} indeterminate writes");
+            let wid = round.state.begin_write(1, n);
+            let op = WriteOp {
+                wid,
+                mask: 1,
+                start_ns: n,
+                end_ns: n + 1,
+            };
+            round.end_write(0, op, Err(Failure::Indeterminate));
+        }
+        assert_eq!(
+            should_stop(&limits, 3, Duration::ZERO, round.writes_indet, false),
+            Some(StopReason::Indeterminate)
+        );
     }
 
     #[test]
