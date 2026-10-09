@@ -301,11 +301,18 @@ impl Statements {
             .cells
             .iter()
             .zip(row.columns)
-            .map(|(&cell_type, value)| match value {
+            .enumerate()
+            .map(|(cell, (&cell_type, value))| match value {
                 None => Seen::Null,
                 Some(value) => match decode(cell_type, self.size(cell_type), &value) {
                     Ok(wid) => Seen::Wid(wid),
-                    Err(_) => Seen::Undecodable,
+                    Err(error) => {
+                        // The raw value is the only clue to an INV-0 or a phantom, and the
+                        // cluster is gone after the run; cut so a large blob cannot flood the log.
+                        let error: String = error.to_string().chars().take(200).collect();
+                        tracing::warn!("pk {} gen {} c{cell}: {error}", key.pk, key.gen);
+                        Seen::Undecodable
+                    }
                 },
             })
             .collect())
