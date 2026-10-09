@@ -16,9 +16,8 @@ mod readback;
 mod report;
 mod slot;
 mod startup;
+mod verdicts;
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -32,14 +31,15 @@ use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 
 use bulk::{BulkFactory, BulkStats};
-use checker::{CheckQueue, CheckerConfig, FileVerdicts, Job, RowResult};
+use checker::{CheckQueue, CheckerConfig, FileVerdicts};
 use cli::{Checker, Cli, Mode, Readback};
-use history::{ClosedFile, Recorder};
+use history::Recorder;
 use keys::GenMinter;
 use profile::Profile;
 use readback::Retired;
 use report::{IntervalStats, Report, Scv};
-use slot::{Checked, SealedRow};
+use slot::Checked;
+use verdicts::Verdicts;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -120,7 +120,7 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
         .duration
         .expect("--mode verify and --mode both require --duration");
     let with_checker = cli.checker == Checker::On;
-    let mut recorder = Recorder::new(
+    let recorder = Recorder::new(
         &cli.history_dir,
         profile.cells.len(),
         cli.check_rows,
@@ -128,8 +128,8 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
         with_checker,
     )
     .unwrap_or_else(|err| exit_setup_failure(err));
-    let mut checking = with_checker.then(|| Checking {
-        queue: CheckQueue::start(
+    let mut queue = with_checker.then(|| {
+        CheckQueue::start(
             CheckerConfig {
                 bin: cli.checker_bin.clone(),
                 timeout: cli.checker_timeout,
@@ -139,10 +139,7 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
             },
             cli.checker_workers,
             cli.queue_max,
-        ),
-        pending: HashMap::new(),
-        canaries: HashMap::new(),
-        files: 0,
+        )
     });
     let checked = Arc::new(Checked::new(
         Arc::new(session),
@@ -221,7 +218,7 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
     };
 
     let history_dir = checked.cli.history_dir.clone();
-    let mut totals = Report::default();
+    let mut verdicts = Verdicts::new(recorder);
     let mut retired: Vec<Retired> = Vec::new();
     let mut reports = tokio::time::interval(checked.cli.report_interval);
     reports.tick().await; // the first tick is immediate
@@ -237,16 +234,14 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
                         start_ms: row.wall_start_ms,
                     });
                 }
-                if let (Some(closed), Some(checking)) =
-                    (record(&checked, &mut recorder, &mut totals, row), checking.as_mut())
+                if let (Some(closed), Some(queue)) =
+                    (verdicts.record(&checked, row), queue.as_ref())
                 {
-                    checking.submit(&checked, &mut recorder, &mut totals, closed);
+                    verdicts.submit(&checked, queue, closed);
                 }
             }
-            Some((seq, verdicts)) = next_verdicts(&mut checking) => {
-                if let Some(checking) = checking.as_mut() {
-                    checking.verdicts(&checked, &mut recorder, &mut totals, seq, verdicts);
-                }
+            Some((seq, file_verdicts)) = next_verdicts(&mut queue) => {
+                verdicts.verdicts(&checked, seq, file_verdicts);
             }
             _ = reports.tick() => {
                 let elapsed = last_report.elapsed();
@@ -254,20 +249,20 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
                 if let Some(stats) = &bulk_stats {
                     interval.bulk_ops_s = stats.take_interval() as f64 / elapsed.as_secs_f64();
                 }
-                interval.queue = checking.as_ref().map_or(0, |checking| checking.queue.waiting());
+                interval.queue = queue.as_ref().map_or(0, CheckQueue::waiting);
                 last_report = Instant::now();
                 report::print(&Scv::Stats(interval));
-                write_report(&checked, bulk_stats.as_deref(), &mut totals, &history_dir, None);
+                verdicts.write_report(&checked, bulk_stats.as_deref(), None);
             }
         }
     }
     // The slots are done. After an early stop (exit 3) bulk must stop too, not run on to
     // --duration; on a normal run its own --duration has already passed.
     drop(bulk_controller);
-    match recorder.finish() {
+    match verdicts.recorder.finish() {
         Ok(Some(closed)) => {
-            if let Some(checking) = checking.as_mut() {
-                checking.submit(&checked, &mut recorder, &mut totals, closed);
+            if let Some(queue) = queue.as_ref() {
+                verdicts.submit(&checked, queue, closed);
             }
         }
         Ok(None) => {}
@@ -289,15 +284,9 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
             checked.exit.raise(3);
         }
     }
-    if let Some(checking) = checking.as_mut() {
-        checking
-            .drain(
-                &checked,
-                &mut recorder,
-                &mut totals,
-                &mut reports,
-                bulk_stats.as_deref(),
-            )
+    if let Some(queue) = queue.as_mut() {
+        verdicts
+            .drain(&checked, queue, &mut reports, bulk_stats.as_deref())
             .await;
     }
     // After the checker: every retired row read back once (spec §12.2).
@@ -309,7 +298,7 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
             tokio::select! {
                 result = &mut read_back => break result,
                 _ = reports.tick() => {
-                    write_report(&checked, bulk_stats.as_deref(), &mut totals, &history_dir, None);
+                    verdicts.write_report(&checked, bulk_stats.as_deref(), None);
                 }
             }
         };
@@ -330,7 +319,7 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
                         summary.expired
                     );
                 }
-                totals.readback = Some(summary.into());
+                verdicts.totals.readback = Some(summary.into());
                 if summary.lost + summary.phantom > 0 {
                     eprintln!(
                         "error: the read-back found {} rows lost and {} with phantom values; \
@@ -346,17 +335,12 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
             }
         }
     }
-    if totals.violations > 0 {
+    if verdicts.totals.violations > 0 {
         checked.exit.raise(1);
     }
     let exit = checked.exit.get();
-    write_report(
-        &checked,
-        bulk_stats.as_deref(),
-        &mut totals,
-        &history_dir,
-        Some(exit),
-    );
+    verdicts.write_report(&checked, bulk_stats.as_deref(), Some(exit));
+    let totals = &verdicts.totals;
     println!(
         "Sealed {} rows, {} recorded operations, {} violations",
         totals.rows, totals.ops, totals.violations
@@ -461,369 +445,11 @@ fn bulk_configuration(
     }
 }
 
-/// Records a sealed row, adds it to the totals, and prints the SCV lines of its violations
-/// once its evidence is archived.
-/// Records a sealed row; returns the check file it closed, for the checker.
-fn record(
-    checked: &Checked,
-    recorder: &mut Recorder,
-    totals: &mut Report,
-    row: SealedRow,
-) -> Option<ClosedFile> {
-    tracing::debug!(
-        "sealed pk {} gen {} slot {} wall {}..{} ms: {} ops, {} reads, {} writes ok, \
-         {} indeterminate, {} errors, max gap {} ms, stop {}, sweep {}, {} violations",
-        row.key.pk,
-        row.key.gen,
-        row.slot,
-        row.wall_start_ms,
-        row.wall_end_ms,
-        row.ops.len(),
-        row.reads,
-        row.writes_ok,
-        row.writes_indet,
-        row.errors,
-        row.max_gap_ms,
-        row.stop_reason.as_str(),
-        if row.sweep_ok { "ok" } else { "incomplete" },
-        row.violations.len()
-    );
-    totals.rows += 1;
-    totals.ops += row.ops.len() as u64;
-    totals.reads += row.reads;
-    totals.writes_ok += row.writes_ok;
-    totals.errors += row.errors;
-    totals.violations += row.violations.len() as u64;
-    match recorder.record(&row) {
-        Ok(recorded) => {
-            if let Some(archive) = &recorded.archive {
-                for detected in &row.violations {
-                    report::print(&Scv::Violation {
-                        kind: &detected.violation.kind.to_string(),
-                        pk: row.key.pk,
-                        gen: row.key.gen,
-                        cell: detected.violation.cell,
-                        wall_ms: detected.wall_ms,
-                        archive,
-                    });
-                }
-            }
-            recorded.closed
-        }
-        Err(err) => {
-            // Evidence that cannot be written makes every verdict unverifiable.
-            eprintln!("error: failed to record a sealed row: {err:#}");
-            checked.exit.raise(3);
-            checked.stop();
-            None
-        }
-    }
-}
-
 /// The next checked file, or never when the checker is off.
-async fn next_verdicts(checking: &mut Option<Checking>) -> Option<(u64, FileVerdicts)> {
-    match checking {
-        Some(checking) => checking.queue.next().await,
+async fn next_verdicts(queue: &mut Option<CheckQueue>) -> Option<(u64, FileVerdicts)> {
+    match queue {
+        Some(queue) => queue.next().await,
         None => std::future::pending().await,
-    }
-}
-
-/// Canaries are queued under sequence numbers from here on, apart from the check files.
-const CANARY_SEQ: u64 = 1 << 62;
-
-/// The checker side of a run (`--checker on`): the queue, and what waits for verdicts.
-struct Checking {
-    queue: CheckQueue,
-    /// Closed check files, by sequence number.
-    pending: HashMap<u64, ClosedFile>,
-    /// Canary files, by their queue sequence number.
-    canaries: HashMap<u64, PathBuf>,
-    /// Check files closed so far.
-    files: u64,
-}
-
-impl Checking {
-    /// Queues a closed check file; a full queue never waits: the file is skipped. Every
-    /// `--canary-every` files, a canary made from this one goes in too.
-    fn submit(
-        &mut self,
-        checked: &Checked,
-        recorder: &mut Recorder,
-        totals: &mut Report,
-        closed: ClosedFile,
-    ) {
-        self.files += 1;
-        let canary = (self.files % checked.cli.canary_every == 0)
-            .then(|| std::fs::read_to_string(&closed.path).ok())
-            .flatten()
-            .and_then(|text| history::make_canary(&text));
-
-        let seq = closed.seq;
-        let job = Job {
-            seq,
-            path: closed.path.clone(),
-            rows: closed.rows.len(),
-            archive_dir: recorder.archive_dir(seq),
-        };
-        match self.queue.submit(job) {
-            Ok(()) => {
-                self.pending.insert(closed.seq, closed);
-            }
-            Err(_) => skip(checked, recorder, totals, closed),
-        }
-
-        if let Some(canary) = canary {
-            let path = recorder.canary_path(seq);
-            if let Err(err) = std::fs::write(&path, canary) {
-                tracing::warn!("failed to write canary {}: {err}", path.display());
-                return;
-            }
-            let job = Job {
-                seq: CANARY_SEQ + seq,
-                path: path.clone(),
-                rows: 1,
-                archive_dir: recorder.archive_dir(history::canary_name(seq)),
-            };
-            match self.queue.submit(job) {
-                Ok(()) => {
-                    self.canaries.insert(CANARY_SEQ + seq, path);
-                }
-                Err(_) => {
-                    totals.canaries_skipped += 1;
-                    discard_canary(recorder, seq, &path);
-                }
-            }
-        }
-    }
-
-    fn verdicts(
-        &mut self,
-        checked: &Checked,
-        recorder: &mut Recorder,
-        totals: &mut Report,
-        seq: u64,
-        verdicts: FileVerdicts,
-    ) {
-        if let Some(path) = self.canaries.remove(&seq) {
-            canary_verdict(
-                checked,
-                recorder,
-                totals,
-                seq - CANARY_SEQ,
-                &path,
-                &verdicts,
-            );
-        } else if let Some(closed) = self.pending.remove(&seq) {
-            file_verdicts(checked, recorder, totals, closed, &verdicts);
-        }
-    }
-
-    /// The end of the run: the checker gets until `--checker-deadline` for what is queued;
-    /// files left are skipped, canaries left are dropped. report.json stays current meanwhile.
-    async fn drain(
-        &mut self,
-        checked: &Checked,
-        recorder: &mut Recorder,
-        totals: &mut Report,
-        reports: &mut tokio::time::Interval,
-        bulk: Option<&BulkStats>,
-    ) {
-        self.queue.close();
-        let deadline = tokio::time::sleep(checked.cli.checker_deadline);
-        tokio::pin!(deadline);
-        while !self.pending.is_empty() || !self.canaries.is_empty() {
-            tokio::select! {
-                result = self.queue.next() => {
-                    let Some((seq, verdicts)) = result else { break };
-                    self.verdicts(checked, recorder, totals, seq, verdicts);
-                }
-                _ = &mut deadline => break,
-                _ = reports.tick() => {
-                    write_report(checked, bulk, totals, &checked.cli.history_dir, None);
-                }
-            }
-        }
-        self.queue.abort().await;
-        let mut left: Vec<_> = self.pending.drain().map(|(_, closed)| closed).collect();
-        left.sort_by_key(|closed| closed.seq);
-        for closed in left {
-            skip(checked, recorder, totals, closed);
-        }
-        for (seq, path) in self.canaries.drain() {
-            totals.canaries_skipped += 1;
-            discard_canary(recorder, seq - CANARY_SEQ, &path);
-        }
-    }
-}
-
-/// A canary must come back `illegal`. Anything else means the checker can no longer reject
-/// a known-bad history, so none of its `ok`s can be trusted: `verifier-broken`, exit 1.
-fn canary_verdict(
-    checked: &Checked,
-    recorder: &Recorder,
-    totals: &mut Report,
-    n: u64,
-    path: &Path,
-    verdicts: &FileVerdicts,
-) {
-    if !verdicts.ran {
-        // The checker could not even start: no answer, so no evidence either way.
-        totals.canaries_skipped += 1;
-        discard_canary(recorder, n, path);
-        return;
-    }
-    let result = match verdicts.per_key.first() {
-        Some(RowResult::Illegal) => "illegal",
-        Some(RowResult::Ok) => "ok",
-        _ => "unknown",
-    };
-    report::print(&Scv::Canary { result });
-    if result == "illegal" {
-        totals.canaries_ok += 1;
-        discard_canary(recorder, n, path);
-        return;
-    }
-    totals.canaries_failed += 1;
-    eprintln!(
-        "error: verifier-broken: the checker answered {result} to canary {n}, a history no \
-         order can explain; it cannot be trusted to reject a real violation"
-    );
-    checked.exit.raise(1);
-    if let Err(err) = recorder.archive(history::canary_name(n), path) {
-        eprintln!("error: {err:#}");
-    }
-}
-
-/// Deletes a canary that is not evidence, with whatever the checker wrote about it.
-fn discard_canary(recorder: &Recorder, n: u64, path: &Path) {
-    if let Err(err) = recorder.discard(history::canary_name(n), path) {
-        tracing::warn!("{err:#}");
-    }
-}
-
-/// Writes the rows' final lines; deletes a file whose rows were all ok, archives any other.
-fn file_verdicts(
-    checked: &Checked,
-    recorder: &mut Recorder,
-    totals: &mut Report,
-    closed: ClosedFile,
-    verdicts: &FileVerdicts,
-) {
-    if verdicts.killed {
-        tracing::warn!(
-            "the checker of file {} ran past --checker-timeout and was killed; its unfinished \
-             rows are unknown",
-            closed.seq
-        );
-    }
-    let (mut ok, mut illegal, mut unknown) = (0, 0, 0);
-    let mut all_ok = true;
-    for row in &closed.rows {
-        let result = verdicts
-            .per_key
-            .get(row.line.key)
-            .copied()
-            .unwrap_or(RowResult::Unknown);
-        let checker = match result {
-            RowResult::Ok => {
-                ok += 1;
-                "ok"
-            }
-            RowResult::Illegal => {
-                illegal += 1;
-                totals.checker_illegal += 1;
-                "illegal"
-            }
-            RowResult::Unknown => {
-                unknown += 1;
-                "unknown"
-            }
-        };
-        // An invariant violation outranks whatever the checker says (spec §4.3).
-        let verdict = if row.violated { "violation" } else { checker };
-        all_ok &= verdict == "ok";
-        match verdict {
-            "ok" => totals.rows_ok += 1,
-            "illegal" => totals.rows_illegal += 1,
-            "unknown" => totals.rows_unknown += 1,
-            _ => {}
-        }
-        let mut line = row.line.clone();
-        line.verdict = verdict;
-        if let Err(err) = recorder.write_line(&line) {
-            eprintln!("error: {err:#}");
-            checked.exit.raise(3);
-        }
-    }
-    // A file with a violation is evidence, whatever the checker says: never deleted.
-    let archive = if all_ok {
-        if let Err(err) = recorder.discard(closed.seq, &closed.path) {
-            tracing::warn!("{err:#}");
-        }
-        None
-    } else {
-        match recorder.archive(closed.seq, &closed.path) {
-            Ok(archive) => Some(archive),
-            Err(err) => {
-                eprintln!("error: {err:#}");
-                checked.exit.raise(3);
-                None
-            }
-        }
-    };
-    report::print(&Scv::Checked {
-        file: closed.seq.to_string(),
-        ok,
-        illegal,
-        unknown,
-        archive: archive.as_deref(),
-    });
-}
-
-/// Archives a check file unchecked: the queue was full, or the run ended first. Its rows
-/// are `skipped`, or `violation` when an invariant fired.
-fn skip(checked: &Checked, recorder: &mut Recorder, totals: &mut Report, closed: ClosedFile) {
-    for row in &closed.rows {
-        let mut line = row.line.clone();
-        line.verdict = if row.violated { "violation" } else { "skipped" };
-        if !row.violated {
-            totals.rows_skipped += 1;
-        }
-        if let Err(err) = recorder.write_line(&line) {
-            eprintln!("error: {err:#}");
-            checked.exit.raise(3);
-        }
-    }
-    if let Err(err) = recorder.archive(closed.seq, &closed.path) {
-        eprintln!("error: {err:#}");
-        checked.exit.raise(3);
-    }
-    report::print(&Scv::Skipped {
-        file: closed.seq.to_string(),
-        rows: closed.rows.len(),
-    });
-}
-
-fn write_report(
-    checked: &Checked,
-    bulk: Option<&BulkStats>,
-    totals: &mut Report,
-    dir: &std::path::Path,
-    exit: Option<u8>,
-) {
-    if let Some(bulk) = bulk {
-        totals.bulk_ops = bulk.ops.load(Ordering::Relaxed);
-        totals.bulk_misses = bulk.misses.load(Ordering::Relaxed);
-        totals.bulk_errors = bulk.errors.load(Ordering::Relaxed);
-    }
-    let latencies = checked.stats.totals();
-    totals.read_p99_ms = latencies.read_p99_ms;
-    totals.write_p99_ms = latencies.write_p99_ms;
-    totals.sched_delay_p99_ms = latencies.sched_delay_p99_ms;
-    totals.writes_indet = latencies.writes_indet;
-    totals.exit = exit;
-    if let Err(err) = totals.write(dir) {
-        tracing::warn!("failed to write report.json: {err:#}");
     }
 }
 
