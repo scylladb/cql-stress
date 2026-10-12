@@ -282,6 +282,8 @@ def run_both_early_stop(node, session, keyspace: str, tmp_path):
     assert proc.returncode == 3, f"expected exit 3, got {proc.returncode}"
     assert took < 60, f"exit 3 came {took:.0f} s after the break; bulk kept the run alive"
     assert scv_lines(out, "end") == [{"t": "end", "exit": 3}], scv_lines(out, "end")
+    stops = [line for line in err.splitlines() if "errors caused by the tool or the profile" in line]
+    assert len(stops) == 1, f"the stop message is printed {len(stops)} times"
 
 
 def checker_bin() -> str:

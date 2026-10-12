@@ -218,10 +218,14 @@ impl Checked {
         let count = self.workload_errors.fetch_add(1, Ordering::Relaxed) + 1;
         tracing::error!("workload error {count}: {}", error.message);
         if count >= self.cli.max_workload_errors {
-            eprintln!(
-                "error: {count} errors caused by the tool or the profile; the last: {}",
-                error.message
-            );
+            // Operations still in flight keep failing after the stop; each count is unique, so
+            // exactly one caller crosses the limit and prints the reason.
+            if count == self.cli.max_workload_errors {
+                eprintln!(
+                    "error: {count} errors caused by the tool or the profile; the last: {}",
+                    error.message
+                );
+            }
             self.exit.raise(3);
             self.stop();
         }
