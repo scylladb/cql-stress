@@ -188,6 +188,7 @@ async fn run_checked(cli: Cli, profile: Profile, session: Session, with_bulk: bo
         slots: cli.slots,
         gen_base: Some(gen_base),
         bulk_pop: bulk.is_some().then_some(cli.bulk_pop.as_str()),
+        connections: cli.connections(),
     });
 
     let (sealed_tx, mut sealed) = mpsc::unbounded_channel();
@@ -377,6 +378,7 @@ async fn run_bulk(cli: Cli, profile: Profile, session: Session) -> Result<()> {
         slots: 0,
         gen_base: None,
         bulk_pop: Some(&cli.bulk_pop),
+        connections: cli.connections(),
     });
 
     // report.json is rewritten every --report-interval and at exit (spec §14), so a loader

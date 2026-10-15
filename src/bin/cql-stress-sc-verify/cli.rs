@@ -12,6 +12,8 @@ use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVer
 use scylla::client::PoolSize;
 use scylla::routing::ShardAwarePortRange;
 
+use crate::report::Connections;
+
 #[derive(Parser, Debug)]
 #[command(
     name = "cql-stress-sc-verify",
@@ -302,6 +304,25 @@ impl Cli {
         }
     }
 
+    /// The pool settings for the `start` line.
+    pub fn connections(&self) -> Connections {
+        let range = &self.shard_aware_port_range;
+        match self.connections_per_host {
+            Some(per_host) => Connections {
+                pool: "per-host",
+                pool_size: per_host,
+                shard_aware_port_range: None,
+                tcp_reuse_address: self.tcp_reuse_address,
+            },
+            None => Connections {
+                pool: "per-shard",
+                pool_size: self.connections_per_shard,
+                shard_aware_port_range: Some(format!("{}..{}", range.start(), range.end())),
+                tcp_reuse_address: self.tcp_reuse_address,
+            },
+        }
+    }
+
     /// The TLS context for the sessions, `None` without `--ssl`.
     pub fn tls_context(&self) -> Result<Option<SslContext>> {
         if !self.ssl {
@@ -536,8 +557,19 @@ mod tests {
         assert_eq!(cli.shard_aware_port_range, 1024..=65535);
         assert!(cli.tcp_reuse_address);
 
+        let start = serde_json::to_string(&cli.connections()).unwrap();
+        assert_eq!(
+            start,
+            r#"{"pool":"per-shard","pool_size":4,"shard_aware_port_range":"1024..65535","tcp_reuse_address":true}"#
+        );
+
         let cli = parse("--duration 1m --connections-per-host 8").unwrap();
         assert!(matches!(cli.pool_size(), PoolSize::PerHost(n) if n.get() == 8));
+        let start = serde_json::to_string(&cli.connections()).unwrap();
+        assert_eq!(
+            start,
+            r#"{"pool":"per-host","pool_size":8,"shard_aware_port_range":null,"tcp_reuse_address":false}"#
+        );
         assert!(matches!(
             parse("--duration 1m").unwrap().pool_size(),
             PoolSize::PerShard(n) if n.get() == 1

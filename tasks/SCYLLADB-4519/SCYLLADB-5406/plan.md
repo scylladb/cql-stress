@@ -142,18 +142,18 @@ stays in every plan built from a spec.
   `"per-host"`, the size, `Some("a..b")` for a per-shard pool, the reuse
   flag.
 
-- [ ] Write the failing test: `scv_lines_test` expects
+- [x] Write the failing test: `scv_lines_test` expects
   `SCV {"t":"start","mode":"verify","pop":"seq=0..2047","slots":32,"gen_base":"1878307305715400704","pool":"per-shard","pool_size":1,"shard_aware_port_range":"49152..65535","tcp_reuse_address":false}`
   and, for bulk,
   `SCV {"t":"start","mode":"bulk","slots":0,"bulk_pop":"seq=1..10","pool":"per-host","pool_size":8,"shard_aware_port_range":null,"tcp_reuse_address":true}`.
-- [ ] Run it and confirm the failure: `cargo test --features
+- [x] Run it and confirm the failure: `cargo test --features
   "strong-consistency" --bin cql-stress-sc-verify report::`.
-- [ ] Write the smallest change that passes it.
-- [ ] Run the verify sequence from the `Commands` section of `CLAUDE.md`.
-- [ ] Run the binary against the local node with `--mode verify --duration
+- [x] Write the smallest change that passes it.
+- [x] Run the verify sequence from the `Commands` section of `CLAUDE.md`.
+- [x] Run the binary against the local node with `--mode verify --duration
   5s --connections-per-shard 2` and check the `start` line; with
   `--shard-aware-port-range 60000..60009 --connections-per-shard 8` check
   exit 2 and the message. (The driver starts filling the pool before the
   check, so a test of the failure uses a small range, never a huge pool.)
-- [ ] Commit, with the boxes of this task checked:
+- [x] Commit, with the boxes of this task checked:
   `feat(sc-verify): record the connection pool in the start line [SCYLLADB-5406]`.

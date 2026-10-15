@@ -12,6 +12,18 @@ use hdrhistogram::Histogram;
 use parking_lot::Mutex;
 use serde::{Serialize, Serializer};
 
+/// The pool every session of the run was built with, defaults included (spec §15.4), so no
+/// result is read without knowing how many connections made it.
+#[derive(Serialize)]
+pub struct Connections {
+    /// `"per-shard"` or `"per-host"`.
+    pub pool: &'static str,
+    pub pool_size: usize,
+    /// `"<first>..<last>"`; `null` for a per-host pool, which takes no port of it.
+    pub shard_aware_port_range: Option<String>,
+    pub tcp_reuse_address: bool,
+}
+
 #[derive(Serialize)]
 #[serde(tag = "t", rename_all = "lowercase")]
 pub enum Scv<'a> {
@@ -29,6 +41,8 @@ pub enum Scv<'a> {
         gen_base: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         bulk_pop: Option<&'a str>,
+        #[serde(flatten)]
+        connections: Connections,
     },
     /// Printed when the row seals and its check file is archived, so SCT can copy the
     /// evidence before it raises the event; `wall_ms` is when the read exposed it.
@@ -330,10 +344,16 @@ mod tests {
             slots: 32,
             gen_base: Some(1878307305715400704),
             bulk_pop: None,
+            connections: Connections {
+                pool: "per-shard",
+                pool_size: 1,
+                shard_aware_port_range: Some("49152..65535".to_owned()),
+                tcp_reuse_address: false,
+            },
         };
         assert_eq!(
             line(&start),
-            r#"SCV {"t":"start","mode":"verify","pop":"seq=0..2047","slots":32,"gen_base":"1878307305715400704"}"#
+            r#"SCV {"t":"start","mode":"verify","pop":"seq=0..2047","slots":32,"gen_base":"1878307305715400704","pool":"per-shard","pool_size":1,"shard_aware_port_range":"49152..65535","tcp_reuse_address":false}"#
         );
         let bulk = Scv::Start {
             mode: "bulk",
@@ -341,10 +361,16 @@ mod tests {
             slots: 0,
             gen_base: None,
             bulk_pop: Some("seq=1..10"),
+            connections: Connections {
+                pool: "per-host",
+                pool_size: 8,
+                shard_aware_port_range: None,
+                tcp_reuse_address: true,
+            },
         };
         assert_eq!(
             line(&bulk),
-            r#"SCV {"t":"start","mode":"bulk","slots":0,"bulk_pop":"seq=1..10"}"#
+            r#"SCV {"t":"start","mode":"bulk","slots":0,"bulk_pop":"seq=1..10","pool":"per-host","pool_size":8,"shard_aware_port_range":null,"tcp_reuse_address":true}"#
         );
         let violation = Scv::Violation {
             kind: "INV-3",
