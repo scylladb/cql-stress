@@ -79,7 +79,8 @@ pub fn check_pool(cli: &Cli, sessions: usize, shards: &[usize]) -> Result<()> {
         let all = shards.iter().sum();
         (all, "", "widen the range or set --tcp-reuse-address true")
     };
-    let needed = sessions * shards * n.get();
+    // Saturating, so an absurd pool fails the check instead of wrapping into a pass.
+    let needed = sessions.saturating_mul(shards).saturating_mul(n.get());
     anyhow::ensure!(
         needed <= ports,
         "the per-shard pool needs {sessions} session{} × {shards} shards × {n} = {needed} local \
@@ -321,6 +322,9 @@ mod tests {
         let small_reuse = cli(&format!("{small} --tcp-reuse-address true"));
         assert!(check_pool(&small_reuse, 2, &[4, 4]).is_ok());
         assert!(check_pool(&small_reuse, 2, &[4, 6]).is_err());
+        // A pool too large to count must not wrap around into a pass.
+        let huge = format!("--connections-per-shard {}", usize::MAX);
+        assert!(check_pool(&cli(&huge), 2, &six_nodes).is_err());
     }
 
     /// Needs Scylla: `SCYLLA_URI`, default `127.0.0.1:9042`.

@@ -398,7 +398,7 @@ fn port_range(s: &str) -> Result<RangeInclusive<u16>> {
     let (start, end) = s
         .split_once("..")
         .filter(|(start, end)| digits(start) && digits(end))
-        .with_context(|| format!("Invalid port range {s}; use <first>..<last>"))?;
+        .with_context(|| format!(r"Invalid value {s}; must match pattern ^[0-9]+\.\.[0-9]+$"))?;
     let start = start
         .parse::<u16>()
         .with_context(|| format!("Invalid port range start: {start}"))?;
@@ -547,6 +547,13 @@ mod tests {
         let cli = parse("--duration 1m --unsafe-eventual --consistency one").unwrap();
         assert!(cli.unsafe_eventual && cli.consistency == CheckedConsistency::One);
         assert!(!parse("--duration 1m").unwrap().unsafe_eventual);
+        // The cassandra-stress text for a range of the wrong shape.
+        let err = parse("--duration 1m --shard-aware-port-range 2000").unwrap_err();
+        assert!(
+            format!("{err:#}")
+                .contains(r"Invalid value 2000; must match pattern ^[0-9]+\.\.[0-9]+$"),
+            "{err:#}"
+        );
     }
 
     #[test]

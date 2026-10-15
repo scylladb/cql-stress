@@ -100,6 +100,7 @@ error: the per-shard pool needs 2 sessions × 84 shards × 100 = 16800 local por
 |---|---|
 | The driver picks a shard-aware port by its remainder modulo the node's shard count, so with mixed shard counts the real limit is below the fit rule | The rule is a necessary bound; a shortfall shows in the driver log as failed connections. The SCT clusters use one instance type. |
 | Many connections exhaust file descriptors before ports | SCT runs the tool with `--ulimit nofile=65536`; 2 × 84 × 195 = 32,760 stays under it. Larger pools need a larger limit. |
+| A node that is down when the run starts reports no shard count, so the check leaves it out; its pool opens later with no recheck | The SCT clusters start healthy. A run that starts with a node down sees the shortfall in the driver log. |
 | A row's requests now spread over several connections to one shard | Expected and wanted: it is the case under test. Verdicts keep their meaning; the checker sees the same history shape. |
 
 ## Deferred work
