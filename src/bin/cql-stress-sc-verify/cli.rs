@@ -1,5 +1,7 @@
 //! The command line of `cql-stress-sc-verify`. Defaults follow the sc-verify spec, §15.2.
 
+use std::num::NonZeroUsize;
+use std::ops::RangeInclusive;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -7,6 +9,8 @@ use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use cql_stress::java_generate::distribution::parse_population;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
+use scylla::client::PoolSize;
+use scylla::routing::ShardAwarePortRange;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -44,6 +48,23 @@ pub struct Cli {
     /// Consistency level of the checked stream.
     #[arg(long, value_enum, default_value_t = CheckedConsistency::Quorum)]
     pub consistency: CheckedConsistency,
+    /// Driver connections to every shard of every node, per session (spec §15.4).
+    #[arg(long, default_value_t = 1, conflicts_with = "connections_per_host")]
+    pub connections_per_shard: usize,
+    /// Driver connections to every node, per session; not shard-aware.
+    #[arg(long)]
+    pub connections_per_host: Option<usize>,
+    /// Local ports of a per-shard pool, inclusive, e.g. `1024..65535`.
+    #[arg(
+        long,
+        default_value = "49152..65535",
+        value_parser = port_range,
+        conflicts_with = "connections_per_host"
+    )]
+    pub shard_aware_port_range: RangeInclusive<u16>,
+    /// Set SO_REUSEADDR on connection sockets, so a local port can be reused towards each node.
+    #[arg(long, default_value_t = false, action = clap::ArgAction::Set)]
+    pub tcp_reuse_address: bool,
 
     /// How long to run, e.g. `30s`, `5m`, `4h`.
     #[arg(long, value_parser = parse_duration)]
@@ -250,6 +271,11 @@ impl Cli {
             ("--key-timeout", cli.key_timeout.is_zero()),
             ("--readback-sample", cli.readback_sample == 0.0),
             ("--readback-concurrency", cli.readback_concurrency == 0),
+            ("--connections-per-shard", cli.connections_per_shard == 0),
+            (
+                "--connections-per-host",
+                cli.connections_per_host == Some(0),
+            ),
         ] {
             anyhow::ensure!(!zero, "{name} must be greater than 0");
         }
@@ -264,6 +290,16 @@ impl Cli {
             (longest_round * 10).as_secs()
         );
         Ok(cli)
+    }
+
+    /// The driver pool of every session: per host when `--connections-per-host` is given.
+    pub fn pool_size(&self) -> PoolSize {
+        // parse_checked rejects 0 for both.
+        let n = |n: usize| NonZeroUsize::new(n).unwrap();
+        match self.connections_per_host {
+            Some(per_host) => PoolSize::PerHost(n(per_host)),
+            None => PoolSize::PerShard(n(self.connections_per_shard)),
+        }
     }
 
     /// The TLS context for the sessions, `None` without `--ssl`.
@@ -334,6 +370,26 @@ fn ratio(s: &str) -> Result<f64> {
     Ok(value)
 }
 
+/// `<first>..<last>`, inclusive, with the checks and messages of the cassandra-stress
+/// `shardAwarePortRange=` parameter.
+fn port_range(s: &str) -> Result<RangeInclusive<u16>> {
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    let (start, end) = s
+        .split_once("..")
+        .filter(|(start, end)| digits(start) && digits(end))
+        .with_context(|| format!("Invalid port range {s}; use <first>..<last>"))?;
+    let start = start
+        .parse::<u16>()
+        .with_context(|| format!("Invalid port range start: {start}"))?;
+    let end = end
+        .parse::<u16>()
+        .with_context(|| format!("Invalid port range end: {end}"))?;
+    ShardAwarePortRange::new(start..=end).with_context(|| {
+        format!("Invalid port range {s}; must be a non-empty sub-range of 1024..65535")
+    })?;
+    Ok(start..=end)
+}
+
 /// Checks the population at parse time; the slots build their generators from the text.
 fn population(s: &str) -> Result<String> {
     parse_population(s)?;
@@ -357,6 +413,12 @@ mod tests {
         let cli = parse("--duration 4h").unwrap();
         assert_eq!(cli.mode, Mode::Both);
         assert_eq!(cli.nodes, ["127.0.0.1"]);
+        assert_eq!(
+            (cli.connections_per_shard, cli.connections_per_host),
+            (1, None)
+        );
+        assert_eq!(cli.shard_aware_port_range, 49152..=65535);
+        assert!(!cli.tcp_reuse_address);
         assert_eq!(cli.consistency, CheckedConsistency::Quorum);
         assert_eq!(cli.duration, Some(Duration::from_secs(4 * 3600)));
         assert_eq!(cli.pop, "seq=0..1023");
@@ -441,6 +503,14 @@ mod tests {
             "--duration 1m --slots 0",
             "--duration 1m --ops-per-gen 0",
             "--duration 1m --consistency one",
+            "--duration 1m --connections-per-shard 2 --connections-per-host 2",
+            "--duration 1m --connections-per-host 2 --shard-aware-port-range 2000..3000",
+            "--duration 1m --connections-per-shard 0",
+            "--duration 1m --connections-per-host 0",
+            "--duration 1m --shard-aware-port-range 1000..2000",
+            "--duration 1m --shard-aware-port-range 3000..2000",
+            "--duration 1m --shard-aware-port-range 2000",
+            "--duration 1m --tcp-reuse-address maybe",
         ] {
             assert!(parse(bad).is_err(), "{bad:?} must be rejected");
         }
@@ -456,6 +526,22 @@ mod tests {
         let cli = parse("--duration 1m --unsafe-eventual --consistency one").unwrap();
         assert!(cli.unsafe_eventual && cli.consistency == CheckedConsistency::One);
         assert!(!parse("--duration 1m").unwrap().unsafe_eventual);
+    }
+
+    #[test]
+    fn connection_flags_test() {
+        // PoolSize doesn't derive PartialEq.
+        let cli = parse("--duration 1m --connections-per-shard 4 --shard-aware-port-range 1024..65535 --tcp-reuse-address true").unwrap();
+        assert!(matches!(cli.pool_size(), PoolSize::PerShard(n) if n.get() == 4));
+        assert_eq!(cli.shard_aware_port_range, 1024..=65535);
+        assert!(cli.tcp_reuse_address);
+
+        let cli = parse("--duration 1m --connections-per-host 8").unwrap();
+        assert!(matches!(cli.pool_size(), PoolSize::PerHost(n) if n.get() == 8));
+        assert!(matches!(
+            parse("--duration 1m").unwrap().pool_size(),
+            PoolSize::PerShard(n) if n.get() == 1
+        ));
     }
 
     #[test]

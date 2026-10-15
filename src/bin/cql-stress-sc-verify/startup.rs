@@ -6,7 +6,9 @@ use cql_stress::strong_consistency::{keyspace_consistency_mode, unavailable_erro
 use openssl::ssl::SslContext;
 use scylla::client::session::Session;
 use scylla::client::session_builder::SessionBuilder;
+use scylla::client::PoolSize;
 use scylla::cluster::metadata::ConsistencyMode;
+use scylla::routing::ShardAwarePortRange;
 
 use crate::cli::Cli;
 use crate::ops::checked_profile;
@@ -20,12 +22,22 @@ pub struct Column {
     pub kind: String,
 }
 
-/// The checked session: every statement on it runs with [`checked_profile`].
+/// A session of the run, checked or bulk: every statement on it runs with [`checked_profile`],
+/// over the pool of the connection flags (spec §15.4).
 pub async fn connect(cli: &Cli, tls: Option<SslContext>) -> Result<Session> {
     let profile = checked_profile(cli.consistency, cli.request_timeout);
+    let pool_size = cli.pool_size();
     let mut builder = SessionBuilder::new()
         .known_nodes(&cli.nodes)
-        .default_execution_profile_handle(profile.into_handle());
+        .default_execution_profile_handle(profile.into_handle())
+        .pool_size(pool_size)
+        .tcp_reuse_address(cli.tcp_reuse_address);
+    if let PoolSize::PerShard(_) = pool_size {
+        builder = builder.shard_aware_local_port_range(
+            ShardAwarePortRange::new(cli.shard_aware_port_range.clone())
+                .context("Invalid --shard-aware-port-range")?,
+        );
+    }
     if let (Some(user), Some(password)) = (&cli.user, &cli.password) {
         builder = builder.user(user, password);
     }

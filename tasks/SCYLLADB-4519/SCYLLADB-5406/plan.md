@@ -24,11 +24,12 @@ stays in every plan built from a spec.
 - Verify sequence: section `Commands` of `CLAUDE.md`, with Scylla up through
   `docker compose -f docker/scylla-test/compose.yml up -d --wait`.
 
-## Task 1 — The four flags
+## Task 1 — The four flags, and the sessions use them
 
 **Files:**
 - Modify: `src/bin/cql-stress-sc-verify/cli.rs` (the `Cli` struct, section
   `// Connection.`; `parse_checked`; the parsers near `ratio`; the tests)
+- Modify: `src/bin/cql-stress-sc-verify/startup.rs` (`connect`)
 
 **Internals:**
 - `Cli` fields, after `consistency`:
@@ -52,8 +53,14 @@ stays in every plan built from a spec.
   the "must be greater than 0" list.
 - `impl Cli { pub fn pool_size(&self) -> PoolSize }`: `PerHost(n)` when
   `connections_per_host` is set, else `PerShard(connections_per_shard)`.
+- `connect`: `builder.pool_size(cli.pool_size())` and
+  `.tcp_reuse_address(cli.tcp_reuse_address)`; for a per-shard pool also
+  `.shard_aware_local_port_range(ShardAwarePortRange::new(range)?)`. Both the
+  checked and the bulk session come from `connect`, so both get the pool.
+  (Moved here from Task 2 during the build: without a caller, `pool_size`
+  is dead code and `-D warnings` fails the task's own verify.)
 
-- [ ] Write the failing tests.
+- [x] Write the failing tests.
   - `defaults_follow_the_spec_test`: `connections_per_shard == 1`,
     `connections_per_host == None`, `shard_aware_port_range == 49152..=65535`,
     `!tcp_reuse_address`.
@@ -68,26 +75,22 @@ stays in every plan built from a spec.
     --shard-aware-port-range 1024..65535 --tcp-reuse-address true` parses to
     `PerShard(4)` and the range; `--connections-per-host 8` parses to
     `PerHost(8)`.
-- [ ] Run them and confirm the failure: `cargo test --features
+- [x] Run them and confirm the failure: `cargo test --features
   "strong-consistency" --bin cql-stress-sc-verify cli::`.
-- [ ] Write the smallest change that passes them.
-- [ ] Run the verify sequence from the `Commands` section of `CLAUDE.md`.
-- [ ] Commit, with the boxes of this task checked:
-  `feat(sc-verify): connection pool flags [SCYLLADB-5406]`.
+- [x] Write the smallest change that passes them.
+- [x] Run the verify sequence from the `Commands` section of `CLAUDE.md`.
+- [x] Commit, with the boxes of this task checked:
+  `feat(sc-verify): connection pool flags for every session [SCYLLADB-5406]`.
 
-## Task 2 — The sessions use the pool, and the pool must fit its ports
+## Task 2 — The pool must fit its ports
 
 **Files:**
-- Modify: `src/bin/cql-stress-sc-verify/startup.rs` (`connect`, new
-  functions, the tests)
+- Modify: `src/bin/cql-stress-sc-verify/startup.rs` (new functions, the
+  tests)
 - Modify: `src/bin/cql-stress-sc-verify/main.rs` (right after the first
   `startup::connect`, before `startup::startup`)
 
 **Internals:**
-- `connect`: `builder.pool_size(cli.pool_size())` and
-  `.tcp_reuse_address(cli.tcp_reuse_address)`; for a per-shard pool also
-  `.shard_aware_local_port_range(ShardAwarePortRange::new(range)?)`. Both the
-  checked and the bulk session come from `connect`, so both get the pool.
 - `pub fn shard_counts(session: &Session) -> Vec<usize>`: from
   `session.get_cluster_state().get_nodes_info()`, `sharder().nr_shards` of
   every node that has one. Nodes without shard information are left out:
@@ -118,7 +121,7 @@ stays in every plan built from a spec.
 - [ ] Write the smallest change that passes them.
 - [ ] Run the verify sequence from the `Commands` section of `CLAUDE.md`.
 - [ ] Commit, with the boxes of this task checked:
-  `feat(sc-verify): build sessions with the pool and check its ports [SCYLLADB-5406]`.
+  `feat(sc-verify): check that the pool fits its ports [SCYLLADB-5406]`.
 
 ## Task 3 — The `start` line records the pool
 
