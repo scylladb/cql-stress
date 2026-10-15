@@ -50,6 +50,47 @@ pub async fn connect(cli: &Cli, tls: Option<SslContext>) -> Result<Session> {
         .with_context(|| format!("Failed to connect to {}", cli.nodes.join(",")))
 }
 
+/// The shard count of every node that reports one. The session waits for every pool's first
+/// connection, so this is known once [`connect`] returns. A node without one is not sharded:
+/// its connections are not shard-aware and take no port of the range.
+pub fn shard_counts(session: &Session) -> Vec<usize> {
+    session
+        .get_cluster_state()
+        .get_nodes_info()
+        .iter()
+        .filter_map(|node| node.sharder())
+        .map(|sharder| sharder.nr_shards.get().into())
+        .collect()
+}
+
+/// A per-shard pool must fit its local port range (spec §15.4), or the run would hold fewer
+/// connections than its `start` line claims. Without address reuse every shard-aware
+/// connection of the loader takes its own port; with it, only those towards one node.
+pub fn check_pool(cli: &Cli, sessions: usize, shards: &[usize]) -> Result<()> {
+    let PoolSize::PerShard(n) = cli.pool_size() else {
+        return Ok(());
+    };
+    let range = &cli.shard_aware_port_range;
+    let ports = usize::from(range.end() - range.start()) + 1;
+    let (shards, towards, fix) = if cli.tcp_reuse_address {
+        let busiest = shards.iter().copied().max().unwrap_or(0);
+        (busiest, " towards one node", "widen the range")
+    } else {
+        let all = shards.iter().sum();
+        (all, "", "widen the range or set --tcp-reuse-address true")
+    };
+    let needed = sessions * shards * n.get();
+    anyhow::ensure!(
+        needed <= ports,
+        "the per-shard pool needs {sessions} session{} × {shards} shards × {n} = {needed} local \
+         ports{towards}, and --shard-aware-port-range {}..{} has {ports}; {fix}",
+        if sessions == 1 { "" } else { "s" },
+        range.start(),
+        range.end()
+    );
+    Ok(())
+}
+
 /// Creates whatever of the schema is missing, then checks all of it. Every error here is a
 /// set-up failure: nothing has been written yet.
 pub async fn startup(session: &Session, profile: &Profile, cli: &Cli) -> Result<()> {
@@ -242,5 +283,57 @@ mod tests {
             diff(&expected(), &changed),
             ["c1: table has int (regular), profile says text (regular)"]
         );
+    }
+
+    fn cli(args: &str) -> Cli {
+        Cli::parse_checked(
+            [
+                "cql-stress-sc-verify",
+                "--profile",
+                "p.yaml",
+                "--duration",
+                "1m",
+            ]
+            .into_iter()
+            .chain(args.split_ascii_whitespace()),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn check_pool_test() {
+        let six_nodes = [14; 6];
+        // 1 × 84 × 195 = 16,380 of the default 16,384 ports.
+        assert!(check_pool(&cli("--connections-per-shard 195"), 1, &six_nodes).is_ok());
+        let err = check_pool(&cli("--connections-per-shard 100"), 2, &six_nodes)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("16800") && err.contains("16384"), "{err}");
+        // With reuse each node has its own ports: 2 × 14 × 100 = 2,800.
+        let reuse = cli("--connections-per-shard 100 --tcp-reuse-address true");
+        assert!(check_pool(&reuse, 2, &six_nodes).is_ok());
+        // A per-host pool uses no port of the range.
+        assert!(check_pool(&cli("--connections-per-host 10000"), 2, &six_nodes).is_ok());
+
+        // 10 ports: 2 × (4 + 4) × 1 = 16 don't fit; with reuse 2 × 4 × 1 = 8 do.
+        let small = "--shard-aware-port-range 1024..1033";
+        assert!(check_pool(&cli(small), 2, &[4, 4]).is_err());
+        let small_reuse = cli(&format!("{small} --tcp-reuse-address true"));
+        assert!(check_pool(&small_reuse, 2, &[4, 4]).is_ok());
+        assert!(check_pool(&small_reuse, 2, &[4, 6]).is_err());
+    }
+
+    /// Needs Scylla: `SCYLLA_URI`, default `127.0.0.1:9042`.
+    #[tokio::test]
+    async fn pool_connects_test() {
+        let uri = std::env::var("SCYLLA_URI").unwrap_or_else(|_| "127.0.0.1:9042".to_owned());
+        let cli = cli(&format!("--nodes {uri} --connections-per-shard 2"));
+        let session = connect(&cli, None).await.unwrap();
+        let shards = shard_counts(&session);
+        assert!(
+            !shards.is_empty() && shards.iter().all(|&n| n >= 1),
+            "{shards:?}"
+        );
+        check_pool(&cli, 1, &shards).unwrap();
     }
 }

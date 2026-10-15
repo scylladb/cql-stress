@@ -105,7 +105,7 @@ stays in every plan built from a spec.
   failing through `exit_setup_failure`. It runs before the schema is
   touched.
 
-- [ ] Write the failing tests.
+- [x] Write the failing tests.
   - `check_pool_test` (unit, no cluster): 1 session × [14; 6] × 195 fits the
     default range; 2 sessions × [14; 6] × 100 = 16,800 fails, and the
     message holds `16800` and `16384`; the same with `--tcp-reuse-address
@@ -115,12 +115,12 @@ stays in every plan built from a spec.
   - `pool_connects_test` (needs Scylla): `connect` with
     `--connections-per-shard 2` builds a session; `shard_counts` returns one
     entry ≥ 1; `check_pool` passes for it.
-- [ ] Run them and confirm the failure: `cargo test --features
+- [x] Run them and confirm the failure: `cargo test --features
   "strong-consistency" --bin cql-stress-sc-verify startup:: --
   --test-threads=1`.
-- [ ] Write the smallest change that passes them.
-- [ ] Run the verify sequence from the `Commands` section of `CLAUDE.md`.
-- [ ] Commit, with the boxes of this task checked:
+- [x] Write the smallest change that passes them.
+- [x] Run the verify sequence from the `Commands` section of `CLAUDE.md`.
+- [x] Commit, with the boxes of this task checked:
   `feat(sc-verify): check that the pool fits its ports [SCYLLADB-5406]`.
 
 ## Task 3 — The `start` line records the pool

@@ -76,6 +76,10 @@ async fn main() -> Result<()> {
     let session = startup::connect(&cli, tls)
         .await
         .unwrap_or_else(|err| exit_setup_failure(err));
+    // Before the schema is touched; `both` opens a second, bulk session with the same pool.
+    let sessions = if cli.mode == Mode::Both { 2 } else { 1 };
+    startup::check_pool(&cli, sessions, &startup::shard_counts(&session))
+        .unwrap_or_else(|err| exit_setup_failure(err));
     startup::startup(&session, &profile, &cli)
         .await
         .unwrap_or_else(|err| exit_setup_failure(err));
