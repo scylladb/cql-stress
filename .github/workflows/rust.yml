@@ -45,6 +45,13 @@ jobs:
         run: cargo clippy --all --all-targets --features "strong-consistency" -- -D warnings
       - name: Clippy check with `strong-consistency` and no default features
         run: cargo clippy --tests --no-default-features --features "strong-consistency" -- -D warnings
+      # `client-routes` is off by default too and wraps the driver's `unstable-client-routes` API, so
+      # the default jobs never compile the gated session code or its tests; a driver bump must not
+      # break it silently.
+      - name: Clippy check with `client-routes` feature
+        run: cargo clippy --all --all-targets --features "client-routes" -- -D warnings
+      - name: Clippy check with `client-routes` and no default features
+        run: cargo clippy --tests --no-default-features --features "client-routes" -- -D warnings
       - name: Clippy check with cfg(fetch_extended_version_info)
         # Overrides the job-wide RUSTFLAGS, so both cfgs have to be repeated here.
         run: RUSTFLAGS="--cfg fetch_extended_version_info --cfg scylla_unstable" cargo clippy --tests -- -D warnings
@@ -134,6 +141,10 @@ jobs:
     # wording, the parse-time rejections - compile only with the feature on.
     - name: Test with `strong-consistency` feature
       run: cargo test --features "user-profile,strong-consistency" -- --test-threads=1
+    # The client-routes unit tests - the flag parsing and the TLS rejection - compile only with the
+    # feature on.
+    - name: Test with `client-routes` feature
+      run: cargo test --features "user-profile,client-routes" -- --test-threads=1
 
   integration-tests:
     needs: [build, test]

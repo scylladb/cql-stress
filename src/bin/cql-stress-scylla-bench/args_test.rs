@@ -68,3 +68,41 @@ fn test_dc_aware_empty_datacenter() {
         "dc-aware: with empty datacenter should be rejected"
     );
 }
+
+#[cfg(feature = "client-routes")]
+#[test]
+fn test_client_routes_connection_ids() {
+    let args = parse_ok(
+        "scylla-bench -workload=sequential -mode=write \
+         -client-routes-connection-ids=id-1,id-2",
+    );
+    assert_eq!(args.client_routes_connection_ids, vec!["id-1", "id-2"]);
+}
+
+#[cfg(feature = "client-routes")]
+#[test]
+fn test_client_routes_connection_ids_with_tls() {
+    // The driver does not support TLS over client routes
+    assert!(
+        parse(
+            "scylla-bench -workload=sequential -mode=write \
+             -client-routes-connection-ids=id-1 -tls"
+        )
+        .is_none(),
+        "tls with client routes should be rejected"
+    );
+}
+
+#[cfg(not(feature = "client-routes"))]
+#[test]
+fn test_client_routes_connection_ids_without_feature() {
+    // A build without the feature must not silently fall back to a regular session
+    assert!(
+        parse(
+            "scylla-bench -workload=sequential -mode=write \
+             -client-routes-connection-ids=id-1"
+        )
+        .is_none(),
+        "client routes without the feature should be rejected"
+    );
+}
