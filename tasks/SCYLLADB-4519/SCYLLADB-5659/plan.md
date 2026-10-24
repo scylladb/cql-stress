@@ -70,7 +70,7 @@ before the code.
   error goes to one `tracing::warn!` per run, through a
   `static WARNED: std::sync::Once`. The check goes on.
 
-- [ ] Write the failing test `the_checker_starts_without_fork_test`:
+- [x] Write the failing test `the_checker_starts_without_fork_test`:
   - register `libc::pthread_atfork` once (a `std::sync::Once`), with a
     prepare handler that bumps a `static FORKS: AtomicUsize`;
   - run `probe` and `check_file` with a fake checker;
@@ -79,20 +79,20 @@ before the code.
   glibc runs the handler on `fork()` and not on `posix_spawn`. If
   `libc 0.2.186` lacks `pthread_atfork` for Linux, declare it in an
   `extern "C"` block in the test module.
-- [ ] Run it and confirm the failure: `pre_exec` forks.
-- [ ] Change `the_child_is_limited_test`: its fake checker sleeps 0.2 s
+- [x] Run it and confirm the failure: `pre_exec` forks.
+- [x] Change `the_child_is_limited_test`: its fake checker sleeps 0.2 s
   before it reads `nice` and `ulimit -d`, because the limits now arrive just
   after the start. Run it and confirm it still passes on the old code.
-- [ ] Write `limit_child` and swap `pre_exec` for `process_group(0)` in
+- [x] Write `limit_child` and swap `pre_exec` for `process_group(0)` in
   `probe` and `check_file`. Both tests pass.
-- [ ] Add `limit_child_ignores_an_exited_child_test`: spawn `/bin/true`,
+- [x] Add `limit_child_ignores_an_exited_child_test`: spawn `/bin/true`,
   wait for it, call `limit_child` on its pid, expect `Ok(())`.
-- [ ] Check the syscall once by hand, with the release binary and the
+- [x] Check the syscall once by hand, with the release binary and the
   compose node: `strace -f -e trace=clone,clone3` over a short `--mode verify`
   run shows `clone3` with `CLONE_VM|CLONE_VFORK` for the checker children.
   Put the line in the PR body.
-- [ ] Run the verify sequence.
-- [ ] Commit `fix(sc-verify): start checkers without forking the tool [SCYLLADB-5659]`,
+- [x] Run the verify sequence.
+- [x] Commit `fix(sc-verify): start checkers without forking the tool [SCYLLADB-5659]`,
   with the boxes of this task checked.
 
 ## Task 3 — `--keep-skipped on|off`, default off

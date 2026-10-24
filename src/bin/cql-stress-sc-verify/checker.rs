@@ -19,18 +19,13 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// porcupine_checker does. Anything else, a hang included, means it cannot check the run.
 pub async fn probe(bin: &Path, timeout: Duration) -> Result<()> {
     let mut command = Command::new(bin);
+    // Its own process group, set by posix_spawn: see check_file for why there is no pre_exec.
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
+        .process_group(0)
         .kill_on_drop(true);
-    // SAFETY: setpgid is async-signal-safe.
-    unsafe {
-        command.pre_exec(|| {
-            libc::setpgid(0, 0);
-            Ok(())
-        });
-    }
     let mut child = command
         .spawn()
         .with_context(|| format!("Cannot run the checker {}", bin.display()))?;
@@ -123,26 +118,24 @@ pub async fn check_file(
         .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(stderr)
+        // Its own process group, so a kill reaches anything it started too.
+        .process_group(0)
         .kill_on_drop(true);
-    // SAFETY: only async-signal-safe calls (setpgid, nice, setrlimit) between fork and exec.
-    unsafe {
-        command.pre_exec(move || {
-            // Its own process group, so a kill reaches anything it started too.
-            libc::setpgid(0, 0);
-            libc::nice(10);
-            let limit = libc::rlimit {
-                rlim_cur: data_limit,
-                rlim_max: data_limit,
-            };
-            if libc::setrlimit(libc::RLIMIT_DATA, &limit) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
-    }
+    // No pre_exec, uid, gid or chroot on this command: any of them makes the standard library
+    // fork() the whole tool for every check file instead of using posix_spawn. The fork copies
+    // the tool's page tables and stalls its threads, which starved the checker on a busy loader
+    // (SCYLLADB-5659). The priority and the data limit are set from outside, just below.
     let mut child = command
         .spawn()
         .with_context(|| format!("Cannot run the checker {}", cfg.bin.display()))?;
+    if let Some(pid) = child.id() {
+        if let Err(err) = limit_child(pid as i32, data_limit) {
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+                tracing::warn!("cannot set the checker's priority and data limit: {err}")
+            });
+        }
+    }
     let mut group = ProcessGroup(child.id().map(|pid| pid as i32));
 
     let mut per_key = vec![RowResult::Unknown; rows];
@@ -184,6 +177,28 @@ pub async fn check_file(
         killed,
         ran: true,
     })
+}
+
+/// Puts a started checker child at `nice 10` and caps its data segment at `data_limit` bytes.
+/// A child that already exited (`ESRCH`) needs neither.
+fn limit_child(pid: i32, data_limit: u64) -> std::io::Result<()> {
+    let check = |rc: libc::c_int| match rc {
+        0 => Ok(()),
+        _ => match std::io::Error::last_os_error() {
+            err if err.raw_os_error() == Some(libc::ESRCH) => Ok(()),
+            err => Err(err),
+        },
+    };
+    let limit = libc::rlimit64 {
+        rlim_cur: data_limit,
+        rlim_max: data_limit,
+    };
+    // SAFETY: plain syscalls on a child this process started.
+    let priority = check(unsafe { libc::setpriority(libc::PRIO_PROCESS, pid as libc::id_t, 10) });
+    // SAFETY: as above; `limit` outlives the call, and the old limit is not asked for.
+    let data =
+        check(unsafe { libc::prlimit64(pid, libc::RLIMIT_DATA, &limit, std::ptr::null_mut()) });
+    priority.and(data)
 }
 
 /// The process group of a running checker child; dropping it (a worker aborted mid-check)
@@ -453,10 +468,11 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn the_child_is_limited_test() {
         let (file, archive) = check_file_fixture("env", 1);
-        // $2 is the --output-dir.
+        // $2 is the --output-dir. The tool sets the priority and the data limit just after
+        // the start, so the fake reads them a moment later.
         let env = fake_checker(
             "env",
-            "cat >/dev/null\necho \"$(nice) $GOMEMLIMIT $(ulimit -d) $*\" > \"$2/env\"",
+            "cat >/dev/null\nsleep 0.2\necho \"$(nice) $GOMEMLIMIT $(ulimit -d) $*\" > \"$2/env\"",
         );
         check_file(&config(env, Duration::from_secs(5)), &file, 1, &archive)
             .await
@@ -557,5 +573,50 @@ pub(crate) mod tests {
         assert!(probe(Path::new("/nonexistent/porcupine_checker"), timeout)
             .await
             .is_err());
+    }
+
+    /// Bumped by glibc on every fork() of this process; posix_spawn never runs it.
+    static FORKS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    extern "C" fn count_fork() {
+        FORKS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Starting a checker must not fork the tool: a fork copies the tool's page tables and
+    /// stalls its threads, which starved the checker on a busy loader (SCYLLADB-5659).
+    #[tokio::test]
+    async fn the_checker_starts_without_fork_test() {
+        static REGISTER: std::sync::Once = std::sync::Once::new();
+        // SAFETY: the handler only bumps an atomic counter.
+        REGISTER.call_once(|| unsafe {
+            assert_eq!(libc::pthread_atfork(Some(count_fork), None, None), 0);
+        });
+        let before = FORKS.load(std::sync::atomic::Ordering::SeqCst);
+
+        let answers = fake_checker("no-fork-probe", "cat >/dev/null; exit 2");
+        probe(&answers, Duration::from_secs(5)).await.unwrap();
+        let (file, archive) = check_file_fixture("no-fork", 1);
+        let ok = fake_checker(
+            "no-fork",
+            &format!("cat >/dev/null\n{OK_0}\n{SUMMARY}\nexit 0"),
+        );
+        check_file(&config(ok, Duration::from_secs(5)), &file, 1, &archive)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            FORKS.load(std::sync::atomic::Ordering::SeqCst),
+            before,
+            "starting a checker forked the tool"
+        );
+    }
+
+    /// A checker that exits before its limits are set is no error: nothing is left to limit.
+    #[test]
+    fn limit_child_ignores_an_exited_child_test() {
+        let mut child = std::process::Command::new("/bin/true").spawn().unwrap();
+        let pid = child.id() as i32;
+        child.wait().unwrap();
+        assert!(limit_child(pid, 1 << 30).is_ok());
     }
 }
