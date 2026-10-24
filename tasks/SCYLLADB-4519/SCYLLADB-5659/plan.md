@@ -147,20 +147,27 @@ and after on one shape that makes many cheap files.
 - Create: none. The numbers go to the PR body and to the tracking
   repository's status.
 
-- [ ] Build both binaries: the parent of Task 2's commit, and the branch head.
-- [ ] Run each for 10 minutes against the compose node:
+- [x] Build both binaries: the parent of Task 2's commit, and the branch head.
+- [x] Run each for 10 minutes against the compose node:
   `--mode verify --slots 64 --clients-per-row 8 --burst-interval 100ms
   --ops-per-gen 100 --check-rows 5 --checker-workers 4 --readback off`.
-- [ ] Per minute, record:
+- [x] Per minute, record:
   - checked files/s and the maximum `queue`;
   - `sched_delay_p99_ms`, from the `SCV` lines;
   - the tool's kernel CPU, from `/proc/<pid>/stat` field 15 sampled each
     minute.
-- [ ] Compare the two runs:
+- [x] Compare the two runs:
   - **pass:** after the change, checked files/s and `sched_delay_p99_ms`
     stay level over the 10 minutes, and kernel CPU per checked file is lower;
   - **if `sched_delay_p99_ms` still grows:** say so in the PR body and file
     the leftover drift as its own issue.
+
+**Result (2026-10-24):** both runs held 18.1–18.4 checked files/s, an empty
+queue and `sched_delay_p99_ms` at 2.0 ms for the whole 10 minutes, at 9,230
+ops/s. The tool's kernel CPU per checked file went from 5.64 ms to 4.30 ms.
+The tool held only 10–21 MB here, against 4–6 GiB on the AWS loader, so the
+loader-scale drift can't show on this node; the SCT run with the new image
+checks it.
 
 ## Task 5 — PR #206 and the image
 
