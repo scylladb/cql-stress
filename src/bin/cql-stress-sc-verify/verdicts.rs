@@ -8,6 +8,7 @@ use std::sync::atomic::Ordering;
 
 use crate::bulk::BulkStats;
 use crate::checker::{CheckQueue, FileVerdicts, Job, RowResult};
+use crate::cli::KeepSkipped;
 use crate::history::{self, ClosedFile, Recorder};
 use crate::report::{self, Report, Scv};
 use crate::slot::{Checked, SealedRow};
@@ -297,8 +298,10 @@ impl Verdicts {
         });
     }
 
-    /// Archives a check file unchecked: the queue was full, or the run ended first. Its rows
-    /// are `skipped`, or `violation` when an invariant fired.
+    /// Skips a check file unchecked: the queue was full, or the run ended first. Its rows are
+    /// `skipped`, or `violation` when an invariant fired. The file is deleted unless
+    /// `--keep-skipped on`: hours of a full queue would fill the disk. A file that holds a
+    /// violation is archived either way, since `archive/<seq>/` already holds its evidence.
     fn skip(&mut self, checked: &Checked, closed: ClosedFile) {
         for row in &closed.rows {
             let mut line = row.line.clone();
@@ -311,13 +314,24 @@ impl Verdicts {
                 checked.exit.raise(3);
             }
         }
-        if let Err(err) = self.recorder.archive(closed.seq, &closed.path) {
+        let keep = checked.cli.keep_skipped == KeepSkipped::On
+            || closed.rows.iter().any(|row| row.violated);
+        let kept = if keep {
+            self.recorder.archive(closed.seq, &closed.path).map(Some)
+        } else {
+            self.recorder
+                .discard(closed.seq, &closed.path)
+                .map(|()| None)
+        };
+        let archive = kept.unwrap_or_else(|err| {
             eprintln!("error: {err:#}");
             checked.exit.raise(3);
-        }
+            None
+        });
         report::print(&Scv::Skipped {
             file: closed.seq.to_string(),
             rows: closed.rows.len(),
+            archive: archive.as_deref(),
         });
     }
 

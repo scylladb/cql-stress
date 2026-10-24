@@ -71,6 +71,9 @@ pub enum Scv<'a> {
     Skipped {
         file: String,
         rows: usize,
+        /// Only when the file was kept (`--keep-skipped on`, or a violation in it).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        archive: Option<&'a str>,
     },
     /// The end-of-run read-back (spec §12).
     Readback {
@@ -413,10 +416,20 @@ mod tests {
         let skipped = Scv::Skipped {
             file: "40".to_owned(),
             rows: 50,
+            archive: None,
         };
         assert_eq!(
             line(&skipped),
             r#"SCV {"t":"skipped","file":"40","rows":50}"#
+        );
+        let kept = Scv::Skipped {
+            file: "41".to_owned(),
+            rows: 50,
+            archive: Some("archive/41"),
+        };
+        assert_eq!(
+            line(&kept),
+            r#"SCV {"t":"skipped","file":"41","rows":50,"archive":"archive/41"}"#
         );
         assert_eq!(
             line(&Scv::Canary { result: "illegal" }),

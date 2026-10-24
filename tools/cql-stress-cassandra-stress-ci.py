@@ -26,6 +26,7 @@ from test_cs_sc_verify import run_both_early_stop as run_sc_verify_both_early_st
 from test_cs_sc_verify import run_checker as run_sc_verify_checker
 from test_cs_sc_verify import run_hanging_checker as run_sc_verify_hanging_checker
 from test_cs_sc_verify import run_queue_full as run_sc_verify_queue_full
+from test_cs_sc_verify import run_queue_full_keep as run_sc_verify_queue_full_keep
 from test_cs_sc_verify import run_canaries as run_sc_verify_canaries
 from test_cs_sc_verify import run_broken_checker as run_sc_verify_broken_checker
 from test_cs_sc_verify import run_deleted_row as run_sc_verify_deleted_row
@@ -331,6 +332,13 @@ def test_strong_consistency_sc_verify_queue_full(
         strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
         tmp_path):
     run_sc_verify_queue_full(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_queue_full_keep(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_queue_full_keep(node=strong_consistency_node, session=strong_consistency_session,
                          keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
 
 

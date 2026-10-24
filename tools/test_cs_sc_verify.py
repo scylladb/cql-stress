@@ -360,21 +360,40 @@ def run_hanging_checker(node, session, keyspace: str, tmp_path):
         (ops_per_s(hung), ops_per_s(base))
 
 
-def run_queue_full(node, session, keyspace: str, tmp_path):
-    """A full queue never waits: the file is archived unchecked and its rows are skipped."""
+def queue_full_run(node, keyspace: str, tmp_path, *args: str):
+    """A run whose one worker hangs, so the queue of one file fills: returns the history
+    directory and the SCV skipped lines, after checking the skipped rows are recorded."""
     profile = write_profile(tmp_path / "profile.yaml", keyspace)
     history = tmp_path / "history"
     result = checked_run(node, profile, history, "15s", "--checker-bin", hanging_checker(tmp_path),
                          "--checker-workers", "1", "--queue-max", "1", "--check-rows", "2",
                          "--ops-per-gen", "20", "--checker-timeout", "30s",
-                         "--checker-deadline", "2s", "--readback", "off")
+                         "--checker-deadline", "2s", "--readback", "off", *args)
     assert result.returncode == 0, f"expected exit 0, got {result.returncode}"
     skipped = scv_lines(result.stdout, "skipped")
     assert skipped, "no SCV skipped line"
     rows = rows_of(history)
     assert sum(row["verdict"] == "skipped" for row in rows) >= sum(s["rows"] for s in skipped)
-    archived = list((history / "archive").glob("*/*.jsonl"))
-    assert archived, "a skipped file is kept in archive/"
+    return history, skipped
+
+
+def run_queue_full(node, session, keyspace: str, tmp_path):
+    """A full queue never waits: its rows are skipped, and by default the file is deleted."""
+    history, skipped = queue_full_run(node, keyspace, tmp_path)
+    for line in skipped:
+        name = line["file"]
+        assert "archive" not in line, line
+        assert not (history / "sealed" / f"{name}.jsonl").exists(), f"skipped file {name} left in sealed/"
+        assert not (history / "archive" / name).exists(), f"skipped file {name} kept in archive/"
+
+
+def run_queue_full_keep(node, session, keyspace: str, tmp_path):
+    """With --keep-skipped on, every skipped file is kept where its SCV line says."""
+    history, skipped = queue_full_run(node, keyspace, tmp_path, "--keep-skipped", "on")
+    for line in skipped:
+        name = line["file"]
+        assert line.get("archive") == f"archive/{name}", line
+        assert (history / "archive" / name / f"{name}.jsonl").exists(), f"skipped file {name} not kept"
 
 
 def lenient_checker(tmp_path) -> str:

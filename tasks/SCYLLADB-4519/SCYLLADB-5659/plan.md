@@ -122,7 +122,7 @@ before the code.
   - an error from either prints `error: …` and raises exit 3, as the archive
     move does today.
 
-- [ ] Write the failing tests:
+- [x] Write the failing tests:
   - `defaults_follow_the_spec_test` expects `KeepSkipped::Off`;
   - the `report.rs` line test adds
     `SCV {"t":"skipped","file":"41","rows":50,"archive":"archive/41"}`;
@@ -132,10 +132,10 @@ before the code.
   - `run_queue_full_keep` runs the same shape with `--keep-skipped on` and
     asserts each skipped file is in the `archive/<seq>/` that its `SCV
     skipped` line names.
-- [ ] Run them and confirm the failures.
-- [ ] Write the flag, the field and the two branches of `skip`.
-- [ ] Run the verify sequence.
-- [ ] Commit `feat(sc-verify): delete skipped check files unless --keep-skipped on [SCYLLADB-5659]`,
+- [x] Run them and confirm the failures.
+- [x] Write the flag, the field and the two branches of `skip`.
+- [x] Run the verify sequence.
+- [x] Commit `feat(sc-verify): delete skipped check files unless --keep-skipped on [SCYLLADB-5659]`,
   with the boxes of this task checked.
 
 ## Task 4 — Soak check on the compose node

@@ -256,7 +256,7 @@ flowchart LR
 | Condition | Behaviour |
 |---|---|
 | `--checker on` but `--checker-bin` cannot run | exit 2 at start-up |
-| Queue full | the file is deleted, or goes to `archive/<seq>/` with `--keep-skipped on`; its rows are `skipped`; `SCV skipped` |
+| Queue full | the file is deleted, or goes to `archive/<seq>/` with `--keep-skipped on` or when it holds a violation; its rows are `skipped`; `SCV skipped` |
 | Child killed (timeout or memory) | rows with a line keep it; the rest are `unknown` |
 | A canary answered `ok` or `unknown` | `verifier-broken`: `SCV canary`, exit 1 |
 | End of run | the queue drains until `--checker-deadline`; files left are `skipped` |

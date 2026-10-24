@@ -56,7 +56,7 @@ flowchart LR
     Q -- no --> S[worker: posix_spawn porcupine_checker,<br/>own process group, GOMEMLIMIT]
     S --> L[set nice 10 and RLIMIT_DATA<br/>on the child's pid]
     L --> V[verdicts as today]
-    Q -- yes --> K{--keep-skipped on?}
+    Q -- yes --> K{--keep-skipped on,<br/>or a violation in the file?}
     K -- yes --> A[move to archive/seq/]
     K -- no --> D[delete the file]
     A --> R[rows.jsonl: skipped;<br/>SCV skipped]
@@ -83,7 +83,8 @@ The command line (spec §15.2):
 
 ```
 --keep-skipped on|off    default off. on: a skipped check file moves to archive/<seq>/.
-                         off: it is deleted. Its rows are recorded either way.
+                         off: it is deleted. Its rows are recorded either way, and a
+                         file that holds a violation is always kept.
 ```
 
 `SCV` lines (spec §14.4). `archive` appears only when the file was kept, as
@@ -129,4 +130,6 @@ The boundary stays: one check file in, its verdicts out.
   `checked` line already uses. (spec)
 - The cause was confirmed with a standalone measurement, not on a loader.
   The plan checks the fix on a loader-like run. (spec)
+- A skipped file that holds a violation is archived whatever `--keep-skipped`
+  says: `archive/<seq>/` already holds its evidence from the seal. (build)
 - Whether `--keep-skipped on` also needs a size limit. (open)

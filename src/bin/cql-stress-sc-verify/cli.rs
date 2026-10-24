@@ -134,9 +134,13 @@ pub struct Cli {
     /// At the end of the run, how long the queued files may still be checked.
     #[arg(long, default_value = "10m", value_parser = parse_duration)]
     pub checker_deadline: Duration,
-    /// Check files waiting for a worker; when full, a file is archived unchecked.
+    /// Check files waiting for a worker; when full, a file is skipped unchecked.
     #[arg(long, default_value_t = 256)]
     pub queue_max: usize,
+    /// Keep a skipped check file in archive/ (`on`), or delete it (`off`). Its rows are
+    /// recorded as skipped either way, and a file that holds a violation is always kept.
+    #[arg(long, value_enum, default_value_t = KeepSkipped::Off)]
+    pub keep_skipped: KeepSkipped,
     /// One canary, a deliberately corrupted history, every this many check files.
     #[arg(long, default_value_t = 100)]
     pub canary_every: u64,
@@ -216,6 +220,12 @@ pub enum Checker {
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Readback {
+    On,
+    Off,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeepSkipped {
     On,
     Off,
 }
@@ -481,6 +491,7 @@ mod tests {
             (100, Duration::from_secs(10))
         );
         assert_eq!(cli.readback, Readback::On);
+        assert_eq!(cli.keep_skipped, KeepSkipped::Off);
         assert_eq!((cli.readback_sample, cli.readback_concurrency), (1.0, 64));
         assert_eq!((cli.bulk_op, cli.bulk_read_ratio), (BulkOp::Mixed, 0.5));
         assert_eq!(cli.bulk_pop, "seq=1099511627776..1099522113535");
