@@ -228,7 +228,7 @@ retired row is read back once and judged: `ok`, `lost` or `phantom`.
 ```mermaid
 flowchart LR
   R[Recorder: check file closed] --> Q{queue full?}
-  Q -- yes --> SK[archive; rows skipped; SCV skipped]
+  Q -- yes --> SK[delete, or archive with --keep-skipped on; rows skipped; SCV skipped]
   Q -- no --> W[worker: porcupine_checker child]
   W -->|per-row lines| V[verdicts → rows.jsonl]
   W -->|all ok| DEL[delete the check file]
@@ -241,7 +241,8 @@ flowchart LR
 
 - The checker never slows the load: the queue is bounded (a full queue means `skipped`,
   never waiting); children run at `nice 10`; a hung child is killed after
-  `--checker-timeout`.
+  `--checker-timeout`. A child starts by `posix_spawn`, never a fork of the tool, and the
+  tool sets its `nice 10` and `RLIMIT_DATA` right after (SCYLLADB-5659).
 - Memory: `GOMEMLIMIT` plus `RLIMIT_DATA` for the child, never `RLIMIT_AS` (the Go runtime
   reserves address space up front).
 - A row's `rows.jsonl` line is written once its verdict is final: at seal with
@@ -255,7 +256,7 @@ flowchart LR
 | Condition | Behaviour |
 |---|---|
 | `--checker on` but `--checker-bin` cannot run | exit 2 at start-up |
-| Queue full | the file goes to `archive/<seq>/`; its rows are `skipped`; `SCV skipped` |
+| Queue full | the file is deleted, or goes to `archive/<seq>/` with `--keep-skipped on`; its rows are `skipped`; `SCV skipped` |
 | Child killed (timeout or memory) | rows with a line keep it; the rest are `unknown` |
 | A canary answered `ok` or `unknown` | `verifier-broken`: `SCV canary`, exit 1 |
 | End of run | the queue drains until `--checker-deadline`; files left are `skipped` |
@@ -269,7 +270,7 @@ Command additions (§15.2):
 ```text
   --checker on|off  --checker-bin /usr/local/bin/porcupine_checker
   --checker-workers 2  --checker-timeout 600s  --checker-mem 4G  --checker-deadline 10m
-  --queue-max 256  --canary-every 100  --key-timeout 10s  --max-viz 3
+  --queue-max 256  --keep-skipped off  --canary-every 100  --key-timeout 10s  --max-viz 3
   --readback on|off  --readback-sample 1.0  --readback-concurrency 64
 ```
 
@@ -296,6 +297,7 @@ New `SCV` lines (§14.4):
 ```text
 SCV {"t":"checked","file":"12","ok":49,"illegal":1,"unknown":0,"archive":"archive/12"}
 SCV {"t":"skipped","file":"40","rows":50}
+SCV {"t":"skipped","file":"41","rows":50,"archive":"archive/41"}
 SCV {"t":"canary","result":"illegal"}
 SCV {"t":"readback","rows":70112,"ok":70112,"lost":0,"phantom":0,"incomplete":0,"indet_total":913,"indet_landed":402}
 ```

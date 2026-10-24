@@ -43,8 +43,8 @@ before the code.
   - **`Contracts`:** `--keep-skipped off` in the flag block, and the
     `SCV skipped` line with the optional `archive`.
 
-- [ ] Edit the five places. Name SCYLLADB-5659 once, in the constraint.
-- [ ] Commit `docs(sdlc): correct the parent design for SCYLLADB-5659 [SCYLLADB-5659]`.
+- [x] Edit the five places. Name SCYLLADB-5659 once, in the constraint.
+- [x] Commit `docs(sdlc): correct the parent design for SCYLLADB-5659 [SCYLLADB-5659]`.
 
 ## Task 2 — Start checkers without fork
 
