@@ -171,15 +171,20 @@ checks it.
 
 ## Task 5 — PR #206 and the image
 
-- [ ] Add a SCYLLADB-5659 section to the PR #206 body:
+- [x] Add a SCYLLADB-5659 section to the PR #206 body:
   - the cause, with the measurement table;
   - both changes;
   - the strace line and the soak numbers;
   - `closes SCYLLADB-5659`.
-- [ ] Build and push the image `aleksbykov/cql-stress:sc-verify-m2-<sha>`
+- [x] Build and push the image `aleksbykov/cql-stress:sc-verify-m2-<sha>`
   from the branch head, as for `556435e`. Check:
   - `--keep-skipped` is in `--help`;
   - the bundled checker exits 2 on empty input;
   - the 4h job's L1 and L2 commands parse.
-- [ ] Report the image tag for the SCT pin. The SCT change itself waits for
+- [x] Report the image tag for the SCT pin. The SCT change itself waits for
   the user.
+
+**Result (2026-10-26):** image `aleksbykov/cql-stress:sc-verify-m2-36ac467`,
+digest `sha256:7185630478c9d61ff2699ec714c37cb3ddb3088d4d340aa74c3b45eedd1bd98f`,
+amd64, pushed. SCT pins it in
+`defaults/docker_images/cql-stress-sc-verify/values_cql-stress-sc-verify.yaml`.
