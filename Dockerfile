@@ -2,7 +2,7 @@
 # strong consistency tests take the checker from this image too. `COPY --from` does not expand
 # an ARG, so the image is a stage of its own. The image is amd64-only for now, and the builder
 # below refuses a checker that cannot run on the build platform.
-ARG CHECKER_IMAGE=aleksbykov/porcupine_validator:v2-662b3db@sha256:a6114473338732a5037cce49c38529f1dd55ea7f7a1a3eedf3c4dbe46141e8fd
+ARG CHECKER_IMAGE=aleksbykov/porcupine_validator:v2-93e504f@sha256:45f5af378a8cd63a11b099f19b88033aab6129333a6f582e489b9e3fbf29e1cd
 FROM ${CHECKER_IMAGE} AS checker
 
 # Must be >= the `rust-version` in Cargo.toml (1.89.0). scylla-rust-driver 1.9.0 is
