@@ -29,9 +29,13 @@ use operation::{
     CounterReadOperationFactory, CounterWriteOperationFactory, MixedOperationFactory,
     WriteOperationFactory,
 };
+#[cfg(feature = "client-routes")]
+use scylla::client::client_routes::{ClientRoutesConfig, ClientRoutesProxy};
 use scylla::client::execution_profile::ExecutionProfile;
 use scylla::client::session::Session;
-use scylla::client::session_builder::SessionBuilder;
+#[cfg(feature = "client-routes")]
+use scylla::client::session_builder::ClientRoutesSessionBuilder;
+use scylla::client::session_builder::{GenericSessionBuilder, SessionBuilder, SessionBuilderKind};
 use stats::{ShardedStats, StatsFactory, StatsPrinter};
 
 use std::{env, sync::Arc};
@@ -153,50 +157,7 @@ async fn prepare_run(
     settings: Arc<CassandraStressSettings>,
     stats: Arc<ShardedStats>,
 ) -> Result<(Configuration, Arc<Session>)> {
-    let mut builder = SessionBuilder::new()
-        .known_nodes(&settings.node.nodes)
-        .compression(settings.mode.compression);
-
-    if let Some(creds) = &settings.mode.user_credentials {
-        builder = builder.user(&creds.username, &creds.password);
-    }
-
-    if settings.transport.truststore.is_some() || settings.transport.keystore.is_some() {
-        let ssl_ctx = settings.transport.generate_ssl_context()?;
-        builder = builder.tls_context(Some(ssl_ctx));
-    }
-
-    // Set the preferred datacenter/rack on the SessionBuilder (the recommended way).
-    // The token-aware policy below leaves its own preference unset, so it falls back
-    // to the session-level preference configured here.
-    if let Some(dc) = settings.node.datacenter.clone() {
-        builder = if let Some(rack) = settings.node.rack.clone() {
-            builder.prefer_datacenter_and_rack(dc, rack)
-        } else {
-            builder.prefer_datacenter(dc)
-        };
-    }
-
-    let default_exec_profile = ExecutionProfile::builder()
-        .load_balancing_policy(settings.node.load_balancing_policy())
-        .build();
-    builder = builder.default_execution_profile_handle(default_exec_profile.into_handle());
-
-    // TODO: Adjust port when `-port` option is supported.
-    if let Some(host_filter) = settings.node.host_filter(9042) {
-        builder = builder.host_filter(host_filter?)
-    }
-
-    builder = builder.pool_size(settings.mode.pool_size);
-    if let Some(range) = settings.mode.shard_aware_port_range.clone() {
-        builder = builder.shard_aware_local_port_range(range);
-    }
-    if let Some(reuse) = settings.mode.tcp_reuse_address {
-        builder = builder.tcp_reuse_address(reuse);
-    }
-
-    let session = builder.build().await?;
-    let session = Arc::new(session);
+    let session = Arc::new(build_session(&settings).await?);
 
     settings
         .create_schema(&session)
@@ -236,6 +197,95 @@ async fn prepare_run(
         },
         session,
     ))
+}
+
+/// Builds the session: a regular one, or - with `-node client-routes-connection-ids=...` - one
+/// that reaches every node through the proxy endpoints of `system.client_routes` (ScyllaDB Cloud
+/// Private Connectivity). TLS applies to the regular session only: the driver does not support
+/// it over client routes yet, so the combination is refused.
+async fn build_session(settings: &CassandraStressSettings) -> Result<Session> {
+    let tls = settings.transport.truststore.is_some() || settings.transport.keystore.is_some();
+
+    if settings.node.client_routes_connection_ids.is_empty() {
+        let mut builder = SessionBuilder::new().known_nodes(&settings.node.nodes);
+        if tls {
+            let ssl_ctx = settings.transport.generate_ssl_context()?;
+            builder = builder.tls_context(Some(ssl_ctx));
+        }
+        return configure_session_builder(builder, settings)?
+            .build()
+            .await
+            .context("Failed to create the session");
+    }
+
+    anyhow::ensure!(
+        !tls,
+        "`-transport` TLS cannot be combined with `-node client-routes-connection-ids`: \
+         the driver does not support TLS over client routes yet"
+    );
+
+    #[cfg(feature = "client-routes")]
+    {
+        let proxies = settings
+            .node
+            .client_routes_connection_ids
+            .iter()
+            .cloned()
+            .map(ClientRoutesProxy::new_with_connection_id)
+            .collect();
+        let config = ClientRoutesConfig::new(proxies)
+            .context("Failed to create the client routes config")?;
+        let builder = ClientRoutesSessionBuilder::new(config).known_nodes(&settings.node.nodes);
+        configure_session_builder(builder, settings)?
+            .build()
+            .await
+            .context("Failed to create the client routes session")
+    }
+    #[cfg(not(feature = "client-routes"))]
+    anyhow::bail!("`client-routes-connection-ids` needs a build with the `client-routes` feature")
+}
+
+/// Applies the settings shared by the regular and the client routes session.
+fn configure_session_builder<K: SessionBuilderKind>(
+    mut builder: GenericSessionBuilder<K>,
+    settings: &CassandraStressSettings,
+) -> Result<GenericSessionBuilder<K>> {
+    builder = builder.compression(settings.mode.compression);
+
+    if let Some(creds) = &settings.mode.user_credentials {
+        builder = builder.user(&creds.username, &creds.password);
+    }
+
+    // Set the preferred datacenter/rack on the SessionBuilder (the recommended way).
+    // The token-aware policy below leaves its own preference unset, so it falls back
+    // to the session-level preference configured here.
+    if let Some(dc) = settings.node.datacenter.clone() {
+        builder = if let Some(rack) = settings.node.rack.clone() {
+            builder.prefer_datacenter_and_rack(dc, rack)
+        } else {
+            builder.prefer_datacenter(dc)
+        };
+    }
+
+    let default_exec_profile = ExecutionProfile::builder()
+        .load_balancing_policy(settings.node.load_balancing_policy())
+        .build();
+    builder = builder.default_execution_profile_handle(default_exec_profile.into_handle());
+
+    // TODO: Adjust port when `-port` option is supported.
+    if let Some(host_filter) = settings.node.host_filter(9042) {
+        builder = builder.host_filter(host_filter?)
+    }
+
+    builder = builder.pool_size(settings.mode.pool_size);
+    if let Some(range) = settings.mode.shard_aware_port_range.clone() {
+        builder = builder.shard_aware_local_port_range(range);
+    }
+    if let Some(reuse) = settings.mode.tcp_reuse_address {
+        builder = builder.tcp_reuse_address(reuse);
+    }
+
+    Ok(builder)
 }
 
 async fn create_operation_factory(

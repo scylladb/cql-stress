@@ -141,8 +141,8 @@ jobs:
     # wording, the parse-time rejections - compile only with the feature on.
     - name: Test with `strong-consistency` feature
       run: cargo test --features "user-profile,strong-consistency" -- --test-threads=1
-    # The client-routes unit tests - the flag parsing and the TLS rejection - compile only with the
-    # feature on.
+    # The client-routes unit tests - the flag and `-node` parameter parsing, the whitelist and TLS
+    # rejections - compile only with the feature on.
     - name: Test with `client-routes` feature
       run: cargo test --features "user-profile,client-routes" -- --test-threads=1
 

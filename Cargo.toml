@@ -97,7 +97,8 @@ timerfd = ["dep:tokio-timerfd"]
 # silently unverified run.
 strong-consistency = ["scylla/unstable-strong-consistency"]
 # Reach a cluster through ScyllaDB Cloud Private Connectivity (AWS PrivateLink, GCP Private
-# Service Connect): the scylla-bench frontend's `-client-routes-connection-ids` makes the driver
+# Service Connect): `-client-routes-connection-ids` (scylla-bench frontend) and
+# `-node client-routes-connection-ids=` (cassandra-stress frontend) make the driver
 # resolve every node through the proxy endpoints published in `system.client_routes`. OFF by
 # default for the same reason as `strong-consistency`: the driver keeps this API behind its
 # `unstable-client-routes` feature, and the ordinary binary must not depend on it. A build
