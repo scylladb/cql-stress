@@ -17,6 +17,7 @@ pub struct NodeOption {
     pub whitelist: bool,
     pub datacenter: Option<String>,
     pub rack: Option<String>,
+    pub client_routes_connection_ids: Vec<String>,
 }
 
 impl NodeOption {
@@ -44,6 +45,12 @@ impl NodeOption {
         println!("  Is White List: {}", self.whitelist);
         println!("  Datacenter: {:?}", self.datacenter);
         println!("  Rack: {:?}", self.rack);
+        if !self.client_routes_connection_ids.is_empty() {
+            println!(
+                "  Client routes connection IDs: {:?}",
+                self.client_routes_connection_ids
+            );
+        }
     }
 
     fn from_handles(handles: NodeParamHandles) -> Result<NodeOption> {
@@ -52,6 +59,22 @@ impl NodeOption {
         let whitelist = handles.whitelist.get().is_some();
         let file = handles.file.get();
         let nodes = handles.nodes.get();
+        let client_routes_connection_ids = handles
+            .client_routes_connection_ids
+            .get()
+            .unwrap_or_default();
+        // A build without the `client-routes` feature refuses the parameter here, so the run
+        // never silently falls back to a regular session.
+        #[cfg(not(feature = "client-routes"))]
+        anyhow::ensure!(
+            client_routes_connection_ids.is_empty(),
+            "`client-routes-connection-ids` needs a build with the `client-routes` feature"
+        );
+        anyhow::ensure!(
+            !whitelist || client_routes_connection_ids.is_empty(),
+            "`whitelist` cannot be combined with `client-routes-connection-ids`: the allow list \
+             is matched against the nodes' advertised addresses, not against the proxy endpoints"
+        );
 
         if datacenter.as_deref() == Some("") {
             anyhow::bail!("`datacenter` must not be empty");
@@ -76,6 +99,7 @@ impl NodeOption {
             whitelist,
             datacenter,
             rack,
+            client_routes_connection_ids,
         })
     }
 
@@ -106,6 +130,7 @@ struct NodeParamHandles {
     whitelist: SimpleParamHandle<bool>,
     file: SimpleParamHandle<String>,
     nodes: SimpleParamHandle<CommaDelimitedList>,
+    client_routes_connection_ids: SimpleParamHandle<CommaDelimitedList>,
 }
 
 fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
@@ -131,6 +156,15 @@ fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
         false,
     );
     let file = parser.simple_param("file=", None, "Node file (one per line)", false);
+    // Registered before the positional node list: parameters are matched by prefix in
+    // registration order and the empty prefix of the node list matches everything.
+    let client_routes_connection_ids = parser.simple_param(
+        "client-routes-connection-ids=",
+        None,
+        "comma delimited connection IDs to read from the system.client_routes table \
+        (ScyllaDB Cloud Private Connectivity); needs the `client-routes` build feature",
+        false,
+    );
     let nodes = parser.simple_param(
         "",
         Some("localhost"),
@@ -139,11 +173,23 @@ fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
     );
 
     // $ ./cassandra-stress help -node
-    // Usage: -node [datacenter=?] [rack=?] [whitelist] []
+    // Usage: -node [datacenter=?] [rack=?] [whitelist] [client-routes-connection-ids=?] []
     //  OR
-    // Usage: -node [datacenter=?] [rack=?] [whitelist] [file=?]
-    parser.group(&[&datacenter, &rack, &whitelist, &nodes]);
-    parser.group(&[&datacenter, &rack, &whitelist, &file]);
+    // Usage: -node [datacenter=?] [rack=?] [whitelist] [client-routes-connection-ids=?] [file=?]
+    parser.group(&[
+        &datacenter,
+        &rack,
+        &whitelist,
+        &client_routes_connection_ids,
+        &nodes,
+    ]);
+    parser.group(&[
+        &datacenter,
+        &rack,
+        &whitelist,
+        &client_routes_connection_ids,
+        &file,
+    ]);
 
     (
         parser,
@@ -153,6 +199,7 @@ fn prepare_parser() -> (ParamsParser, NodeParamHandles) {
             whitelist,
             file,
             nodes,
+            client_routes_connection_ids,
         },
     )
 }
@@ -238,5 +285,49 @@ mod tests {
         let (parser, _) = prepare_parser();
 
         assert!(parser.parse(args).is_err());
+    }
+
+    #[cfg(feature = "client-routes")]
+    #[test]
+    fn node_client_routes_connection_ids_test() {
+        // The parameter must be matched before the positional node list, whose empty prefix
+        // would otherwise swallow it.
+        let args = vec![
+            "client-routes-connection-ids=id-1,id-2",
+            "127.0.0.1,localhost",
+        ];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+
+        let params = NodeOption::from_handles(handles).unwrap();
+        assert_eq!(vec!["id-1", "id-2"], params.client_routes_connection_ids);
+        assert_eq!(vec!["127.0.0.1", "localhost"], params.nodes);
+    }
+
+    #[cfg(feature = "client-routes")]
+    #[test]
+    fn node_whitelist_with_client_routes_test() {
+        let args = vec![
+            "whitelist",
+            "client-routes-connection-ids=id-1",
+            "127.0.0.1",
+        ];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+        // `whitelist` would filter out every node discovered through the routes.
+        assert!(NodeOption::from_handles(handles).is_err());
+    }
+
+    #[cfg(not(feature = "client-routes"))]
+    #[test]
+    fn node_client_routes_without_feature_test() {
+        let args = vec!["client-routes-connection-ids=id-1", "127.0.0.1"];
+        let (parser, handles) = prepare_parser();
+
+        assert!(parser.parse(args).is_ok());
+        // A build without the feature must refuse the parameter instead of running a regular session.
+        assert!(NodeOption::from_handles(handles).is_err());
     }
 }
