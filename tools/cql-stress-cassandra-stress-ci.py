@@ -16,6 +16,24 @@ from test_cs_strong_consistency import (
     run_strong_consistency,
     run_unsupported_consistency_level_is_rejected,
 )
+from test_cs_sc_verify import run_schema as run_sc_verify_schema
+from test_cs_sc_verify import run_verify_quiet as run_sc_verify_quiet
+from test_cs_sc_verify import run_stale_reads as run_sc_verify_stale_reads
+from test_cs_sc_verify import run_bulk as run_sc_verify_bulk
+from test_cs_sc_verify import run_bulk_report as run_sc_verify_bulk_report
+from test_cs_sc_verify import run_both as run_sc_verify_both
+from test_cs_sc_verify import run_both_early_stop as run_sc_verify_both_early_stop
+from test_cs_sc_verify import run_checker as run_sc_verify_checker
+from test_cs_sc_verify import run_hanging_checker as run_sc_verify_hanging_checker
+from test_cs_sc_verify import run_queue_full as run_sc_verify_queue_full
+from test_cs_sc_verify import run_queue_full_keep as run_sc_verify_queue_full_keep
+from test_cs_sc_verify import run_canaries as run_sc_verify_canaries
+from test_cs_sc_verify import run_broken_checker as run_sc_verify_broken_checker
+from test_cs_sc_verify import run_deleted_row as run_sc_verify_deleted_row
+from test_cs_sc_verify import run_tiny_checker_mem as run_sc_verify_tiny_checker_mem
+from test_cs_sc_verify import run_mutation_matrix as run_sc_verify_mutation_matrix
+from test_cs_sc_verify import run_replay_writes as run_sc_verify_replay_writes
+from test_cs_sc_verify import run_unsafe_eventual as run_sc_verify_unsafe_eventual
 
 
 # Utils for test cases
@@ -244,3 +262,133 @@ def test_strong_consistency_rejects_eventually_consistent_keyspace(
     run_eventually_consistent_keyspace_is_rejected(
         node=strong_consistency_node, cql_stress=cql_stress,
         keyspace=strong_consistency_keyspace)
+
+
+def test_strong_consistency_sc_verify_schema(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_schema(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_quiet(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_quiet(node=strong_consistency_node, session=strong_consistency_session,
+                        keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_stale_reads(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_stale_reads(node=strong_consistency_node, session=strong_consistency_session,
+                              keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_bulk(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_bulk(node=strong_consistency_node, session=strong_consistency_session,
+                       keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_bulk_report(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_bulk_report(node=strong_consistency_node, session=strong_consistency_session,
+                              keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_both(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_both(node=strong_consistency_node, session=strong_consistency_session,
+                       keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_both_early_stop(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_both_early_stop(node=strong_consistency_node,
+                                  session=strong_consistency_session,
+                                  keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_checker(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_checker(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_hanging_checker(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_hanging_checker(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_queue_full(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_queue_full(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_queue_full_keep(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_queue_full_keep(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_canaries(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_canaries(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_broken_checker(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_broken_checker(node=strong_consistency_node, session=strong_consistency_session,
+                         keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_deleted_row(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_deleted_row(node=strong_consistency_node, session=strong_consistency_session,
+                              keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_tiny_checker_mem(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_tiny_checker_mem(node=strong_consistency_node,
+                                   session=strong_consistency_session,
+                                   keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_mutation_matrix(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_mutation_matrix(node=strong_consistency_node,
+                                  session=strong_consistency_session,
+                                  keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_replay_writes(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_replay_writes(node=strong_consistency_node, session=strong_consistency_session,
+                                keyspace=strong_consistency_keyspace, tmp_path=tmp_path)
+
+
+def test_strong_consistency_sc_verify_unsafe_eventual(
+        strong_consistency_node, strong_consistency_session, strong_consistency_keyspace,
+        tmp_path):
+    run_sc_verify_unsafe_eventual(node=strong_consistency_node,
+                                  session=strong_consistency_session,
+                                  keyspace=strong_consistency_keyspace, tmp_path=tmp_path)

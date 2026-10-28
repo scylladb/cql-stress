@@ -1,5 +1,5 @@
+use crate::distribution::Description;
 use anyhow::{Context, Result};
-use cql_stress::distribution::Description;
 
 use super::{Distribution, DistributionFactory, ThreadLocalRandom};
 
@@ -157,7 +157,7 @@ impl std::fmt::Display for NormalDistributionFactory {
 
 #[cfg(test)]
 mod tests {
-    use cql_stress::distribution::Description;
+    use crate::distribution::Description;
 
     use super::NormalDistributionFactory;
 

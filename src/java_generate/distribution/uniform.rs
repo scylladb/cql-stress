@@ -1,5 +1,5 @@
+use crate::distribution::Description;
 use anyhow::{Context, Result};
-use cql_stress::distribution::Description;
 
 use super::{
     fixed::FixedDistributionFactory, Distribution, DistributionFactory, ThreadLocalRandom,

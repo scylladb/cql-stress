@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use super::{Distribution, DistributionFactory};
+use crate::distribution::Description;
 use anyhow::{Context, Result};
-use cql_stress::distribution::Description;
 
 /// Sequence distribution. Samples values from `start` to `end` in a sequence manner.
 /// Once the `end` is sampled, the cycle starts over again. It means that the sequence of the sampled values will look like:

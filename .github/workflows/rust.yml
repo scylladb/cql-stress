@@ -102,12 +102,19 @@ jobs:
       # artifacts above are the ordinary build and cannot drive a strongly consistent
       # keyspace at all - they refuse `-schema replication(consistency=...)` at parse time -
       # so that job needs its own.
-      - name: Build cql-stress-cassandra-stress with `strong-consistency`
-        run: cargo build --profile dist --bin cql-stress-cassandra-stress --features strong-consistency
+      # `cql-stress-sc-verify` exists only with `strong-consistency`.
+      - name: Build cql-stress-cassandra-stress and cql-stress-sc-verify with `strong-consistency`
+        run: cargo build --profile dist --bin cql-stress-cassandra-stress --bin cql-stress-sc-verify --features strong-consistency
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cql-stress-cassandra-stress-strong-consistency
           path: "./target/dist/cql-stress-cassandra-stress"
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cql-stress-sc-verify
+          path: "./target/dist/cql-stress-sc-verify"
           if-no-files-found: error
           retention-days: 1
   test:
@@ -176,6 +183,13 @@ jobs:
         run: pip install scylla-driver
       - name: Install pytest
         run: pip install -U pytest
+      # porcupine_checker for the cql-stress-sc-verify tests, from the image the Dockerfile pins.
+      - name: Install porcupine_checker
+        run: |
+          image=$(sed -n 's/^ARG CHECKER_IMAGE=//p' Dockerfile)
+          docker create --name checker "$image"
+          docker cp checker:/porcupine_checker /usr/local/bin/porcupine_checker
+          docker rm checker
       - name: Start ScyllaDB with strongly consistent tables
         run: |
           docker compose -f ./docker/scylla-test/compose.yml --profile strong-consistency up -d scylla-sc-test --wait
@@ -183,11 +197,14 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: cql-stress-cassandra-stress-strong-consistency
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cql-stress-sc-verify
       # The tests skip themselves if the image does not support the
       # `strongly-consistent-tables` experimental feature, so this job stays green on
       # older images rather than blocking on a ScyllaDB release.
       - name: Strong consistency tests
         run: |
-          mv cql-stress-cassandra-stress /usr/local/bin
-          chmod +x /usr/local/bin/cql-stress-cassandra-stress
+          mv cql-stress-cassandra-stress cql-stress-sc-verify /usr/local/bin
+          chmod +x /usr/local/bin/cql-stress-cassandra-stress /usr/local/bin/cql-stress-sc-verify
           pytest -s ./tools/cql-stress-cassandra-stress-ci.py -k "strong_consistency" -v

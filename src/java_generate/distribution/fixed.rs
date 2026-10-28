@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 
-use cql_stress::distribution::Description;
+use crate::distribution::Description;
 
 use super::{Distribution, DistributionFactory};
 

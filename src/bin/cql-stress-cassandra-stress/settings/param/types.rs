@@ -6,14 +6,10 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use cql_stress::distribution::{parse_description, SyntaxFlavor};
 use scylla::client::{Compression, PoolSize};
 use scylla::routing::ShardAwarePortRange;
 
-use crate::java_generate::distribution::{
-    fixed::FixedDistributionFactory, normal::NormalDistributionFactory,
-    sequence::SeqDistributionFactory, uniform::UniformDistributionFactory, DistributionFactory,
-};
+use crate::java_generate::distribution::{parse_distribution, DistributionFactory};
 
 pub trait Parsable: Sized {
     type Parsed;
@@ -266,26 +262,7 @@ impl Parsable for Box<dyn DistributionFactory> {
     type Parsed = Self;
 
     fn parse(s: &str) -> Result<Self::Parsed> {
-        let s = &s.to_lowercase();
-        let description = parse_description(s, SyntaxFlavor::Classic)?;
-
-        anyhow::ensure!(
-            !description.inverted,
-            "Inverted distributions are not yet supported!"
-        );
-
-        match description.name {
-            "fixed" => FixedDistributionFactory::parse_from_description(description),
-            "seq" => SeqDistributionFactory::parse_from_description(description),
-            "uniform" => UniformDistributionFactory::parse_from_description(description),
-            "gaussian" | "gauss" | "norm" | "normal" => {
-                NormalDistributionFactory::parse_from_description(description)
-            }
-            _ => Err(anyhow::anyhow!(
-                "Invalid distribution name: {}",
-                description.name
-            )),
-        }
+        parse_distribution(s)
     }
 }
 

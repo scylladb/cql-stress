@@ -2,7 +2,7 @@
 //!
 //! This is a diagnostic, not a gate. Whether leader-aware routing is in effect is answered
 //! by the driver itself, through the keyspace's consistency mode; see
-//! `CassandraStressSettings::verify_consistency_mode`. What that answer cannot do is say
+//! `super::keyspace_consistency_mode`. What that answer cannot do is say
 //! *why* it came out negative, and one of the causes is much more confusing than the others:
 //! `TABLETS_ROUTING_V2_EXPERIMENTAL` and strongly consistent tables are independent server
 //! capabilities, so ScyllaDB 2026.2.x stores `consistency = 'global'` in

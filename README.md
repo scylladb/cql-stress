@@ -281,6 +281,59 @@ Note that the driver only learns a tablet's leader ordering after it has seen a
 `TABLETS_ROUTING_V2` payload for it, so the first requests to each tablet are not leader-routed.
 Discard a warm-up window before drawing conclusions from a short run.
 
+### SC Verify
+
+`cql-stress-sc-verify` is a load for strongly consistent tables that also proves they stay
+correct. It works short-lived rows in bursts of overlapping reads and writes and records every
+operation. It checks every read against four streaming invariants, and checks each finished
+row's history for linearizability with `porcupine_checker` from
+[porcupine_validator](https://github.com/scylladb/porcupine_validator). At the end it re-reads
+every row, to confirm that no acknowledged write was lost. The same binary also runs plain bulk
+load (`--mode bulk` or `both`).
+
+It exists only in a `strong-consistency` build (see above). The container image from that build
+also carries `porcupine_checker`.
+
+```
+cargo build --profile dist --features strong-consistency --bin cql-stress-sc-verify
+```
+
+One YAML profile defines the keyspace, the table and its cells, and every command of a test uses
+the same profile:
+
+```yaml
+keyspace: sc_verify
+replication_factor: 3
+tablets_initial: 128        # the table's min_tablet_count
+table: reg
+cells: [bigint, text, blob] # 1 to 8 of: int, bigint, text, blob
+text_size: 32
+blob_size: 64
+bulk_table: null            # null: bulk load uses `table`
+```
+
+```
+cql-stress-sc-verify --profile profile.yaml --nodes 10.0.0.1,10.0.0.2,10.0.0.3 \
+  --mode both --duration 30m --pop seq=0..1023 --bulk-op mixed --bulk-rate 2000 \
+  --history-dir ./history
+```
+
+Results come out in three places:
+- `SCV {json}` lines on stdout;
+- files under `--history-dir`: `report.json`, `rows.jsonl`, and in `archive/` every failing
+  history with its visualization;
+- the exit code:
+
+  | Code | Meaning |
+  |---|---|
+  | 0 | clean |
+  | 1 | a consistency violation, a lost or phantom value, or a checker that failed its self-test |
+  | 2 | a setup failure: not a strongly consistent keyspace, no leader routing, or a schema mismatch |
+  | 3 | errors caused by the tool or the profile |
+
+Several loaders need disjoint `--pop` and `--bulk-pop` ranges. `cql-stress-sc-verify --help`
+lists every option. The design is in `tasks/SCYLLADB-4519/spec.md`.
+
 ## Development
 
 ### Prerequisites
