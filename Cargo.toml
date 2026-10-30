@@ -96,6 +96,14 @@ timerfd = ["dep:tokio-timerfd"]
 # overrides RUSTFLAGS has to repeat that cfg; forgetting it is a compile error, never a
 # silently unverified run.
 strong-consistency = ["scylla/unstable-strong-consistency"]
+# Reach a cluster through ScyllaDB Cloud Private Connectivity (AWS PrivateLink, GCP Private
+# Service Connect): `-client-routes-connection-ids` (scylla-bench frontend) and
+# `-node client-routes-connection-ids=` (cassandra-stress frontend) make the driver
+# resolve every node through the proxy endpoints published in `system.client_routes`. OFF by
+# default for the same reason as `strong-consistency`: the driver keeps this API behind its
+# `unstable-client-routes` feature, and the ordinary binary must not depend on it. A build
+# without it refuses the flag at parse time. Unlike `strong-consistency`, no `--cfg` is needed.
+client-routes = ["scylla/unstable-client-routes"]
 
 [dev-dependencies]
 ntest = "0.9"

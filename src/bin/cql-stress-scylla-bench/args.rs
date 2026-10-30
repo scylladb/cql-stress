@@ -74,6 +74,7 @@ pub(crate) struct ScyllaBenchArgs {
     pub hdr_latency_resolution: u64,
     pub hdr_latency_sig_fig: u64,
     pub validate_data: bool,
+    pub client_routes_connection_ids: Vec<String>,
 }
 
 pub(crate) enum ParseResult {
@@ -292,6 +293,13 @@ where
         "write meaningful data and validate while reading",
     );
 
+    let client_routes_connection_ids = flag.string_var(
+        "client-routes-connection-ids",
+        "",
+        "comma-separated connection IDs to read from the system.client_routes table \
+         (ScyllaDB Cloud Private Connectivity); needs the `client-routes` build feature",
+    );
+
     let version_json_flag = flag.bool_var("version-json", false, "Show version in json format");
     let version_human_flag = flag.bool_var("version", false, "Show version (human readable)");
     let (parser, desc) = flag.build();
@@ -310,6 +318,14 @@ where
         }
 
         let nodes = nodes.get().split(',').map(str::to_string).collect();
+        let client_routes_connection_ids =
+            parse_client_routes_connection_ids(&client_routes_connection_ids.get())?;
+        let tls_encryption = tls_encryption.get();
+        anyhow::ensure!(
+            client_routes_connection_ids.is_empty() || !tls_encryption,
+            "`tls` cannot be combined with `client-routes-connection-ids`: \
+             the driver does not support TLS over client routes yet"
+        );
         let mode = parse_mode(&mode.get())?;
         let workload = if mode == Mode::Scan {
             anyhow::ensure!(
@@ -415,7 +431,7 @@ where
             host_selection_policy,
             datacenter,
             rack,
-            tls_encryption: tls_encryption.get(),
+            tls_encryption,
             keyspace_name: keyspace_name.get(),
             table_name: table_name.get(),
             counter_table_name: counter_table_name.get(),
@@ -444,6 +460,7 @@ where
             hdr_latency_sig_fig,
             hdr_latency_resolution,
             validate_data: validate_data.get(),
+            client_routes_connection_ids,
         })))
     }();
 
@@ -508,6 +525,12 @@ impl ScyllaBenchArgs {
         }
         println!("Client compression:\t {}", self.client_compression);
         println!("Shard connection count:\t {}", self.shard_connection_count);
+        if !self.client_routes_connection_ids.is_empty() {
+            println!(
+                "Client routes connection IDs:\t {}",
+                self.client_routes_connection_ids.join(",")
+            );
+        }
         if self.workload == WorkloadType::Timeseries {
             println!("Start timestamp:\t {}", self.start_timestamp);
             println!(
@@ -518,6 +541,26 @@ impl ScyllaBenchArgs {
 
         // println!("Hdr memory consumption:\t", results.GetHdrMemoryConsumption(concurrency), "bytes");
     }
+}
+
+/// Splits the comma-separated `client-routes-connection-ids` value. A build without the
+/// `client-routes` feature refuses a non-empty value here, so the run never silently falls back
+/// to a regular session.
+fn parse_client_routes_connection_ids(s: &str) -> Result<Vec<String>> {
+    if s.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids: Vec<String> = s.split(',').map(str::trim).map(str::to_string).collect();
+    anyhow::ensure!(
+        ids.iter().all(|id| !id.is_empty()),
+        "`-client-routes-connection-ids` contains an empty connection ID"
+    );
+    #[cfg(not(feature = "client-routes"))]
+    anyhow::ensure!(
+        ids.is_empty(),
+        "`client-routes-connection-ids` needs a build with the `client-routes` feature"
+    );
+    Ok(ids)
 }
 
 struct ScyllaBenchDistribution(Arc<dyn Distribution>);
@@ -721,4 +764,38 @@ fn parse_host_selection_policy(s: &str) -> Result<(Arc<dyn LoadBalancingPolicy>,
         },
     };
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_client_routes_connection_ids;
+
+    #[test]
+    fn client_routes_connection_ids_absent_test() {
+        assert!(parse_client_routes_connection_ids("").unwrap().is_empty());
+        assert!(parse_client_routes_connection_ids("  ").unwrap().is_empty());
+    }
+
+    #[cfg(feature = "client-routes")]
+    #[test]
+    fn client_routes_connection_ids_list_test() {
+        assert_eq!(
+            vec!["a", "b"],
+            parse_client_routes_connection_ids("a, b").unwrap()
+        );
+    }
+
+    #[cfg(feature = "client-routes")]
+    #[test]
+    fn client_routes_connection_ids_empty_entry_test() {
+        // A malformed value must not silently select a regular session.
+        assert!(parse_client_routes_connection_ids(",").is_err());
+        assert!(parse_client_routes_connection_ids("a,,b").is_err());
+    }
+
+    #[cfg(not(feature = "client-routes"))]
+    #[test]
+    fn client_routes_connection_ids_without_feature_test() {
+        assert!(parse_client_routes_connection_ids("a").is_err());
+    }
 }

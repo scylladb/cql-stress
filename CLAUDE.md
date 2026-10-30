@@ -179,12 +179,15 @@ cargo clippy --tests --no-default-features -- -D warnings
 cargo clippy --tests --features "user-profile" -- -D warnings
 cargo clippy --all --all-targets --features "strong-consistency" -- -D warnings
 cargo clippy --tests --no-default-features --features "strong-consistency" -- -D warnings
+cargo clippy --all --all-targets --features "client-routes" -- -D warnings
+cargo clippy --tests --no-default-features --features "client-routes" -- -D warnings
 RUSTFLAGS="--cfg fetch_extended_version_info --cfg scylla_unstable" cargo clippy --tests -- -D warnings
 
 # Test (needs Scylla)
 docker compose -f docker/scylla-test/compose.yml up -d --wait
 cargo test --features "user-profile" -- --test-threads=1
 cargo test --features "user-profile,strong-consistency" -- --test-threads=1
+cargo test --features "user-profile,client-routes" -- --test-threads=1
 
 # Integration tests (need Java and the binary on PATH)
 cargo build --release --bin cql-stress-cassandra-stress

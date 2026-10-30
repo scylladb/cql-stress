@@ -19,9 +19,13 @@ use anyhow::{Context, Result};
 use args::ParseResult;
 use futures::future;
 use openssl::ssl::{SslContext, SslContextBuilder, SslFiletype, SslMethod, SslVerifyMode};
+#[cfg(feature = "client-routes")]
+use scylla::client::client_routes::{ClientRoutesConfig, ClientRoutesProxy};
 use scylla::client::execution_profile::ExecutionProfile;
 use scylla::client::session::Session;
-use scylla::client::session_builder::SessionBuilder;
+#[cfg(feature = "client-routes")]
+use scylla::client::session_builder::ClientRoutesSessionBuilder;
+use scylla::client::session_builder::{GenericSessionBuilder, SessionBuilder, SessionBuilderKind};
 use scylla::client::{Compression, PoolSize};
 use tracing_subscriber::EnvFilter;
 
@@ -123,17 +127,70 @@ async fn stop_on_signal(runner: Arc<RunController>) {
 }
 
 async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result<Configuration> {
-    let mut builder = SessionBuilder::new().known_nodes(&args.nodes);
+    let session = Arc::new(build_session(&args).await?);
 
+    create_schema(&session, &args).await?;
+    let operation_factory = create_operation_factory(session, stats, Arc::clone(&args)).await?;
+
+    let max_duration = (args.test_duration > Duration::ZERO).then_some(args.test_duration);
+    let rate_limit_per_second = (args.maximum_rate > 0).then_some(args.maximum_rate as f64);
+
+    Ok(Configuration {
+        max_duration,
+        concurrency: args.concurrency,
+        rate_limit_per_second,
+        operation_factory,
+        max_retries_per_op: args.max_retries_per_op as usize,
+        ignore_errors: false,
+    })
+}
+
+/// Builds the session: a regular one, or - with `-client-routes-connection-ids` - one that
+/// reaches every node through the proxy endpoints of `system.client_routes` (ScyllaDB Cloud
+/// Private Connectivity). TLS applies to the regular session only; the driver does not support
+/// it over client routes yet, and argument parsing refuses the combination.
+async fn build_session(args: &ScyllaBenchArgs) -> Result<Session> {
+    if args.client_routes_connection_ids.is_empty() {
+        let mut builder = SessionBuilder::new().known_nodes(&args.nodes);
+        if args.tls_encryption {
+            let ssl_ctx = generate_ssl_context(args)?;
+            builder = builder.tls_context(Some(ssl_ctx));
+        }
+        return configure_session_builder(builder, args)
+            .build()
+            .await
+            .context("Failed to create the session");
+    }
+
+    #[cfg(feature = "client-routes")]
+    {
+        let proxies = args
+            .client_routes_connection_ids
+            .iter()
+            .cloned()
+            .map(ClientRoutesProxy::new_with_connection_id)
+            .collect();
+        let config = ClientRoutesConfig::new(proxies)
+            .context("Failed to create the client routes config")?;
+        let builder = ClientRoutesSessionBuilder::new(config).known_nodes(&args.nodes);
+        configure_session_builder(builder, args)
+            .build()
+            .await
+            .context("Failed to create the client routes session")
+    }
+    #[cfg(not(feature = "client-routes"))]
+    anyhow::bail!("`client-routes-connection-ids` needs a build with the `client-routes` feature")
+}
+
+/// Applies the settings shared by the regular and the client routes session.
+fn configure_session_builder<K: SessionBuilderKind>(
+    mut builder: GenericSessionBuilder<K>,
+    args: &ScyllaBenchArgs,
+) -> GenericSessionBuilder<K> {
     builder = builder.pool_size(PoolSize::PerShard(args.shard_connection_count));
 
     if !args.username.is_empty() && !args.password.is_empty() {
         builder = builder.user(&args.username, &args.password);
-    }
-
-    if args.tls_encryption {
-        let ssl_ctx = generate_ssl_context(&args)?;
-        builder = builder.tls_context(Some(ssl_ctx));
     }
 
     if args.client_compression {
@@ -152,25 +209,7 @@ async fn prepare(args: Arc<ScyllaBenchArgs>, stats: Arc<ShardedStats>) -> Result
     let default_exec_profile = ExecutionProfile::builder()
         .load_balancing_policy(Arc::clone(&args.host_selection_policy))
         .build();
-    builder = builder.default_execution_profile_handle(default_exec_profile.into_handle());
-
-    let session = builder.build().await?;
-    let session = Arc::new(session);
-
-    create_schema(&session, &args).await?;
-    let operation_factory = create_operation_factory(session, stats, Arc::clone(&args)).await?;
-
-    let max_duration = (args.test_duration > Duration::ZERO).then_some(args.test_duration);
-    let rate_limit_per_second = (args.maximum_rate > 0).then_some(args.maximum_rate as f64);
-
-    Ok(Configuration {
-        max_duration,
-        concurrency: args.concurrency,
-        rate_limit_per_second,
-        operation_factory,
-        max_retries_per_op: args.max_retries_per_op as usize,
-        ignore_errors: false,
-    })
+    builder.default_execution_profile_handle(default_exec_profile.into_handle())
 }
 
 fn generate_ssl_context(args: &ScyllaBenchArgs) -> Result<SslContext> {

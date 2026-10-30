@@ -14,17 +14,41 @@ See the [Development](#development) section for more details.
 
 List of the crate features:
 - `user-profile` - enables support for `user` command and custom user profiles in `cassandra-stress` frontend. This feature is enabled by default. To disable it, pass `--no-default-features` flag when building the tool.
+- `client-routes` - enables `-client-routes-connection-ids` in the `scylla-bench` frontend and `-node client-routes-connection-ids=` in the `cassandra-stress` frontend, which reach a cluster through ScyllaDB Cloud Private Connectivity (AWS PrivateLink, GCP Private Service Connect) via `system.client_routes`. Disabled by default because it turns on the driver's unstable `unstable-client-routes` API; build with `--features client-routes` (or `docker build --build-arg CARGO_BUILD_FEATURES=client-routes .`). See the Client routes sections of the [Scylla Bench](#client-routes-scylladb-cloud-private-connectivity) and [Cassandra Stress](#client-routes-scylladb-cloud-private-connectivity-1) frontends below.
 
 ### Scylla Bench
 
 See the documentation of the original [`scylla-bench`](https://github.com/scylladb/scylla-bench/blob/master/README.md#usage) for a comprehensive explanation of the most important parameters.
 To see a list of all the parameters currently supported by the tool, use `cql-stress-scylla-bench -help`.
 
+#### Client routes (ScyllaDB Cloud Private Connectivity)
+
+A cluster reached through AWS PrivateLink or GCP Private Service Connect publishes a proxy endpoint per node in `system.client_routes`, and the driver has to connect through those instead of the addresses the nodes broadcast. Build with the `client-routes` feature (`cargo build --release --features client-routes`, or `docker build --build-arg CARGO_BUILD_FEATURES=client-routes .`) and pass the connection IDs of the routes to use:
+
+```
+cql-stress-scylla-bench -workload uniform -mode read -nodes <connection address>:9042 \
+    -username scylla -password '...' -client-routes-connection-ids <connection ID>[,<connection ID>...]
+```
+
+The flag is refused by a build without the feature. TLS is not supported over client routes yet (scylla-rust-driver 1.9.0), so `-tls` cannot be combined with it. This frontend has no mixed read/write mode; for a mixed workload over client routes use the cassandra-stress frontend below.
+
 ### Cassandra Stress
 
 See the documentation of the original [`cassandra-stress`](https://cassandra.apache.org/doc/stable/cassandra/tools/cassandra_stress.html) for a comprehensive explanation of the most important commands and options.
 
 To see a list of all commands and options currently supported by the tool, use `cql-stress-cassandra-stress help`. To see a list of parameters supported for a given command/option, use `cql-stress-cassandra-stress help <command/option>`.
+
+#### Client routes (ScyllaDB Cloud Private Connectivity)
+
+A cluster reached through AWS PrivateLink or GCP Private Service Connect publishes a proxy endpoint per node in `system.client_routes`, and the driver has to connect through those instead of the addresses the nodes broadcast. Build with the `client-routes` feature (`cargo build --release --features client-routes`, or `docker build --build-arg CARGO_BUILD_FEATURES=client-routes .`) and pass the connection IDs as a `-node` parameter, in front of the node list:
+
+```
+cql-stress-cassandra-stress mixed duration=10m -rate threads=128 \
+    -node client-routes-connection-ids=<connection ID>[,<connection ID>...] <connection address>[:<port>] \
+    -mode user=scylla password='...'
+```
+
+The parameter is refused by a build without the feature. Neither `-transport` TLS (scylla-rust-driver 1.9.0 does not support TLS over client routes) nor `-node whitelist` (the allow list is matched against the nodes' advertised addresses, not the proxy endpoints) can be combined with it.
 
 #### Populating the cluster
 
